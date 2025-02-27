@@ -32,7 +32,7 @@ Next, go to the `package.json` and update see the `dev:devvit` command. Update t
 Finally go to `devvit.yaml` and name your app. It has to be 0-16 characters. Once you have, click save, and run `npm run upload` from the root of the repository.
 
 Now all you have to do is run `npm run dev` and navigate to the subreddit.
- 
+
 There is one last gotcha! You need to make a new post before you can see it. You can do so by going to your subreddit, clicking the three dots, and tapping "Make my experience post". After you start developing your all please update the menu item copy (found in `src/main.tsx`).
 
 ## Commands
@@ -43,18 +43,20 @@ There is one last gotcha! You need to make a new post before you can see it. You
 
 ## Flow of the app
 
-`main.tsx` is the main entry point of the application, it will have a launch button that actually launches an application and the config files for setting up up built in services and and buttons. I think endpoints are declared here.
+`main.tsx` is the main entry point of the application, it will have a launch button that actually launches the webview (stuff in `game/`).
 
-In our case we are using web views so we basically have a totally different application which then outputs to an `index.html` file which is rendered in the web view.\
-`Preview.tsx`: It is the loading state till game launches\
-`core/` : Contains api functions\
-`utils/`: Has functions to call APIs and other utilities\
-`constants.ts`: It is the env file for devvit\
-`assets/`: Public folder for static assets
+In our case we are using webviews so we basically have a totally different application which then outputs to an `index.html` file which is rendered in the webview.
+
+- `Preview.tsx`: It is the loading state till game launches
+- `core/` : Contains api functions
+- `utils/`: Has functions to call APIs and other utilities
+- `constants.ts`: It is the env file for devvit
+- `assets/`: Public folder for static assets
 
 ### Inside Actual Game
-entry point is `main.tsx`, which renders App like vite does, INIT_RESPONSE is called from within an useEffect to fetch the postID(this is done so existing post can be fetched)\
-`HomePage.tsx` is the page that loads in after launch btn is clicked this is default value for usePage hook/context which is used for in app routing
-`PokemonPage.tsx` is the game page that shows the input and sends API req to Devvit server\
-Hooks are made and are useful one is for routing other one just sends messages to devvit server and responds back
-`/components` for reusable components
+
+Entry point is `main.tsx`, which renders App like Vite does, INIT_RESPONSE is called from within an useEffect to send a ready message to the Devvit app.
+
+- `HomePage.tsx` shows an example of routing and navigation with the `useSetPage` hook.
+- `PokemonPage.tsx` shows an example of how to send network requests over postMessage.
+- `/components` for reusable components
