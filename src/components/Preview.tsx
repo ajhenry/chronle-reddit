@@ -1,4 +1,4 @@
-import { Devvit } from '@devvit/public-api';
+import { Devvit } from '@devvit/public-api'
 
 export const Preview: Devvit.BlockComponent<{ text?: string }> = ({ text = 'Loading...' }) => {
   return (
@@ -18,5 +18,5 @@ export const Preview: Devvit.BlockComponent<{ text?: string }> = ({ text = 'Load
         </text>
       </vstack>
     </zstack>
-  );
-};
+  )
+}

@@ -1,4 +1,4 @@
-import { Prisma } from '@prisma/client';
+import { Prisma } from '@prisma/client'
 
 export const mockTimeline = {
   'id': 'day_2uCBdEWwwDArRFCpK4pbOw8S9z3',
@@ -152,12 +152,16 @@ export const mockTimeline = {
       },
     ],
   },
-} as unknown as Prisma.TimelineGetPayload<{
+} as unknown as Prisma.DayGetPayload<{
   include: {
-    events: {
+    timeline: {
       include: {
-        event: true;
-      };
-    };
-  };
-}>;
+        events: {
+          include: {
+            event: true
+          }
+        }
+      }
+    }
+  }
+}>
