@@ -260,20 +260,23 @@ Devvit.addCustomPostType({
     return (
       <vstack height="100%" width="100%" alignment="center middle">
         <image url="chronle-logo.png" imageWidth={200} imageHeight={100} />
-        <text size="medium" weight="bold">
-          {formattedDay}
-        </text>
-        <button
-          onPress={() => {
-            mount()
-          }}
-        >
-          Launch Game
-        </button>
-        <button onPress={clearAttempts}>Clear Attempts</button>
-        <text size="small">
-          {`${totalPlayers}  ${totalPlayers === 1 ? 'person has' : 'people have'} played today`}
-        </text>
+        <vstack gap="large" alignment="center middle">
+          <vstack alignment="center middle" width="100%">
+            <text size="xlarge" weight="bold">
+              {formattedDay}
+            </text>
+            <text size="small">
+              {`${totalPlayers} ${totalPlayers === 1 ? 'person has' : 'people have'} played today`}
+            </text>
+          </vstack>
+          <button
+            onPress={() => {
+              mount()
+            }}
+          >
+            Play Game
+          </button>
+        </vstack>
       </vstack>
     )
   },

@@ -9,7 +9,7 @@ export const HomePage = () => {
       >
         <div className="w-full space-y-6 px-4">
           <div className="text-center">
-            <h1 className="text-4xl font-black">Chronle</h1>
+            <h1 className="bevan text-bg-primary text-5xl font-black">Chronle</h1>
             <p>A game where you put items in order</p>
           </div>
           <div className="mx-auto flex w-full flex-col items-center gap-2 sm:max-w-[300px]">

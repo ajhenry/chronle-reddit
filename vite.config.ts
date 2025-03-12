@@ -1,12 +1,12 @@
-import { defineConfig } from 'vite';
-import react from '@vitejs/plugin-react';
-import tsconfigPaths from 'vite-tsconfig-paths';
+import { defineConfig } from 'vite'
+import react from '@vitejs/plugin-react'
+import tsconfigPaths from 'vite-tsconfig-paths'
 
 // @ts-expect-error Too lazy
-import path from 'path';
+import path from 'path'
 // https://github.com/tailwindlabs/tailwindcss/issues/16751
 // @ts-expect-error Tailwind and Vite are having some problems ATM
-import tailwindcss from 'tailwindcss';
+import tailwindcss from 'tailwindcss'
 
 // https://vite.dev/config/
 export default defineConfig({
@@ -23,4 +23,4 @@ export default defineConfig({
     copyPublicDir: true, // Copies over assets
     sourcemap: true, // Enable sourcemaps
   },
-});
+})

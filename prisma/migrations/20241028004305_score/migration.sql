@@ -1,2 +1,0 @@
--- AlterTable
-ALTER TABLE "Review" ADD COLUMN     "score" DOUBLE PRECISION NOT NULL DEFAULT 0;

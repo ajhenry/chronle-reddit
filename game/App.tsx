@@ -7,6 +7,7 @@ import { sendToDevvit } from './utils'
 import { ThemeProvider } from 'next-themes'
 import { NextUIProvider } from '@nextui-org/react'
 import { HowToPlayPage } from './pages/how-to-play'
+import { AboutPage } from './pages/about'
 
 const getPage = (page: Page) => {
   switch (page) {
@@ -16,6 +17,8 @@ const getPage = (page: Page) => {
       return <GameArea />
     case 'how-to-play':
       return <HowToPlayPage />
+    case 'about':
+      return <AboutPage />
     default:
       throw new Error(`Unknown page: ${page satisfies never}`)
   }

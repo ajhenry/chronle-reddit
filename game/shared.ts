@@ -21,7 +21,7 @@ export type Timeline = Prisma.DayGetPayload<{
   }
 }>
 
-export type Page = 'home' | 'game' | 'how-to-play'
+export type Page = 'home' | 'game' | 'how-to-play' | 'about'
 
 export type WebviewToBlockMessage =
   | { type: 'INIT' }

@@ -1,3 +1,11 @@
+/* latin-ext */
+@font-face {
+  font-family: 'Bevan';
+  font-style: normal;
+  font-weight: 400;
+  src: url(/assets/fonts/bevan.ttf);
+}
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
@@ -70,6 +78,10 @@
   width: 16px;
   height: 8px;
   rotate: 90deg;
+}
+
+.bevan {
+  font-family: 'Bevan', serif;
 }
 
 @media (prefers-color-scheme: dark) {

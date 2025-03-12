@@ -300,23 +300,27 @@ export function LoadedGameArea({
           {postGameStats && (
             <div className="space-y-2">
               <h3 className="text-center text-lg font-medium">How'd you do?</h3>
-              <p className="text-center">
-                You got this Chronle in {attemptNumber} {pluralize('try', attemptNumber)}.{' '}
-                {postGameStats.totalPlayers <= 1 ? (
-                  "You're the first person to play today!"
-                ) : (
-                  <>
-                    That's better than {postGameStats.allPlayerStats[attemptNumber]}{' '}
-                    {pluralize('people', postGameStats.allPlayerStats[attemptNumber])} or{' '}
-                    {calculatePercentageBetterThan(postGameStats.allPlayerStats, attemptNumber)}% of
-                    players.
-                  </>
-                )}
-              </p>
+              {isWinner ? (
+                <p className="text-center">
+                  You got this Chronle in {attemptNumber} {pluralize('try', attemptNumber)}.{' '}
+                  {postGameStats.totalPlayers <= 1 ? (
+                    "You're the first person to play today!"
+                  ) : (
+                    <>
+                      That's better than {postGameStats.allPlayerStats[attemptNumber]}{' '}
+                      {pluralize('people', postGameStats.allPlayerStats[attemptNumber])} or{' '}
+                      {calculatePercentageBetterThan(postGameStats.allPlayerStats, attemptNumber)}%
+                      of players.
+                    </>
+                  )}
+                </p>
+              ) : (
+                <p className="text-center">You'll get it next time</p>
+              )}
               <PostGameMetricsChart dayMetrics={postGameStats.allPlayerStats} />
               <p className="text-center text-sm text-muted-foreground">
                 {postGameStats.totalPlayers}{' '}
-                {postGameStats.totalPlayers === 1 ? 'person has' : 'people have'} played today
+                {postGameStats.totalPlayers === 1 ? 'person has' : 'people have'} played so far
               </p>
             </div>
           )}
