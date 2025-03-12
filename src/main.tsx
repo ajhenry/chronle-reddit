@@ -2,13 +2,12 @@ import { Devvit, useWebView } from '@devvit/public-api';
 import { DEVVIT_SETTINGS_KEYS } from './constants.js';
 import { BlocksToWebviewMessage, WebviewToBlockMessage } from '../game/shared.js';
 import { Preview } from './components/Preview.js';
-import { getPokemonByName } from './core/pokeapi.js';
+import { mockTimeline } from './mock/data.js';
 
 Devvit.addSettings([
-  // Just here as an example
   {
-    name: DEVVIT_SETTINGS_KEYS.SECRET_API_KEY,
-    label: 'API Key for secret things',
+    name: DEVVIT_SETTINGS_KEYS.DATABASE_URL,
+    label: 'Database URL',
     type: 'string',
     isSecret: true,
     scope: 'app',
@@ -41,6 +40,19 @@ Devvit.addMenuItem({
   },
 });
 
+const getServerDay = () => {
+  const utc = new Date().toISOString().split('T')[0];
+  return utc;
+};
+
+const getTimeline = async (day: string) => {
+  console.log('URL', `${DEVVIT_SETTINGS_KEYS.API_URL}/api/reddit/timeline?day=${day}`);
+
+  const response = await fetch(`${DEVVIT_SETTINGS_KEYS.API_URL}/api/reddit/timeline?day=${day}`);
+  const data = await response.json();
+  return data;
+};
+
 // Add a post type definition
 Devvit.addCustomPostType({
   name: 'Experience Post',
@@ -53,6 +65,7 @@ Devvit.addCustomPostType({
 
         switch (data.type) {
           case 'INIT':
+            console.log('INIT');
             postMessage({
               type: 'INIT_RESPONSE',
               payload: {
@@ -60,18 +73,19 @@ Devvit.addCustomPostType({
               },
             });
             break;
-          case 'GET_POKEMON_REQUEST':
-            context.ui.showToast({ text: `Received message: ${JSON.stringify(data)}` });
-            const pokemon = await getPokemonByName(data.payload.name);
+          case 'START_GAME':
+            console.log('START_GAME');
+
+            // Fetch the timeline for the post
+            const day = getServerDay();
+
+            // Fetch the timeline for the post ID
+            const timeline = mockTimeline;
 
             postMessage({
-              type: 'GET_POKEMON_RESPONSE',
+              type: 'GET_TIMELINE_RESPONSE',
               payload: {
-                name: pokemon.name,
-                number: pokemon.id,
-                // Note that we don't allow outside images on Reddit if
-                // wanted to get the sprite. Please reach out to support
-                // if you need this for your app!
+                timeline,
               },
             });
             break;

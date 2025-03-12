@@ -1,0 +1,230 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+generator json {
+  provider = "prisma-json-types-generator"
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+
+model User {
+  id                    String                  @id @default(dbgenerated("'user_' || ksuid_pgcrypto()"))
+  isAnonymous           Boolean                 @default(true)
+  email                 String?
+  handle                String?
+  fullName              String?
+  avatarUrl             String?
+  billingAddress        Json?
+  paymentMethod         Json?
+  createdAt             DateTime                @default(now()) @db.Timestamptz
+  updatedAt             DateTime                @default(now()) @db.Timestamptz
+  attempts              Attempt[]
+  admin                 Boolean                 @default(false)
+  solvedTimelineMetrics SolvedTimelineMetrics[]
+
+  @@map("users")
+}
+
+model Event {
+  id              String          @id @default(dbgenerated("'event_' || ksuid_pgcrypto()"))
+  // This is the event short title.
+  title           String
+  // This is the description of the event. It is used to explain the context of the event.
+  description     String
+  // This is the subject of the event. It is used to fetch pictures.
+  subject         String
+  imageUrl        String
+  imageCreditName String
+  imageCreditUrl  String
+  date            DateTime        @db.Timestamptz
+  createdAt       DateTime        @default(now()) @db.Timestamptz
+  updatedAt       DateTime        @default(now()) @db.Timestamptz
+  timelineEvents  TimelineEvent[]
+  eventCategories EventCategory[]
+
+  @@unique([title, date])
+  @@map("events")
+}
+
+model EventCategory {
+  id         String   @default(dbgenerated("'eventcategory_' || ksuid_pgcrypto()"))
+  eventId    String
+  categoryId String
+  createdAt  DateTime @default(now()) @db.Timestamptz
+  updatedAt  DateTime @default(now()) @db.Timestamptz
+  event      Event    @relation(fields: [eventId], references: [id])
+  category   Category @relation(fields: [categoryId], references: [id])
+
+  @@id([eventId, categoryId])
+  @@map("event_categories")
+}
+
+model Attempt {
+  id         String   @id @default(dbgenerated("'attempt_' || ksuid_pgcrypto()"))
+  solution   String[] // What the user submitted
+  /// [PrismaAttemptResult]
+  result     Json // The result of the solution
+  timestamp  DateTime
+  createdAt  DateTime @default(now()) @db.Timestamptz
+  updatedAt  DateTime @default(now()) @db.Timestamptz
+  userId     String
+  timelineId String
+  timeline   Timeline @relation(fields: [timelineId], references: [id])
+  user       User     @relation(fields: [userId], references: [id])
+
+  @@map("attempts")
+}
+
+model SolvedTimelineMetrics {
+  id          String   @id @default(dbgenerated("'metric_' || ksuid_pgcrypto()"))
+  solved      Boolean
+  completedAt DateTime @default(now()) @db.Timestamptz
+  attempts    Int
+  createdAt   DateTime @default(now()) @db.Timestamptz
+  updatedAt   DateTime @default(now()) @db.Timestamptz
+  // If there's a day, it means the user solved the timeline on that day
+  day         Day?     @relation(fields: [dayId], references: [id])
+  dayId       String?
+  timelineId  String
+  timeline    Timeline @relation(fields: [timelineId], references: [id])
+  userId      String
+  user        User     @relation(fields: [userId], references: [id])
+
+  @@map("solved_timeline_metrics")
+}
+
+model TimelineEvent {
+  id         String   @default(dbgenerated("'timelineevent_' || ksuid_pgcrypto()"))
+  timelineId String
+  eventId    String
+  createdAt  DateTime @default(now()) @db.Timestamptz
+  updatedAt  DateTime @default(now()) @db.Timestamptz
+  timeline   Timeline @relation(fields: [timelineId], references: [id])
+  event      Event    @relation(fields: [eventId], references: [id])
+
+  @@id([timelineId, eventId])
+  @@map("timeline_events")
+}
+
+model Timeline {
+  id                    String                  @id @default(dbgenerated("'timeline_' || ksuid_pgcrypto()"))
+  title                 String
+  description           String?
+  events                TimelineEvent[]
+  day                   Day?
+  solution              String[]
+  attempts              Attempt[]
+  solvedTimelineMetrics SolvedTimelineMetrics[]
+
+  @@map("timelines")
+}
+
+model Day {
+  id          String                  @id @default(dbgenerated("'day_' || ksuid_pgcrypto()"))
+  day         String
+  description String?
+  timelineId  String                  @unique
+  timeline    Timeline                @relation(fields: [timelineId], references: [id])
+  createdAt   DateTime                @default(now()) @db.Timestamptz
+  updatedAt   DateTime                @default(now()) @db.Timestamptz
+  metrics     SolvedTimelineMetrics[]
+
+  @@map("days")
+}
+
+model Category {
+  id              String          @id @default(dbgenerated("'category_' || ksuid_pgcrypto()"))
+  title           String          @unique
+  description     String?
+  createdAt       DateTime        @default(now()) @db.Timestamptz
+  updatedAt       DateTime        @default(now()) @db.Timestamptz
+  eventCategories EventCategory[]
+
+  @@map("categories")
+}
+
+model Customer {
+  id               String   @id @default(dbgenerated("'customer_' || ksuid_pgcrypto()"))
+  stripeCustomerId String
+  createdAt        DateTime @default(now()) @db.Timestamptz
+  updatedAt        DateTime @default(now()) @db.Timestamptz
+
+  @@map("customers")
+}
+
+model Product {
+  id          String  @id
+  active      Boolean
+  name        String
+  description String?
+  image       String?
+  metadata    Json?
+
+  @@map("products")
+}
+
+enum PricingType {
+  one_time
+  recurring
+}
+
+enum PricingPlanInterval {
+  day
+  week
+  month
+  year
+}
+
+model Price {
+  id              String               @id
+  productId       String
+  active          Boolean
+  description     String?
+  unitAmount      Int?
+  currency        String
+  type            PricingType
+  interval        PricingPlanInterval?
+  intervalCount   Int?
+  trialPeriodDays Int?
+  metadata        Json?
+
+  @@map("prices")
+}
+
+enum SubscriptionStatus {
+  trialing
+  active
+  canceled
+  incomplete
+  incomplete_expired
+  past_due
+  unpaid
+  paused
+}
+
+model Subscription {
+  id                 String             @id @default(dbgenerated("'subscription_' || ksuid_pgcrypto()"))
+  userId             String
+  status             SubscriptionStatus
+  metadata           Json?
+  priceId            String
+  quantity           Int
+  cancelAtPeriodEnd  Boolean
+  created            DateTime           @default(now()) @db.Timestamptz
+  currentPeriodStart DateTime           @default(now()) @db.Timestamptz
+  currentPeriodEnd   DateTime           @default(now()) @db.Timestamptz
+  endedAt            DateTime?
+  cancelAt           DateTime?
+  canceledAt         DateTime?
+  trialStart         DateTime?
+  trialEnd           DateTime?
+  createdAt          DateTime           @default(now()) @db.Timestamptz
+  updatedAt          DateTime           @default(now()) @db.Timestamptz
+
+  @@map("subscriptions")
+}

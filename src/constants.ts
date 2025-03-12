@@ -1,6 +1,5 @@
 export const DEVVIT_SETTINGS_KEYS = {
-  // Just here as an example!
-  SECRET_API_KEY: "secret-api-key",
+  API_URL: 'https://a62cba5a190b41.lhr.life',
 };
 
-export const WEBVIEW_ID = "webview";
+export const WEBVIEW_ID = 'webview';

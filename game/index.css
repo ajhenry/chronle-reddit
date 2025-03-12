@@ -1,1 +1,113 @@
-@import 'tailwindcss';
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --background: 24 100% 95%;
+    --foreground: 24 5% 10%;
+    --card: 24 50% 90%;
+    --card-foreground: 24 5% 15%;
+    --popover: 24 100% 95%;
+    --popover-foreground: 24 100% 10%;
+    --primary: 24 9.8% 10%;
+    --primary-foreground: 0 0% 100%;
+    --secondary: 24 30% 70%;
+    --secondary-foreground: 0 0% 0%;
+    --muted: -14 30% 85%;
+    --muted-foreground: 24 5% 40%;
+    --accent: -14 30% 80%;
+    --accent-foreground: 24 5% 15%;
+    --destructive: 0 100% 50%;
+    --destructive-foreground: 24 5% 90%;
+    --border: 24 30% 66%;
+    --input: 24 30% 50%;
+    --ring: 24 9.8% 10%;
+    --radius: 0.5rem;
+  }
+  .dark {
+    --background: 24 10% 10%;
+    --foreground: 24 0% 90%;
+    --card: 24 0% 10%;
+    --card-foreground: 24 0% 90%;
+    --popover: 24 10% 5%;
+    --popover-foreground: 24 0% 90%;
+    --primary: 24 100% 87%;
+    --primary-foreground: 0 0% 0%;
+    --secondary: 24 10% 20%;
+    --secondary-foreground: 0 0% 100%;
+    --muted: -14 10% 25%;
+    --muted-foreground: 24 0% 65%;
+    --accent: -14 10% 25%;
+    --accent-foreground: 24 0% 90%;
+    --destructive: 0 50% 50%;
+    --destructive-foreground: 24 0% 90%;
+    --border: 24 20% 50%;
+    --input: 24 20% 50%;
+    --ring: 24 100% 87%;
+    --radius: 0.5rem;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+  body {
+    @apply bg-background text-foreground;
+  }
+}
+
+@layer utilities {
+  .popover-content-width-full {
+    width: var(--radix-popover-trigger-width);
+    max-height: var(--radix-popover-content-available-height);
+  }
+}
+
+.handle {
+  display: inline-block;
+  width: 16px;
+  height: 8px;
+  rotate: 90deg;
+}
+
+@media (prefers-color-scheme: dark) {
+  .handle,
+  .handle::before {
+    background-image: radial-gradient(white 40%, transparent 40%);
+    background-size: 4px 4px;
+    background-position: 0 100%;
+    background-repeat: repeat-x;
+  }
+}
+
+@media (prefers-color-scheme: light) {
+  .handle,
+  .handle::before {
+    background-image: radial-gradient(black 40%, transparent 40%);
+    background-size: 4px 4px;
+    background-position: 0 100%;
+    background-repeat: repeat-x;
+  }
+}
+
+.handle::before {
+  content: '';
+  display: block;
+  width: 100%;
+  height: 33%;
+}
+
+#stats .bar {
+  --color-1: #9dc48c;
+  --color-2: #9dc48ccc;
+  --color-3: #9dc48cb3;
+  --color-4: #9dc48c99;
+  --color-5: #9dc48c80;
+  --color-6: #9dc48c4d;
+}
+
+.apexcharts-yaxis-texts-g.apexcharts-xaxis-inversed-texts-g {
+  color: var(--primary);
+}
