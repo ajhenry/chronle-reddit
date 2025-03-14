@@ -1,4 +1,4 @@
-import { Prisma } from '@prisma/client'
+import { DayTimeline } from '../src/mock/schemas'
 
 export interface Attempt {
   timelineId: string
@@ -6,20 +6,6 @@ export interface Attempt {
   userId: string
   correct: boolean[]
 }
-
-export type Timeline = Prisma.DayGetPayload<{
-  include: {
-    timeline: {
-      include: {
-        events: {
-          include: {
-            event: true
-          }
-        }
-      }
-    }
-  }
-}>
 
 export type Page = 'home' | 'game' | 'how-to-play' | 'about'
 
@@ -39,19 +25,7 @@ export type BlocksToWebviewMessage =
   | {
       type: 'GET_TIMELINE_RESPONSE'
       payload: {
-        timeline: Prisma.DayGetPayload<{
-          include: {
-            timeline: {
-              include: {
-                events: {
-                  include: {
-                    event: true
-                  }
-                }
-              }
-            }
-          }
-        }> | null
+        game: DayTimeline
       }
     }
   | {

@@ -8,6 +8,7 @@ import { ThemeProvider } from 'next-themes'
 import { NextUIProvider } from '@nextui-org/react'
 import { HowToPlayPage } from './pages/how-to-play'
 import { AboutPage } from './pages/about'
+import { Toaster } from '@/components/ui/sonner'
 
 const getPage = (page: Page) => {
   switch (page) {
@@ -33,7 +34,8 @@ export const App = () => {
   return (
     <ThemeProvider attribute="class" defaultTheme="system" enableSystem disableTransitionOnChange>
       <NextUIProvider>
-        <div className="h-full">{getPage(page)}</div>
+        <div className="h-full bg-background">{getPage(page)}</div>
+        <Toaster />
       </NextUIProvider>
     </ThemeProvider>
   )

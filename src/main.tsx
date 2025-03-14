@@ -1,9 +1,11 @@
 import { Devvit, useState, useWebView } from '@devvit/public-api'
 import { DEVVIT_SETTINGS_KEYS } from './constants.js'
-import { BlocksToWebviewMessage, Timeline, WebviewToBlockMessage } from '../game/shared.js'
+import { BlocksToWebviewMessage, WebviewToBlockMessage } from '../game/shared.js'
 import { Preview } from './components/Preview.js'
 import { mockTimeline } from './mock/data.js'
 import { createRedisService } from './core/redis.js'
+import { ChronleLogo } from './logo.js'
+import { DayTimeline } from './mock/schemas.js'
 
 Devvit.addSettings([
   // {
@@ -37,13 +39,15 @@ Devvit.addMenuItem({
       preview: <Preview />,
     })
 
+    console.log('timeline', mockTimeline)
+
     // const timeline = await getTimeline(getServerDay())
     const timeline = mockTimeline
     const key = getDateFromPostName(post.title)
     // Save the images to reddit
-    const images = timeline.timeline.events.map((event) => event.event.imageUrl)
+    const images = timeline.day.timeline.events.map((event) => event.event.imageUrl)
     const imageAssets = await Promise.all(images.map((image) => uploadImage(image, context)))
-    timeline.timeline.events.forEach((event, index) => {
+    timeline.day.timeline.events.forEach((event, index) => {
       event.event.imageUrl = imageAssets[index].mediaUrl
     })
 
@@ -111,7 +115,7 @@ const fetchTimeline = async (day: string) => {
   return data
 }
 
-const getTimeline = async (postId: string, context: Devvit.Context) => {
+const getGameByPost = async (postId: string, context: Devvit.Context) => {
   const redisService = createRedisService(context)
   const post = await context.reddit.getPostById(postId)
   const postName = post.title
@@ -119,7 +123,7 @@ const getTimeline = async (postId: string, context: Devvit.Context) => {
 
   // TODO: do something if the timeline is not found
 
-  return timeline as Timeline
+  return timeline as DayTimeline
 }
 
 // Add a post type definition
@@ -152,21 +156,21 @@ Devvit.addCustomPostType({
           case 'START_GAME': {
             console.log('START_GAME')
             // Fetch the timeline for the post ID
-            const timeline = await getTimeline(context.postId!, context)
+            const game = await getGameByPost(context.postId!, context)
 
             postMessage({
               type: 'GET_TIMELINE_RESPONSE',
               payload: {
-                timeline,
+                game,
               },
             })
 
             const { attempt, attemptCount } = await redisService.getLastAttempt(
-              timeline.timeline.id,
+              game.day.timeline.id,
               context.userId!
             )
             const solved = attempt?.correct?.every((c) => c)
-            const finished = solved || attemptCount >= 6
+            const finished = solved || attemptCount > 6
 
             postMessage({
               type: 'GET_LAST_ATTEMPT_RESPONSE',
@@ -186,22 +190,22 @@ Devvit.addCustomPostType({
             const payload = data?.payload
 
             // Fetch the timeline for the post ID
-            const timeline = await getTimeline(context.postId!, context)
+            const game = await getGameByPost(context.postId!, context)
 
             // Calculate solution correct
             const correct = payload.solution.map((eventId, index) => {
-              return eventId === timeline.timeline.solution[index]
+              return eventId === game.day.timeline.solution[index]
             })
 
-            const { totalCount, attempt } = await redisService.saveAttempt(timeline.timeline.id, {
-              timelineId: timeline.timeline.id,
+            const { totalCount, attempt } = await redisService.saveAttempt(game.day.timeline.id, {
+              timelineId: game.day.timeline.id,
               attempt: payload.solution,
               userId: context.userId!,
               correct,
             })
 
             const solved = correct.every((c) => c)
-            const finished = solved || totalCount >= 6
+            const finished = solved || totalCount > 6
 
             postMessage({
               type: 'SUBMIT_SOLUTION_RESPONSE',
@@ -219,11 +223,11 @@ Devvit.addCustomPostType({
           case 'POST_GAME': {
             console.log('POST_GAME')
 
-            // Fetch the timeline for the post ID
-            const timeline = await getTimeline(context.postId!, context)
+            // Fetch the game for the post ID
+            const game = await getGameByPost(context.postId!, context)
 
-            const allPlayerStats = await redisService.getAllPlayerStats(timeline.timeline.id)
-            const totalPlayers = await redisService.getTotalPlayers(timeline.timeline.id)
+            const allPlayerStats = await redisService.getAllPlayerStats(game.day.timeline.id)
+            const totalPlayers = await redisService.getTotalPlayers(game.day.timeline.id)
 
             postMessage({
               type: 'POST_GAME_RESPONSE',
@@ -240,16 +244,16 @@ Devvit.addCustomPostType({
     })
 
     const [totalPlayers] = useState(async () => {
-      // Fetch the timeline for the post ID
-      const timeline = await getTimeline(context.postId!, context)
+      // Fetch the game for the post ID
+      const game = await getGameByPost(context.postId!, context)
 
-      return await redisService.getTotalPlayers(timeline.timeline.id)
+      return await redisService.getTotalPlayers(game.day.timeline.id)
     })
 
     const clearAttempts = async () => {
-      // Fetch the timeline for the post ID
-      const timeline = await getTimeline(context.postId!, context)
-      redisService.clearAttempts(timeline.timeline.id, context.userId!)
+      // Fetch the game for the post ID
+      const game = await getGameByPost(context.postId!, context)
+      redisService.clearAttempts(game.day.timeline.id, context.userId!)
     }
 
     const [formattedDay] = useState(async () => {
@@ -258,21 +262,31 @@ Devvit.addCustomPostType({
     })
 
     return (
-      <vstack height="100%" width="100%" alignment="center middle">
-        <image url="chronle-logo.png" imageWidth={200} imageHeight={100} />
+      <vstack
+        height="100%"
+        width="100%"
+        alignment="center middle"
+        darkBackgroundColor="#1A1918"
+        backgroundColor="#FFF1E6"
+        gap="large"
+      >
+        <ChronleLogo size={2.5} />
         <vstack gap="large" alignment="center middle">
           <vstack alignment="center middle" width="100%">
-            <text size="xlarge" weight="bold">
+            <text size="large" weight="bold" darkColor="rgb(230, 230, 230)" lightColor="#1B1917">
               {formattedDay}
             </text>
-            <text size="small">
-              {`${totalPlayers} ${totalPlayers === 1 ? 'person has' : 'people have'} played today`}
+            <text size="small" darkColor="rgb(230, 230, 230)" lightColor="#1B1917">
+              {totalPlayers === 0
+                ? 'No one has completed the game yet'
+                : `${totalPlayers} ${totalPlayers === 1 ? 'person has' : 'people have'} completed the game`}
             </text>
           </vstack>
           <button
             onPress={() => {
               mount()
             }}
+            appearance="primary"
           >
             Play Game
           </button>

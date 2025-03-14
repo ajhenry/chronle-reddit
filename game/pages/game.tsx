@@ -19,16 +19,15 @@ import {
 import { CSS } from '@dnd-kit/utilities'
 import { Loader2 } from 'lucide-react'
 import { useEffect, useState } from 'react'
-import { Event, Prisma } from '@prisma/client'
 import { useReward } from 'react-rewards'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
-import { useSetPage } from '@/hooks/usePage'
 import { useDevvitListener } from '@/hooks/useDevvitListener'
 import { sendToDevvit } from '@/utils'
 import { Attempt } from '@/shared'
 import { PostGameMetricsChart } from '@/components/post-game-charts'
 import pluralize from 'pluralize'
+import { Event, Timeline } from '../../src/mock/schemas'
 
 const getDelay = (order: number) => {
   return `${order * 250}ms`
@@ -87,6 +86,14 @@ export function SortableEvent(props: {
     return 'bg-accent'
   }
 
+  const chooseAccentColor = () => {
+    if (props.correct) {
+      return 'text-foreground dark:text-background'
+    }
+
+    return 'text-foreground'
+  }
+
   const shouldDelay = props.attemptNumber > 0 && !moved
 
   return (
@@ -110,9 +117,9 @@ export function SortableEvent(props: {
           />
         </div>
         <div className="flex min-h-12 w-full flex-col justify-center">
-          <p>{props.event.title}</p>
+          <p className={cn(chooseAccentColor())}>{props.event.title}</p>
           {props.postGame && (
-            <p className="text-sm text-muted-foreground">
+            <p className={cn(chooseAccentColor(), 'text-sm')}>
               {new Date(props.event.date).toLocaleDateString('en-US', {
                 month: 'short',
                 day: 'numeric',
@@ -134,15 +141,7 @@ export function SortableEvent(props: {
 }
 
 interface DraggableAreaProps {
-  timeline: Prisma.TimelineGetPayload<{
-    include: {
-      events: {
-        include: {
-          event: true
-        }
-      }
-    }
-  }>
+  timeline: Timeline
   lastAttempt: Attempt | null
   attemptCount: number
   solved: boolean
@@ -156,16 +155,16 @@ export const GameArea = () => {
       type: 'START_GAME',
     })
   }, [])
-  const dayTimeline = useDevvitListener('GET_TIMELINE_RESPONSE')
+  const gameData = useDevvitListener('GET_TIMELINE_RESPONSE')
   const lastAttempt = useDevvitListener('GET_LAST_ATTEMPT_RESPONSE')
 
-  if (!dayTimeline) {
+  if (!gameData) {
     return <div>Loading the game</div>
   }
 
   return (
     <LoadedGameArea
-      timeline={dayTimeline.timeline!.timeline}
+      timeline={gameData.game!.day.timeline}
       lastAttempt={lastAttempt?.lastAttempt ?? null}
       attemptCount={lastAttempt?.attemptCount ?? 0}
       solved={lastAttempt?.solved ?? false}
@@ -245,7 +244,7 @@ export function LoadedGameArea({
 
     // solved means someone clicked the game after they completed it
     // Do not show effects, it's postGame
-    if (solved) {
+    if (solved || finished) {
       setShowPostGame(true)
       return
     }
@@ -280,10 +279,8 @@ export function LoadedGameArea({
     return Math.round((playersWithMoreAttempts / totalPlayers) * 100)
   }
 
-  console.log('totalPlayers', postGameStats?.totalPlayers)
-
   return (
-    <div className="flex w-full flex-col items-center justify-center p-4">
+    <div className="mx-auto flex w-full max-w-[600px] flex-col items-center justify-center p-4">
       {postGame && showPostGame && (
         <div className="mb-8 w-full max-w-md space-y-4 transition-all">
           <div>

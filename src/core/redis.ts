@@ -1,40 +1,14 @@
 import { Devvit, TriggerContext } from '@devvit/public-api'
-import { Attempt, Timeline } from '../../game/shared.js'
+import { Attempt } from '../../game/shared.js'
+import { DayTimeline } from '../mock/schemas.js'
 
-export type RedisService = {
-  // Timeline
-  saveTimeline: (key: string, timeline: Timeline) => Promise<void>
-  getTimeline: (key: string) => Promise<Timeline | null>
-  // Attempt
-  saveAttempt: (
-    timelineId: string,
-    attempt: Attempt
-  ) => Promise<{
-    totalCount: number
-    attempt: Attempt
-  }>
-  getLastAttempt: (
-    timelineId: string,
-    userId: string
-  ) => Promise<{
-    attempt: Attempt | null
-    attemptCount: number
-  }>
-  clearAttempts: (timelineId: string, userId: string) => Promise<void>
+export type RedisService = ReturnType<typeof createRedisService>
 
-  // Stats
-  getTotalAttempts: (timelineId: string) => Promise<number>
-  getAllPlayerStats: (timelineId: string) => Promise<{
-    [key: string]: number
-  }>
-  getTotalPlayers: (timelineId: string) => Promise<number>
-}
-
-export function createRedisService(context: Devvit.Context | TriggerContext): RedisService {
+export function createRedisService(context: Devvit.Context | TriggerContext) {
   const { redis, realtime } = context
   return {
     // Timeline
-    saveTimeline: async (key: string, timeline: Timeline) => {
+    saveTimeline: async (key: string, timeline: DayTimeline) => {
       await redis.set(`timeline_${key}`, JSON.stringify(timeline))
     },
     getTimeline: async (key: string) => {
@@ -84,7 +58,13 @@ export function createRedisService(context: Devvit.Context | TriggerContext): Re
         attempt,
       }
     },
-    getLastAttempt: async (timelineId: string, userId: string) => {
+    getLastAttempt: async (
+      timelineId: string,
+      userId: string
+    ): Promise<{
+      attempt: Attempt | null
+      attemptCount: number
+    }> => {
       const attempt = await redis.get(`attempt_${timelineId}_${userId}`)
       const attemptCount = await redis.get(`attempt_count_${timelineId}_${userId}`)
       return {
@@ -103,6 +83,7 @@ export function createRedisService(context: Devvit.Context | TriggerContext): Re
     },
     getAllPlayerStats: async (timelineId: string) => {
       const allPlayerStats = await redis.zRange(`all_player_stats_${timelineId}`, 0, -1)
+      console.log('allPlayerStats', allPlayerStats)
       return allPlayerStats.reduce(
         (acc, { score }) => {
           acc[score] = acc[score] ? acc[score] + 1 : 1
@@ -112,7 +93,7 @@ export function createRedisService(context: Devvit.Context | TriggerContext): Re
       )
     },
     getTotalPlayers: async (timelineId: string) => {
-      const totalPlayers = await redis.zRange(`total_players_${timelineId}`, 0, -1)
+      const totalPlayers = await redis.zRange(`all_player_stats_${timelineId}`, 0, -1)
       return totalPlayers.length
     },
   }

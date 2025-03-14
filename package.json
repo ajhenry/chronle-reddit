@@ -7,7 +7,7 @@
   "scripts": {
     "dev:vite": "vite",
     "dev:game": "vite build --watch",
-    "dev:devvit": "devvit playtest ajhenry_playground",
+    "dev:devvit": "devvit playtest chronle",
     "dev": "concurrently -p \"[{name}]\" -n \"DEVVIT,GAME\" -c \"bgBlue.bold,bgMagenta.bold,bgGreen.bold\" \"npm run dev:devvit\" \"npm run dev:game\" --restart-tries 30",
     "vite": "vite",
     "upload": "devvit upload"
