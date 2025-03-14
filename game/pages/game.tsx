@@ -86,6 +86,10 @@ export function SortableEvent(props: {
   }
 
   const chooseAccentColor = () => {
+    if (!shouldHighlight) {
+      return 'text-foreground'
+    }
+
     if (props.correct) {
       return 'text-foreground dark:text-background'
     }
@@ -116,9 +120,21 @@ export function SortableEvent(props: {
           />
         </div>
         <div className="flex min-h-12 w-full flex-col justify-center">
-          <p className={cn(chooseAccentColor())}>{props.event.title}</p>
+          <p
+            className={cn('text-foreground', chooseAccentColor())}
+            style={{
+              transitionDelay: shouldDelay ? getDelay(props.order) : '0ms',
+            }}
+          >
+            {props.event.title}
+          </p>
           {props.postGame && (
-            <p className={cn(chooseAccentColor(), 'text-sm')}>
+            <p
+              className={cn('text-foreground', chooseAccentColor(), 'text-sm')}
+              style={{
+                transitionDelay: shouldDelay ? getDelay(props.order) : '0ms',
+              }}
+            >
               {new Date(props.event.date).toLocaleDateString('en-US', {
                 month: 'short',
                 day: 'numeric',
@@ -169,6 +185,65 @@ export const GameArea = () => {
       solved={lastAttempt?.solved ?? false}
       finished={lastAttempt?.finished ?? false}
     />
+  )
+}
+
+const GameStats = ({
+  attemptNumber,
+  postGameStats,
+  isWinner,
+  correctCount,
+}: {
+  attemptNumber: number
+  postGameStats: { totalPlayers: number; allPlayerStats: { [key: string]: number } }
+  isWinner: boolean
+  correctCount: number
+}) => {
+  const calculatePercentageBetterThan = (
+    stats: { [key: string]: number },
+    attemptNumber: number
+  ): number => {
+    // Need to make a copy of the stats object because we're mutating it
+    const statsCopy = { ...stats }
+    const totalPlayers = Object.values(statsCopy).reduce((sum, count) => sum + count, 0) - 1
+    if (totalPlayers <= 0) return 0
+
+    // Remove our own attempt number from the total
+    statsCopy[attemptNumber.toString()] = statsCopy[attemptNumber.toString()] - 1
+
+    const playersWithMoreAttempts = Object.entries(statsCopy)
+      .filter(([attempt]) => parseInt(attempt) > attemptNumber)
+      .reduce((sum, [_, count]) => sum + count, 0)
+
+    return Math.round((playersWithMoreAttempts / totalPlayers) * 100)
+  }
+
+  if (!isWinner) {
+    return <span>You got {correctCount}/6 events in the right order.</span>
+  }
+
+  if (postGameStats.totalPlayers <= 1) {
+    return <span>You're the first person to play today!</span>
+  }
+
+  const percentageBetter = calculatePercentageBetterThan(
+    postGameStats.allPlayerStats,
+    attemptNumber
+  )
+
+  if (postGameStats.totalPlayers >= 2 && percentageBetter > 0) {
+    return (
+      <span>
+        You got this Chronle in {attemptNumber} {pluralize('try', attemptNumber)}. That's better
+        than {percentageBetter}% of players.
+      </span>
+    )
+  }
+
+  return (
+    <span>
+      You got this Chronle in {attemptNumber} {pluralize('try', attemptNumber)}.
+    </span>
   )
 }
 
@@ -261,23 +336,6 @@ export function LoadedGameArea({
     }, 3000)
   }, [postGame])
 
-  const calculatePercentageBetterThan = (
-    stats: { [key: string]: number },
-    attemptNumber: number
-  ): number => {
-    // Get total number of players
-    const totalPlayers = Object.values(stats).reduce((sum, count) => sum + count, 0) - 1
-    if (totalPlayers <= 0) return 0
-
-    // Sum up all players who took more attempts
-    const playersWithMoreAttempts = Object.entries(stats)
-      .filter(([attempt]) => parseInt(attempt) > attemptNumber)
-      .reduce((sum, [_, count]) => sum + count, 0)
-
-    // Calculate percentage and round to nearest whole number
-    return Math.round((playersWithMoreAttempts / totalPlayers) * 100)
-  }
-
   return (
     <div className="mx-auto flex w-full max-w-[600px] flex-col items-center justify-center p-4">
       {postGame && showPostGame && (
@@ -298,20 +356,26 @@ export function LoadedGameArea({
               <h3 className="text-center text-lg font-medium">How'd you do?</h3>
               {isWinner ? (
                 <p className="text-center">
-                  You got this Chronle in {attemptNumber} {pluralize('try', attemptNumber)}.{' '}
-                  {postGameStats.totalPlayers <= 1 ? (
-                    "You're the first person to play today!"
-                  ) : (
-                    <>
-                      That's better than {postGameStats.allPlayerStats[attemptNumber]}{' '}
-                      {pluralize('people', postGameStats.allPlayerStats[attemptNumber])} or{' '}
-                      {calculatePercentageBetterThan(postGameStats.allPlayerStats, attemptNumber)}%
-                      of players.
-                    </>
+                  {postGameStats && (
+                    <GameStats
+                      attemptNumber={attemptNumber}
+                      postGameStats={postGameStats}
+                      isWinner={isWinner}
+                      correctCount={latestAttempt?.correct.filter((c) => c).length ?? 0}
+                    />
                   )}
                 </p>
               ) : (
-                <p className="text-center">You'll get it next time</p>
+                <p className="text-center">
+                  {postGameStats && (
+                    <GameStats
+                      attemptNumber={attemptNumber}
+                      postGameStats={postGameStats}
+                      isWinner={isWinner}
+                      correctCount={latestAttempt?.correct.filter((c) => c).length ?? 0}
+                    />
+                  )}
+                </p>
               )}
               <PostGameMetricsChart dayMetrics={postGameStats.allPlayerStats} />
               <p className="text-center text-sm text-muted-foreground">
@@ -325,7 +389,7 @@ export function LoadedGameArea({
 
       <h3 className="text-center text-lg font-medium">{timeline.description}</h3>
       <p className="text-center text-sm">Oldest event first</p>
-      <div className="mt-2">
+      <div className="mt-2 w-full">
         <DndContext
           sensors={sensors}
           collisionDetection={closestCenter}
