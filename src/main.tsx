@@ -5,7 +5,7 @@ import { Preview } from './components/Preview.js'
 import { mockTimeline } from './mock/data.js'
 import { createRedisService } from './core/redis.js'
 import { ChronleLogo } from './logo.js'
-import { DayTimeline } from './mock/schemas.js'
+import { DayTimeline } from './utils/schemas.js'
 
 Devvit.addSettings([
   // {

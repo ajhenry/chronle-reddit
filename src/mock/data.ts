@@ -1,5 +1,5 @@
 import { Prisma } from '@prisma/client'
-import { DayTimeline } from './schemas.js'
+import { DayTimeline } from '../utils/schemas.js'
 
 export const mockTimeline: DayTimeline = {
   'day': {

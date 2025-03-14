@@ -1,6 +1,5 @@
 import { Devvit, TriggerContext } from '@devvit/public-api'
-import { Attempt } from '../../game/shared.js'
-import { DayTimeline } from '../mock/schemas.js'
+import { Attempt, DayTimeline } from '../utils/schemas.js'
 
 export type RedisService = ReturnType<typeof createRedisService>
 

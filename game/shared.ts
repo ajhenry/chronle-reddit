@@ -1,11 +1,4 @@
-import { DayTimeline } from '../src/mock/schemas'
-
-export interface Attempt {
-  timelineId: string
-  attempt: string[]
-  userId: string
-  correct: boolean[]
-}
+import { Attempt, DayTimeline } from '../src/utils/schemas'
 
 export type Page = 'home' | 'game' | 'how-to-play' | 'about'
 

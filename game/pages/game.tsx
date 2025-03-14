@@ -24,10 +24,9 @@ import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
 import { useDevvitListener } from '@/hooks/useDevvitListener'
 import { sendToDevvit } from '@/utils'
-import { Attempt } from '@/shared'
 import { PostGameMetricsChart } from '@/components/post-game-charts'
 import pluralize from 'pluralize'
-import { Event, Timeline } from '../../src/mock/schemas'
+import { Attempt, Event, Timeline } from '../../src/utils/schemas'
 
 const getDelay = (order: number) => {
   return `${order * 250}ms`

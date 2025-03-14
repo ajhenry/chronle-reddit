@@ -1,5 +1,13 @@
 import { z } from 'zod'
 
+// Attempt schema
+const AttemptSchema = z.object({
+  timelineId: z.string(),
+  attempt: z.array(z.string()),
+  userId: z.string(),
+  correct: z.array(z.boolean()),
+})
+
 // Event schema
 const EventSchema = z.object({
   id: z.string(),
@@ -54,3 +62,4 @@ export type Day = z.infer<typeof DaySchema>
 export type Timeline = z.infer<typeof TimelineSchema>
 export type TimelineEvent = z.infer<typeof TimelineEventSchema>
 export type Event = z.infer<typeof EventSchema>
+export type Attempt = z.infer<typeof AttemptSchema>
