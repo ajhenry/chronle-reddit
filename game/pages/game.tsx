@@ -1,4 +1,3 @@
-import { cn } from '@/lib/utils'
 import {
   DndContext,
   DragEndEvent,
@@ -13,10 +12,8 @@ import {
   SortableContext,
   arrayMove,
   sortableKeyboardCoordinates,
-  useSortable,
   verticalListSortingStrategy,
 } from '@dnd-kit/sortable'
-import { CSS } from '@dnd-kit/utilities'
 import { Loader2 } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { useReward } from 'react-rewards'
@@ -25,135 +22,9 @@ import { Button } from '@/components/ui/button'
 import { useDevvitListener } from '@/hooks/useDevvitListener'
 import { sendToDevvit } from '@/utils'
 import { PostGameMetricsChart } from '@/components/post-game-charts'
-import pluralize from 'pluralize'
 import { Attempt, Event, Timeline } from '../../src/utils/schemas'
-
-const getDelay = (order: number) => {
-  return `${order * 250}ms`
-}
-
-export function SortableEvent(props: {
-  id: string
-  event: Event
-  order: number
-  attemptNumber: number
-  postGame: boolean
-  correct: boolean
-}) {
-  // When a user moves an item, update the previous index, do not highlight it
-  // When a user submits an answer, highlight the correct/incorrect items, this happens when the attempt number changes
-  // When a user moves an item after submitting an answer, reset the previous index, do not highlight it
-  const [previousIndex, setPreviousIndex] = useState(props.order)
-  const [attemptNumber, setAttemptNumber] = useState(props.attemptNumber)
-  const [moved, setMoved] = useState(false)
-
-  const shouldHighlight = !moved && props.attemptNumber > 0
-
-  useEffect(() => {
-    if (previousIndex !== props.order) {
-      setPreviousIndex(props.order)
-      setMoved(true)
-    }
-  }, [props.order])
-
-  useEffect(() => {
-    if (props.attemptNumber !== attemptNumber) {
-      setAttemptNumber(props.attemptNumber)
-      setMoved(false)
-    }
-  }, [props.attemptNumber])
-
-  const { attributes, listeners, setNodeRef, transform, transition } = useSortable({
-    id: props.id,
-    disabled: props.postGame,
-  })
-
-  const style = {
-    transform: CSS.Transform.toString(transform),
-    transition,
-  }
-
-  const chooseBackground = () => {
-    if (!shouldHighlight) {
-      return 'bg-background'
-    }
-
-    if (props.correct) {
-      return 'bg-success'
-    }
-
-    return 'bg-accent'
-  }
-
-  const chooseAccentColor = () => {
-    if (!shouldHighlight) {
-      return 'text-foreground'
-    }
-
-    if (props.correct) {
-      return 'text-foreground dark:text-background'
-    }
-
-    return 'text-foreground'
-  }
-
-  const shouldDelay = props.attemptNumber > 0 && !moved
-
-  return (
-    <div ref={setNodeRef} style={style}>
-      <div
-        className={cn(
-          chooseBackground(),
-          'flex w-full touch-manipulation space-x-4 rounded border-2 border-border transition duration-500 ease-in-out'
-        )}
-        style={{
-          transitionDelay: shouldDelay ? getDelay(props.order) : '0ms',
-        }}
-      >
-        <div className="flex items-center justify-center">
-          <img
-            src={props.event.imageUrl}
-            alt={`${props.event.title} Image`}
-            width="160"
-            height={160}
-            className="h-12 w-16 object-cover"
-          />
-        </div>
-        <div className="flex min-h-12 w-full flex-col justify-center">
-          <p
-            className={cn('text-foreground', chooseAccentColor())}
-            style={{
-              transitionDelay: shouldDelay ? getDelay(props.order) : '0ms',
-            }}
-          >
-            {props.event.title}
-          </p>
-          {props.postGame && (
-            <p
-              className={cn('text-foreground', chooseAccentColor(), 'text-sm')}
-              style={{
-                transitionDelay: shouldDelay ? getDelay(props.order) : '0ms',
-              }}
-            >
-              {new Date(props.event.date).toLocaleDateString('en-US', {
-                month: 'short',
-                day: 'numeric',
-                year: 'numeric',
-              })}
-            </p>
-          )}
-        </div>
-        <div
-          className="flex w-10 touch-none items-center justify-center"
-          {...attributes}
-          {...listeners}
-        >
-          <div className="handle" />
-        </div>
-      </div>
-    </div>
-  )
-}
+import { GameStats } from '@/components/game-stats'
+import { SortableEvent } from '@/components/sortable-event'
 
 interface DraggableAreaProps {
   timeline: Timeline
@@ -185,65 +56,6 @@ export const GameArea = () => {
       solved={lastAttempt?.solved ?? false}
       finished={lastAttempt?.finished ?? false}
     />
-  )
-}
-
-const GameStats = ({
-  attemptNumber,
-  postGameStats,
-  isWinner,
-  correctCount,
-}: {
-  attemptNumber: number
-  postGameStats: { totalPlayers: number; allPlayerStats: { [key: string]: number } }
-  isWinner: boolean
-  correctCount: number
-}) => {
-  const calculatePercentageBetterThan = (
-    stats: { [key: string]: number },
-    attemptNumber: number
-  ): number => {
-    // Need to make a copy of the stats object because we're mutating it
-    const statsCopy = { ...stats }
-    const totalPlayers = Object.values(statsCopy).reduce((sum, count) => sum + count, 0) - 1
-    if (totalPlayers <= 0) return 0
-
-    // Remove our own attempt number from the total
-    statsCopy[attemptNumber.toString()] = statsCopy[attemptNumber.toString()] - 1
-
-    const playersWithMoreAttempts = Object.entries(statsCopy)
-      .filter(([attempt]) => parseInt(attempt) > attemptNumber)
-      .reduce((sum, [_, count]) => sum + count, 0)
-
-    return Math.round((playersWithMoreAttempts / totalPlayers) * 100)
-  }
-
-  if (!isWinner) {
-    return <span>You got {correctCount}/6 events in the right order.</span>
-  }
-
-  if (postGameStats.totalPlayers <= 1) {
-    return <span>You're the first person to play today!</span>
-  }
-
-  const percentageBetter = calculatePercentageBetterThan(
-    postGameStats.allPlayerStats,
-    attemptNumber
-  )
-
-  if (postGameStats.totalPlayers >= 2 && percentageBetter > 0) {
-    return (
-      <span>
-        You got this Chronle in {attemptNumber} {pluralize('try', attemptNumber)}. That's better
-        than {percentageBetter}% of players.
-      </span>
-    )
-  }
-
-  return (
-    <span>
-      You got this Chronle in {attemptNumber} {pluralize('try', attemptNumber)}.
-    </span>
   )
 }
 
