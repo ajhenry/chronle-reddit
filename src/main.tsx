@@ -8,13 +8,13 @@ import { ChronleLogo } from './logo.js'
 import { DayTimeline } from './utils/schemas.js'
 
 Devvit.addSettings([
-  // {
-  //   name: DEVVIT_SETTINGS_KEYS.DATABASE_URL,
-  //   label: 'Database URL',
-  //   type: 'string',
-  //   isSecret: true,
-  //   scope: 'app',
-  // },
+  {
+    name: DEVVIT_SETTINGS_KEYS.API_URL,
+    label: 'Database URL',
+    type: 'string',
+    isSecret: true,
+    scope: 'app',
+  },
 ])
 
 Devvit.configure({
@@ -39,11 +39,8 @@ Devvit.addMenuItem({
       preview: <Preview />,
     })
 
-    console.log('timeline', mockTimeline)
-
-    // const timeline = await getTimeline(getServerDay())
-    const timeline = mockTimeline
-    const key = getDateFromPostName(post.title)
+    const timeline = await fetchTimeline(post.id)
+    const key = getDateFromPostName(post.title)!
     // Save the images to reddit
     const images = timeline.day.timeline.events.map((event) => event.event.imageUrl)
     const imageAssets = await Promise.all(images.map((image) => uploadImage(image, context)))
@@ -63,14 +60,31 @@ Devvit.addMenuItem({
   location: 'subreddit',
   forUserType: 'moderator',
   onPress: async (_event, context) => {
+    const redisService = createRedisService(context)
     const { reddit, ui } = context
     const subreddit = await reddit.getCurrentSubreddit()
 
+    const user = await reddit.getCurrentUser()
+
+    const title = user ? `Chronle — u/${user.username}` : `Chronle`
+
     const post = await reddit.submitPost({
-      title: `Chronle — `,
+      title,
       subredditName: subreddit.name,
       preview: <Preview />,
     })
+
+    const timeline = await fetchTimeline(post.id)
+    const key = post.id
+    // Save the images to reddit
+    const images = timeline.day.timeline.events.map((event) => event.event.imageUrl)
+    const imageAssets = await Promise.all(images.map((image) => uploadImage(image, context)))
+    timeline.day.timeline.events.forEach((event, index) => {
+      event.event.imageUrl = imageAssets[index].mediaUrl
+    })
+
+    await redisService.saveTimeline(key, timeline)
+
     ui.showToast({ text: 'Created Chronle!' })
     ui.navigateTo(post.url)
   },
@@ -101,25 +115,39 @@ const formatDay = (day: string) => {
 const getDateFromPostName = (postName: string) => {
   console.log('postName', postName)
   const date = postName.split('—')[1]
+
   // Convert to UTC
-  const utc = new Date(date).toISOString().split('T')[0]
-  console.log('utc', utc)
-  return utc
+  try {
+    const utc = new Date(date).toISOString().split('T')[0]
+    console.log('utc', utc)
+    return utc
+  } catch (error) {
+    return null
+  }
 }
 
-const fetchTimeline = async (day: string) => {
-  console.log('URL', `${DEVVIT_SETTINGS_KEYS.API_URL}/api/reddit/timeline?day=${day}`)
+const fetchTimeline = async (timelineId: string) => {
+  console.log('URL', `${DEVVIT_SETTINGS_KEYS.API_URL}/api/reddit/timeline?timelineId=${timelineId}`)
 
-  const response = await fetch(`${DEVVIT_SETTINGS_KEYS.API_URL}/api/reddit/timeline?day=${day}`)
+  const response = await fetch(
+    `${DEVVIT_SETTINGS_KEYS.API_URL}/api/reddit/timeline?timelineId=${timelineId}`
+  )
   const data = await response.json()
-  return data
+  return data as DayTimeline
 }
 
 const getGameByPost = async (postId: string, context: Devvit.Context) => {
   const redisService = createRedisService(context)
   const post = await context.reddit.getPostById(postId)
   const postName = post.title
-  const timeline = await redisService.getTimeline(getDateFromPostName(postName))
+
+  // First check the post id in redis, if it exists, return the timeline
+  let timeline = await redisService.getTimeline(postId)
+  if (timeline) {
+    return timeline
+  }
+
+  timeline = await redisService.getTimeline(getDateFromPostName(postName)!)
 
   // TODO: do something if the timeline is not found
 
@@ -258,7 +286,12 @@ Devvit.addCustomPostType({
 
     const [formattedDay] = useState(async () => {
       const post = await context.reddit.getPostById(context.postId!)
-      return formatDay(getDateFromPostName(post.title))
+      const date = getDateFromPostName(post.title)
+      console.log('date', date)
+      if (date && date !== '') {
+        return formatDay(date)
+      }
+      return ''
     })
 
     return (
@@ -291,6 +324,9 @@ Devvit.addCustomPostType({
             Play Game
           </button>
         </vstack>
+        <text size="small" darkColor="rgb(230, 230, 230)" lightColor="#1B1917">
+          Made with ❤️ by u/ajhenrydev
+        </text>
       </vstack>
     )
   },

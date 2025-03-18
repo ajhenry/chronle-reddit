@@ -1,5 +1,5 @@
 export const DEVVIT_SETTINGS_KEYS = {
-  API_URL: 'https://a62cba5a190b41.lhr.life',
-};
+  API_URL: 'https://chronle.com',
+}
 
-export const WEBVIEW_ID = 'webview';
+export const WEBVIEW_ID = 'webview'
