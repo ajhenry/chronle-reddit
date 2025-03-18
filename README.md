@@ -4,7 +4,7 @@ A Reddit app built with Devvit that provides an interactive timeline visualizati
 
 ## Demo
 
-![Demo](./resources/demo.mov)
+[Demo](https://github.com/user-attachments/assets/1c7e770c-fce1-4d16-a864-fc9a74d42bae)
 
 ## Tech Stack
 
