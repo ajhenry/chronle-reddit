@@ -14,19 +14,19 @@ const tutorialEvents: TutorialEvent[] = [
     id: '1',
     title: 'First Event',
     date: '1900',
-    imageUrl: 'https://picsum.photos/160/160?random=1',
+    imageUrl: 'https://i.redd.it/ldps1mf7bipe1.jpeg',
   },
   {
     id: '2',
     title: 'Second Event',
     date: '1950',
-    imageUrl: 'https://picsum.photos/160/160?random=2',
+    imageUrl: 'https://i.redd.it/zw2g2bd7bipe1.jpeg',
   },
   {
     id: '3',
     title: 'Third Event',
     date: '2000',
-    imageUrl: 'https://picsum.photos/160/160?random=3',
+    imageUrl: 'https://i.redd.it/1l2htpg7bipe1.jpeg',
   },
 ]
 
