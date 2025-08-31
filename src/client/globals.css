@@ -1,0 +1,129 @@
+@import 'tailwindcss';
+
+/* ===========================================
+   SHADCN/UI THEME CUSTOMIZATION
+   ===========================================
+
+   This file contains your global styles and theme customization.
+   Modify the CSS variables below to customize your theme colors,
+   spacing, and other design tokens.
+
+   Color format: HSL values (Hue Saturation Lightness)
+   Example: 222.2 84% 4.9% = Dark blue-gray
+*/
+
+@layer base {
+  :root {
+    /* ===== LIGHT MODE THEME ===== */
+
+    /* Base colors */
+    --background: 0 0% 100%; /* Pure white */
+    --foreground: 222.2 84% 4.9%; /* Dark text */
+
+    /* Card colors */
+    --card: 0 0% 100%; /* White cards */
+    --card-foreground: 222.2 84% 4.9%; /* Dark text on cards */
+
+    /* Interactive elements */
+    --popover: 0 0% 100%; /* White popovers */
+    --popover-foreground: 222.2 84% 4.9%;
+
+    /* Primary brand color (Reddit orange theme) */
+    --primary: 24 95% 53%; /* Reddit orange */
+    --primary-foreground: 0 0% 98%; /* White text on primary */
+
+    /* Secondary colors */
+    --secondary: 210 40% 96%; /* Light gray */
+    --secondary-foreground: 222.2 84% 4.9%;
+
+    /* Muted colors for subtle elements */
+    --muted: 210 40% 96%; /* Very light gray */
+    --muted-foreground: 215.4 16.3% 46.9%; /* Medium gray text */
+
+    /* Accent colors for highlights */
+    --accent: 210 40% 96%; /* Light accent */
+    --accent-foreground: 222.2 84% 4.9%;
+
+    /* Destructive/error colors */
+    --destructive: 0 84.2% 60.2%; /* Red */
+    --destructive-foreground: 210 40% 98%; /* White text on destructive */
+
+    /* Border and input colors */
+    --border: 214.3 31.8% 91.4%; /* Light gray borders */
+    --input: 214.3 31.8% 91.4%; /* Light gray inputs */
+
+    /* Focus ring color */
+    --ring: 24 95% 53%; /* Reddit orange for focus */
+
+    /* Border radius */
+    --radius: 0.5rem; /* Rounded corners */
+  }
+
+  .dark {
+    /* ===== DARK MODE THEME ===== */
+
+    /* Base colors */
+    --background: 222.2 84% 4.9%; /* Dark background */
+    --foreground: 210 40% 98%; /* Light text */
+
+    /* Card colors */
+    --card: 222.2 84% 4.9%; /* Dark cards */
+    --card-foreground: 210 40% 98%; /* Light text on cards */
+
+    /* Interactive elements */
+    --popover: 222.2 84% 4.9%; /* Dark popovers */
+    --popover-foreground: 210 40% 98%;
+
+    /* Primary brand color (lighter in dark mode) */
+    --primary: 24 95% 63%; /* Lighter Reddit orange */
+    --primary-foreground: 222.2 84% 4.9%; /* Dark text on primary */
+
+    /* Secondary colors */
+    --secondary: 217.2 32.6% 17.5%; /* Dark gray */
+    --secondary-foreground: 210 40% 98%;
+
+    /* Muted colors for subtle elements */
+    --muted: 217.2 32.6% 17.5%; /* Dark muted */
+    --muted-foreground: 215 20.2% 65.1%; /* Light muted text */
+
+    /* Accent colors for highlights */
+    --accent: 217.2 32.6% 17.5%; /* Dark accent */
+    --accent-foreground: 210 40% 98%;
+
+    /* Destructive/error colors */
+    --destructive: 0 62.8% 30.6%; /* Dark red */
+    --destructive-foreground: 210 40% 98%;
+
+    /* Border and input colors */
+    --border: 217.2 32.6% 17.5%; /* Dark borders */
+    --input: 217.2 32.6% 17.5%; /* Dark inputs */
+
+    /* Focus ring color */
+    --ring: 24 95% 63%; /* Lighter Reddit orange */
+  }
+}
+
+/* ===========================================
+   CUSTOM THEME EXAMPLES
+   ===========================================
+
+   Uncomment and modify these examples to customize your theme:
+
+   1. Change primary color to blue:
+      --primary: 221.2 83.2% 53.3%;
+
+   2. Make borders thicker:
+      --border: 214.3 31.8% 85%;
+
+   3. Add custom font:
+      body { font-family: 'Inter', sans-serif; }
+
+   4. Custom component styles:
+      .custom-button { @apply bg-gradient-to-r from-primary to-secondary; }
+
+   5. Add custom animations:
+      @keyframes fade-in {
+        from { opacity: 0; }
+        to { opacity: 1; }
+      }
+*/
