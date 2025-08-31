@@ -1,5 +1,13 @@
 import { useCallback, useEffect, useState } from 'react';
-import type { RedditUser } from '../../shared/types/supabase';
+
+// Reddit user type - moved from shared types since client shouldn't depend on Supabase types
+export interface RedditUser {
+  id: string;
+  reddit_handle: string;
+  created_at: string;
+  updated_at: string;
+  last_seen_at: string;
+}
 
 interface RedditUserState {
   user: RedditUser | null;
@@ -14,7 +22,7 @@ export const useRedditUser = () => {
     error: null,
   });
 
-  // Sync user with Supabase when component mounts
+  // Sync user with server when component mounts
   useEffect(() => {
     const syncUser = async () => {
       try {

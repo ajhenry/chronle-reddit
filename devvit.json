@@ -30,5 +30,16 @@
   },
   "dev": {
     "subreddit": "snoodle_dev_dev"
+  },
+  "permissions": {
+    "http": {
+      "enable": true,
+      "domains": ["gwnwsqtfvkgcihmwgrsj.supabase.co"]
+    },
+    "reddit": {
+      "enable": true,
+      "scope": "user"
+    },
+    "redis": true
   }
 }

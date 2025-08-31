@@ -4,7 +4,7 @@ import { redis, reddit, createServer, context, getServerPort } from '@devvit/web
 import { createPost } from './core/post';
 import { supabaseServer } from '../shared/supabase-server';
 import type { UserInsert } from '../shared/types/supabase';
-import { Devvit, Context as DevvitContext } from '@devvit/public-api';
+import { Devvit } from '@devvit/public-api';
 
 Devvit.addSettings([
   {
@@ -15,6 +15,9 @@ Devvit.addSettings([
     scope: 'app',
   },
 ]);
+
+const supabaseServiceKey =
+  'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imd3bndzcXRmdmtnY2lobXdncnNqIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc1NjY2NzY0NCwiZXhwIjoyMDcyMjQzNjQ0fQ.Ya8OJnhoeHC4LJK7TFuf94L4Z_3rIhTxZtnt2foAgYA';
 
 const app = express();
 
@@ -130,7 +133,7 @@ router.post('/api/sync-user', async (_req, res): Promise<void> => {
 
     const { data, error } = await supabaseServer(
       'https://gwnwsqtfvkgcihmwgrsj.supabase.co',
-      'fake-key'
+      supabaseServiceKey
     )
       .from('users')
       .upsert(userData, {
