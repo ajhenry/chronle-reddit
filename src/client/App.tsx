@@ -3,12 +3,15 @@ import { TopPage } from './pages/top';
 import { Card, CardHeader, CardTitle, CardContent } from './components/ui/card';
 import { Button } from './components/ui/button';
 import { BouncingLogo } from './components/BouncingLogo';
+import { Leaderboard } from './components/Leaderboard';
+import { SeasonInfo } from './components/SeasonInfo';
 import { Toaster } from 'sonner';
 import { X } from 'lucide-react';
 
 export const App = () => {
   const [currentRoute, setCurrentRoute] = useState<string>(window.location.pathname);
   const [showWelcome, setShowWelcome] = useState<boolean>(true);
+  const [currentSeasonId, setCurrentSeasonId] = useState<string | null>(null);
 
   // Cookie utilities
   const getCookie = (name: string): string | null => {
@@ -31,6 +34,23 @@ export const App = () => {
     if (welcomeDismissed === 'true') {
       setShowWelcome(false);
     }
+  }, []);
+
+  // Fetch current season ID
+  useEffect(() => {
+    const fetchCurrentSeason = async () => {
+      try {
+        const response = await fetch('/api/season/current');
+        if (response.ok) {
+          const data = await response.json();
+          setCurrentSeasonId(data.season.id);
+        }
+      } catch (error) {
+        console.error('Error fetching current season:', error);
+      }
+    };
+
+    void fetchCurrentSeason();
   }, []);
 
   const dismissWelcome = () => {
@@ -67,9 +87,29 @@ export const App = () => {
     setCurrentRoute('/');
   };
 
+  const handleLeaderboardClick = () => {
+    window.history.pushState(null, '', '/leaderboard');
+    setCurrentRoute('/leaderboard');
+  };
+
+  const handleBackFromLeaderboard = () => {
+    window.history.pushState(null, '', '/');
+    setCurrentRoute('/');
+  };
+
   // Route handling
   if (currentRoute === '/top') {
     return <TopPage onBack={handleBackToMenu} />;
+  }
+
+  if (currentRoute === '/leaderboard') {
+    return (
+      <div className="min-h-screen bg-background p-4">
+        {currentSeasonId && (
+          <Leaderboard seasonId={currentSeasonId} onClose={handleBackFromLeaderboard} />
+        )}
+      </div>
+    );
   }
 
   return (
@@ -81,6 +121,10 @@ export const App = () => {
 
       {/* Content Container */}
       <div className="flex flex-col justify-center items-center flex-1 gap-8 my-6 mx-4">
+        {/* Season Info */}
+        <div className="w-full max-w-md">
+          <SeasonInfo onLeaderboardClick={handleLeaderboardClick} />
+        </div>
         {/* Snoodle Logo */}
         <div className="text-center w-full -mt-24">
           <div className="text-center space-y-4">

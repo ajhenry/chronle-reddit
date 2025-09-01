@@ -5,6 +5,7 @@ import counterRoutes from './handlers/counter';
 import userRoutes from './handlers/user';
 import postRoutes from './handlers/post';
 import gameRoutes from './handlers/game';
+import seasonRoutes from './handlers/season';
 
 Devvit.addSettings([
   {
@@ -30,6 +31,7 @@ app.use(counterRoutes);
 app.use(userRoutes);
 app.use(postRoutes);
 app.use(gameRoutes);
+app.use(seasonRoutes);
 
 // Get port from environment variable with fallback
 const port = getServerPort();
