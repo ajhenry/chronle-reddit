@@ -1,6 +1,8 @@
 import { Router } from 'express';
 import { createDailyGame, getTodayEST } from '../lib/daily-game-helpers';
 import type { TopXDailyGameResponse } from '../../shared/types/api';
+import { supabase } from '../../shared/supabase-server';
+import { ensureUserExistsAndGetId } from '../lib/user-helpers';
 
 const router = Router();
 
@@ -182,6 +184,128 @@ router.post('/api/admin/daily-game/bulk', async (req, res): Promise<void> => {
     });
   } catch (error) {
     console.error('Error in admin bulk daily game creation:', error);
+    res.status(500).json({
+      status: 'error',
+      message: 'Internal server error',
+    });
+  }
+});
+
+// Admin endpoint to erase topx game results for current user
+// POST /api/admin/erase-topx-results
+router.post('/api/admin/erase-topx-results', async (_req, res): Promise<void> => {
+  try {
+    const userId = await ensureUserExistsAndGetId();
+
+    if (!userId) {
+      res.status(401).json({
+        status: 'error',
+        message: 'User not authenticated with Reddit',
+      });
+      return;
+    }
+
+    // Get today's daily game
+    const { data: dailyGameResult, error: dailyGameError } =
+      await supabase.rpc('get_todays_daily_game');
+
+    if (dailyGameError || !dailyGameResult || dailyGameResult.length === 0) {
+      console.error("Error fetching today's daily game:", dailyGameError);
+      res.status(404).json({
+        status: 'error',
+        message: 'No daily game available for today',
+      });
+      return;
+    }
+
+    const dailyGame = dailyGameResult[0];
+
+    // Get the user's game session for today
+    const { data: session, error: sessionError } = await supabase
+      .from('game_sessions')
+      .select('id')
+      .eq('user_id', userId)
+      .eq('daily_game_id', dailyGame.id)
+      .single();
+
+    if (sessionError && sessionError.code !== 'PGRST116') {
+      console.error('Error fetching game session:', sessionError);
+      res.status(500).json({
+        status: 'error',
+        message: 'Failed to fetch game session',
+      });
+      return;
+    }
+
+    if (!session) {
+      res.json({
+        status: 'success',
+        message: 'No game session found to erase',
+        data: {
+          submissionsDeleted: 0,
+          leaderboardEntriesDeleted: 0,
+          sessionDeleted: false,
+        },
+      });
+      return;
+    }
+
+    // Delete all topx submissions for this session
+    const { count: submissionsDeleted, error: submissionsError } = await supabase
+      .from('topx_submissions')
+      .delete({ count: 'exact' })
+      .eq('game_session_id', session.id);
+
+    if (submissionsError) {
+      console.error('Error deleting submissions:', submissionsError);
+      res.status(500).json({
+        status: 'error',
+        message: 'Failed to delete submissions',
+      });
+      return;
+    }
+
+    // Delete leaderboard entry for this session
+    const { count: leaderboardDeleted, error: leaderboardError } = await supabase
+      .from('leaderboard')
+      .delete({ count: 'exact' })
+      .eq('game_session_id', session.id);
+
+    if (leaderboardError) {
+      console.error('Error deleting leaderboard entry:', leaderboardError);
+      res.status(500).json({
+        status: 'error',
+        message: 'Failed to delete leaderboard entry',
+      });
+      return;
+    }
+
+    // Delete the game session itself
+    const { error: sessionDeleteError } = await supabase
+      .from('game_sessions')
+      .delete()
+      .eq('id', session.id);
+
+    if (sessionDeleteError) {
+      console.error('Error deleting game session:', sessionDeleteError);
+      res.status(500).json({
+        status: 'error',
+        message: 'Failed to delete game session',
+      });
+      return;
+    }
+
+    res.json({
+      status: 'success',
+      message: 'TopX game results erased successfully',
+      data: {
+        submissionsDeleted: submissionsDeleted || 0,
+        leaderboardEntriesDeleted: leaderboardDeleted || 0,
+        sessionDeleted: true,
+      },
+    });
+  } catch (error) {
+    console.error('Error erasing TopX results:', error);
     res.status(500).json({
       status: 'error',
       message: 'Internal server error',

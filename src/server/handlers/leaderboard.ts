@@ -1,35 +1,9 @@
 import { Router } from 'express';
 import { LeaderboardResponse, UserLeaderboardPositionResponse } from '../../shared/types/api';
 import { supabase } from '../../shared/supabase-server';
-import { reddit } from '../lib/reddit-provider';
+import { getUserId } from '../lib/user-helpers';
 
 const router = Router();
-
-// Helper function to ensure user exists in database and return their ID
-const ensureUserExistsAndGetId = async (): Promise<string | null> => {
-  try {
-    const redditUsername = await reddit.getCurrentUsername();
-    if (!redditUsername || redditUsername === 'anonymous') {
-      return null;
-    }
-
-    // Try to get existing user first
-    const { data: existingUser } = await supabase
-      .from('users')
-      .select('id')
-      .eq('reddit_id', redditUsername)
-      .single();
-
-    if (existingUser) {
-      return existingUser.id;
-    }
-
-    return null; // User doesn't exist
-  } catch (error) {
-    console.error('Error getting user ID:', error);
-    return null;
-  }
-};
 
 // GET /api/leaderboard - Returns the current leaderboard rankings
 router.get('/api/leaderboard', async (req, res): Promise<void> => {
@@ -91,7 +65,7 @@ router.get('/api/leaderboard', async (req, res): Promise<void> => {
 // GET /api/leaderboard/position - Returns the current user's leaderboard position
 router.get('/api/leaderboard/position', async (_req, res): Promise<void> => {
   try {
-    const userId = await ensureUserExistsAndGetId();
+    const userId = await getUserId();
 
     if (!userId) {
       res.status(401).json({

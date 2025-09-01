@@ -147,3 +147,13 @@ export type UserStatsResponse = {
   rank: number;
   totalPlayers: number;
 };
+
+export type EraseTopXResultsResponse = {
+  status: 'success' | 'error';
+  message: string;
+  data?: {
+    submissionsDeleted: number;
+    leaderboardEntriesDeleted: number;
+    sessionDeleted: boolean;
+  };
+};

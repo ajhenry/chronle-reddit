@@ -20,6 +20,7 @@ import {
   TopXSubmissionResponse,
   TopXGameCompleteResponse,
   Season,
+  EraseTopXResultsResponse,
 } from '../../shared/types/api';
 import { apiFetch } from '../lib/utils';
 import { isDevelopment } from '../lib/dev-utils';
@@ -475,6 +476,36 @@ export const TopPage = ({ onBack }: { onBack?: () => void }) => {
     await handleGameComplete();
   };
 
+  const eraseGameResults = async () => {
+    try {
+      console.log('🗑️ Erasing TopX game results for development testing');
+
+      const response = await apiFetch('/api/admin/erase-topx-results', {
+        method: 'POST',
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to erase game results');
+      }
+
+      const result: EraseTopXResultsResponse = await response.json();
+
+      if (result.status === 'success') {
+        toast.success(
+          `Game results erased successfully: ${result.data?.submissionsDeleted || 0} submissions, ${result.data?.leaderboardEntriesDeleted || 0} leaderboard entries deleted`
+        );
+
+        // Reload the page to refresh the game state
+        window.location.reload();
+      } else {
+        toast.error(result.message || 'Failed to erase game results');
+      }
+    } catch (error) {
+      console.error('Error erasing game results:', error);
+      toast.error('Failed to erase game results');
+    }
+  };
+
   const handleBackToMenu = () => {
     // Navigate back to main menu
     if (onBack) {
@@ -562,6 +593,14 @@ export const TopPage = ({ onBack }: { onBack?: () => void }) => {
                 className="text-xs bg-green-600 hover:bg-green-700"
               >
                 🎉 Force Win
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={eraseGameResults}
+                className="text-xs border-orange-500 text-orange-600 hover:bg-orange-50"
+              >
+                🗑️ Erase Results
               </Button>
             </div>
           )}

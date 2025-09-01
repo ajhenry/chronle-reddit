@@ -5,56 +5,11 @@ import {
   TopXGameCompleteResponse,
 } from '../../shared/types/api';
 import { supabase } from '../../shared/supabase-server';
-import { reddit } from '../lib/reddit-provider';
 import { getOrCreateTodaysDailyGame } from '../lib/daily-game-helpers';
 import { recordLeaderboardEntry } from '../lib/leaderboard-helpers';
-import type { UserInsert } from '../../shared/types/supabase';
+import { ensureUserExistsAndGetId } from '../lib/user-helpers';
 
 const router = Router();
-
-// Helper function to ensure user exists in database and return their ID
-const ensureUserExistsAndGetId = async (): Promise<string | null> => {
-  try {
-    const redditUsername = await reddit.getCurrentUsername();
-    if (!redditUsername || redditUsername === 'anonymous') {
-      return null;
-    }
-
-    // Try to get existing user first
-    const { data: existingUser } = await supabase
-      .from('users')
-      .select('id')
-      .eq('reddit_id', redditUsername)
-      .single();
-
-    if (existingUser) {
-      return existingUser.id;
-    }
-
-    // User doesn't exist, create them
-    const userData: UserInsert = {
-      reddit_id: redditUsername,
-      handle: redditUsername,
-    };
-
-    const { data: newUser, error: createError } = await supabase
-      .from('users')
-      .insert(userData)
-      .select('id')
-      .single();
-
-    if (createError) {
-      console.error('Error creating user:', createError);
-      return null;
-    }
-
-    console.log('Created new user:', redditUsername, 'with ID:', newUser.id);
-    return newUser.id;
-  } catch (error) {
-    console.error('Error ensuring user exists:', error);
-    return null;
-  }
-};
 
 // GET /api/topx/game - Returns the current day's game or results of the game
 router.get('/api/topx/game', async (_req, res): Promise<void> => {
