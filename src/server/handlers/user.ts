@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import { reddit } from '@devvit/web/server';
+import { reddit } from '../lib/reddit-provider';
 import { supabaseServer } from '../../shared/supabase-server';
 import type { UserInsert } from '../../shared/types/supabase';
 

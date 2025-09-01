@@ -1,16 +1,18 @@
 import { useState, useEffect } from 'react';
 import { TopPage } from './pages/top';
+import { DevPage } from './pages/dev';
 import { Card, CardHeader, CardTitle, CardContent } from './components/ui/card';
 import { Button } from './components/ui/button';
 import { BouncingLogo } from './components/BouncingLogo';
 import { Leaderboard } from './components/Leaderboard';
 import { SeasonInfo } from './components/SeasonInfo';
 import { Toaster } from 'sonner';
-import { X } from 'lucide-react';
+import { X, Settings } from 'lucide-react';
+import { isDevelopment } from './lib/dev-utils';
 
 export const App = () => {
   const [currentRoute, setCurrentRoute] = useState<string>(window.location.pathname);
-  const [showWelcome, setShowWelcome] = useState<boolean>(true);
+  const [showWelcome, setShowWelcome] = useState<boolean>(false);
   const [currentSeasonId, setCurrentSeasonId] = useState<string | null>(null);
 
   // Cookie utilities
@@ -31,8 +33,8 @@ export const App = () => {
   // Check if welcome was dismissed on mount
   useEffect(() => {
     const welcomeDismissed = getCookie('snoodle_welcome_dismissed');
-    if (welcomeDismissed === 'true') {
-      setShowWelcome(false);
+    if (welcomeDismissed !== 'true') {
+      setShowWelcome(true);
     }
   }, []);
 
@@ -97,6 +99,16 @@ export const App = () => {
     setCurrentRoute('/');
   };
 
+  const handleDevModeClick = () => {
+    window.history.pushState(null, '', '/dev');
+    setCurrentRoute('/dev');
+  };
+
+  const handleBackFromDev = () => {
+    window.history.pushState(null, '', '/');
+    setCurrentRoute('/');
+  };
+
   // Route handling
   if (currentRoute === '/top') {
     return <TopPage onBack={handleBackToMenu} />;
@@ -110,6 +122,10 @@ export const App = () => {
         )}
       </div>
     );
+  }
+
+  if (currentRoute === '/dev') {
+    return <DevPage onBack={handleBackFromDev} />;
   }
 
   return (
@@ -223,6 +239,14 @@ export const App = () => {
               </a>
             </Button>
           ))}
+
+          {/* Dev Mode Button - only shows in development */}
+          {isDevelopment() && (
+            <Button variant="outline" onClick={handleDevModeClick}>
+              <Settings className="h-4 w-4 mr-2" />
+              DEV TOOLS
+            </Button>
+          )}
         </footer>
 
         {/* Toast notifications */}

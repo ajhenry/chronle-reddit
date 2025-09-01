@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { InitResponse, IncrementResponse, DecrementResponse } from '../../shared/types/api';
-import { redis, reddit, context } from '@devvit/web/server';
+import { redis, context } from '@devvit/web/server';
+import { reddit } from '../lib/reddit-provider';
 
 const router = Router();
 

@@ -55,22 +55,6 @@ export type Season = {
   createdAt: string;
 };
 
-export type GameSession = {
-  id: string;
-  userId: string;
-  gameId: string;
-  seasonId: string;
-  score: number;
-  completedAt: string | null;
-  attempts: number;
-  correctAnswers: number;
-  totalAnswers: number;
-  isCompleted: boolean;
-  isWon: boolean;
-  timeToComplete?: number; // in seconds
-  createdAt: string;
-};
-
 export type LeaderboardEntry = {
   rank: number;
   userId: string;
@@ -100,11 +84,6 @@ export type LeaderboardResponse = {
   entries: LeaderboardEntry[];
   seasonId: string;
   totalPlayers: number;
-};
-
-export type GameSessionResponse = {
-  type: 'game_session';
-  session: GameSession;
 };
 
 export type UserStatsResponse = {

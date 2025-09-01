@@ -1,4 +1,5 @@
-import { context, reddit } from '@devvit/web/server';
+import { context } from '@devvit/web/server';
+import { reddit } from '../lib/reddit-provider';
 
 export const createPost = async () => {
   const { subredditName } = context;

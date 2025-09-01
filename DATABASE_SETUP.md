@@ -13,7 +13,6 @@ You need to have Supabase set up with the existing `users` and `counters` tables
    Execute the contents of `/database/seasons_schema.sql` in your Supabase SQL Editor. This will create:
 
    - `seasons` table - manages game seasons with start/end dates
-   - `game_sessions` table - tracks individual game plays with scores and completion stats
    - Database functions for leaderboard calculations
    - Row Level Security policies
    - Indexes for optimal performance
@@ -33,21 +32,7 @@ You need to have Supabase set up with the existing `users` and `counters` tables
    ├── created_at (TIMESTAMP WITH TIME ZONE)
    └── updated_at (TIMESTAMP WITH TIME ZONE)
 
-   game_sessions
-   ├── id (UUID, Primary Key)
-   ├── user_id (TEXT, Foreign Key to users.id)
-   ├── game_id (TEXT)
-   ├── season_id (UUID, Foreign Key to seasons.id)
-   ├── score (INTEGER)
-   ├── completed_at (TIMESTAMP WITH TIME ZONE)
-   ├── attempts (INTEGER)
-   ├── correct_answers (INTEGER)
-   ├── total_answers (INTEGER)
-   ├── is_completed (BOOLEAN)
-   ├── is_won (BOOLEAN)
-   ├── time_to_complete (INTEGER, seconds)
-   ├── created_at (TIMESTAMP WITH TIME ZONE)
-   └── updated_at (TIMESTAMP WITH TIME ZONE)
+
    ```
 
 3. **Database Functions**
@@ -66,13 +51,6 @@ You need to have Supabase set up with the existing `users` and `counters` tables
 - Seasons are 30 days long by default
 - New seasons automatically created when current season ends
 - Only one season can be active at a time
-
-### Game Session Tracking
-
-- Each game play creates a session record
-- Tracks score, attempts, completion time, and win/loss status
-- Users can only play once per day per game type
-- Session data persists for leaderboard calculations
 
 ### Leaderboards
 
@@ -93,8 +71,7 @@ The season system adds these new API endpoints:
 
 - `GET /api/season/current` - Get current active season
 - `GET /api/seasons` - Get all seasons
-- `POST /api/game-session/start` - Start or get today's game session
-- `PUT /api/game-session/:sessionId` - Update game session progress
+
 - `GET /api/leaderboard/:seasonId` - Get season leaderboard
 - `GET /api/user-stats/:seasonId` - Get user's season statistics
 
@@ -108,10 +85,8 @@ The season system adds these new API endpoints:
 
 ### Enhanced Game Experience
 
-- Automatic session tracking
-- Score persistence between page refreshes
-- Daily play restriction with clear messaging
-- Real-time progress updates
+- Game state management without persistent sessions
+- Real-time progress updates within the current session
 
 ### Leaderboard Interface
 
@@ -125,7 +100,6 @@ The season system adds these new API endpoints:
 If you have existing game data, you may want to:
 
 1. Create an initial season for historical data
-2. Migrate any existing scores to game sessions
-3. Update user records to include season participation
+2. Update user records to include season participation
 
 The system is designed to work alongside existing functionality without breaking changes.

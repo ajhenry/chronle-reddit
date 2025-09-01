@@ -14,13 +14,9 @@ import {
   DialogTitle,
   DialogDescription,
 } from '../components/ui/dialog';
-import { TopXGameData, TopXValidateResponse, Season, GameSession } from '../../shared/types/api';
+import { TopXGameData, TopXValidateResponse, Season } from '../../shared/types/api';
 import { apiFetch } from '../lib/utils';
-
-const isDevelopment =
-  typeof globalThis !== 'undefined' &&
-  typeof globalThis.process !== 'undefined' &&
-  globalThis.process.env?.NODE_ENV === 'development';
+import { isDevelopment } from '../lib/dev-utils';
 
 // API functions
 const fetchRandomGame = async (): Promise<TopXGameData> => {
@@ -83,11 +79,9 @@ export const TopPage = ({ onBack }: { onBack?: () => void }) => {
   const [showGoldShimmer, setShowGoldShimmer] = useState(false);
   const [gameData, setGameData] = useState<TopXGameData | null>(null);
   const [, setSeason] = useState<Season | null>(null);
-  const [gameSession, setGameSession] = useState<GameSession | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [showGameOverModal, setShowGameOverModal] = useState(false);
-  const [gameStartTime, setGameStartTime] = useState<number | null>(null);
 
   const [gameState, setGameState] = useState<GameState>({
     score: 0,
@@ -136,41 +130,8 @@ export const TopPage = ({ onBack }: { onBack?: () => void }) => {
         const game = await fetchRandomGame();
         setGameData(game);
 
-        // Start/get game session
-        const sessionResponse = await apiFetch('/api/game-session/start', {
-          method: 'POST',
-          body: JSON.stringify({
-            gameId: game.id,
-            seasonId: seasonData.season.id,
-          }),
-        });
+        // Since game_sessions is removed, no session tracking
 
-        if (sessionResponse.ok) {
-          const sessionData = await sessionResponse.json();
-          setGameSession(sessionData.session);
-
-          // If session already has progress, load it
-          if (sessionData.session.isCompleted) {
-            // Game already completed today
-            setGameState((prev) => ({
-              ...prev,
-              gameComplete: true,
-              gameWon: sessionData.session.isWon,
-              score: sessionData.session.score,
-              attempts: sessionData.session.attempts,
-            }));
-            setShowGameOverModal(true);
-          } else if (sessionData.session.attempts > 0) {
-            // Game in progress - load existing state
-            setGameState((prev) => ({
-              ...prev,
-              score: sessionData.session.score,
-              attempts: sessionData.session.attempts,
-            }));
-          }
-        }
-
-        setGameStartTime(Date.now());
         setError(null);
       } catch (err) {
         setError(err instanceof Error ? err.message : 'Failed to load game');
@@ -256,34 +217,7 @@ export const TopPage = ({ onBack }: { onBack?: () => void }) => {
     setGameState((prev) => ({ ...prev, isShaking: true }));
   };
 
-  // Function to update game session
-  const updateGameSession = async (updates: {
-    score?: number;
-    attempts?: number;
-    correctAnswers?: number;
-    isCompleted?: boolean;
-    isWon?: boolean;
-    timeToComplete?: number | undefined;
-  }) => {
-    if (!gameSession) return;
-
-    try {
-      const response = await apiFetch(`/api/game-session/${gameSession.id}`, {
-        method: 'PUT',
-        body: JSON.stringify({
-          ...updates,
-          completed_at: updates.isCompleted ? new Date().toISOString() : undefined,
-        }),
-      });
-
-      if (response.ok) {
-        const updatedSessionData = await response.json();
-        setGameSession(updatedSessionData.session);
-      }
-    } catch (error) {
-      console.error('Error updating game session:', error);
-    }
-  };
+  // Game session tracking removed
 
   const handleSuggestionClick = async (suggestion: string) => {
     if (!gameData) return;
@@ -323,19 +257,7 @@ export const TopPage = ({ onBack }: { onBack?: () => void }) => {
           gameComplete: isGameComplete,
         }));
 
-        // Update game session
-        const timeToComplete =
-          isGameComplete && gameStartTime
-            ? Math.round((Date.now() - gameStartTime) / 1000)
-            : undefined;
-
-        await updateGameSession({
-          score: newScore,
-          correctAnswers: newGuessedAnswers.length,
-          isCompleted: isGameComplete,
-          isWon: isGameWon,
-          timeToComplete,
-        });
+        // Game session tracking removed
 
         // Force re-render to ensure the answer appears before confetti
         setTimeout(() => {
@@ -356,18 +278,7 @@ export const TopPage = ({ onBack }: { onBack?: () => void }) => {
           gameComplete: isGameComplete,
         }));
 
-        // Update game session
-        const timeToComplete =
-          isGameComplete && gameStartTime
-            ? Math.round((Date.now() - gameStartTime) / 1000)
-            : undefined;
-
-        await updateGameSession({
-          attempts: newAttempts,
-          isCompleted: isGameComplete,
-          isWon: false,
-          timeToComplete,
-        });
+        // Game session tracking removed
       }
     } catch (err) {
       console.error('Error validating answer:', err);
@@ -398,19 +309,7 @@ export const TopPage = ({ onBack }: { onBack?: () => void }) => {
           gameComplete: isGameComplete,
         }));
 
-        // Update game session
-        const timeToComplete =
-          isGameComplete && gameStartTime
-            ? Math.round((Date.now() - gameStartTime) / 1000)
-            : undefined;
-
-        await updateGameSession({
-          score: newScore,
-          correctAnswers: newGuessedAnswers.length,
-          isCompleted: isGameComplete,
-          isWon: isGameWon,
-          timeToComplete,
-        });
+        // Game session tracking removed
 
         // Force re-render to ensure the answer appears before confetti
         setTimeout(() => {
@@ -431,18 +330,7 @@ export const TopPage = ({ onBack }: { onBack?: () => void }) => {
           gameComplete: isGameComplete,
         }));
 
-        // Update game session
-        const timeToComplete =
-          isGameComplete && gameStartTime
-            ? Math.round((Date.now() - gameStartTime) / 1000)
-            : undefined;
-
-        await updateGameSession({
-          attempts: newAttempts,
-          isCompleted: isGameComplete,
-          isWon: false,
-          timeToComplete,
-        });
+        // Game session tracking removed
       }
     }
   };
@@ -578,7 +466,7 @@ export const TopPage = ({ onBack }: { onBack?: () => void }) => {
       onLeaderboard={() => console.log('Leaderboard clicked')}
     >
       {/* Development Controls */}
-      {isDevelopment && (
+      {isDevelopment() && (
         <div className="mb-4">
           <Button
             variant="outline"

@@ -86,57 +86,7 @@ export interface Database {
           updated_at?: string;
         };
       };
-      // Game sessions table for tracking individual game plays
-      game_sessions: {
-        Row: {
-          id: string;
-          user_id: string;
-          game_id: string;
-          season_id: string;
-          score: number;
-          completed_at: string | null;
-          attempts: number;
-          correct_answers: number;
-          total_answers: number;
-          is_completed: boolean;
-          is_won: boolean;
-          time_to_complete: number | null;
-          created_at: string;
-          updated_at: string;
-        };
-        Insert: {
-          id?: string;
-          user_id: string;
-          game_id: string;
-          season_id: string;
-          score?: number;
-          completed_at?: string | null;
-          attempts?: number;
-          correct_answers?: number;
-          total_answers?: number;
-          is_completed?: boolean;
-          is_won?: boolean;
-          time_to_complete?: number | null;
-          created_at?: string;
-          updated_at?: string;
-        };
-        Update: {
-          id?: string;
-          user_id?: string;
-          game_id?: string;
-          season_id?: string;
-          score?: number;
-          completed_at?: string | null;
-          attempts?: number;
-          correct_answers?: number;
-          total_answers?: number;
-          is_completed?: boolean;
-          is_won?: boolean;
-          time_to_complete?: number | null;
-          created_at?: string;
-          updated_at?: string;
-        };
-      };
+
       // Add more table types as you create them in Supabase
     };
     Views: {
@@ -163,10 +113,6 @@ export type CounterUpdate = Database['public']['Tables']['counters']['Update'];
 export type Season = Database['public']['Tables']['seasons']['Row'];
 export type SeasonInsert = Database['public']['Tables']['seasons']['Insert'];
 export type SeasonUpdate = Database['public']['Tables']['seasons']['Update'];
-
-export type GameSession = Database['public']['Tables']['game_sessions']['Row'];
-export type GameSessionInsert = Database['public']['Tables']['game_sessions']['Insert'];
-export type GameSessionUpdate = Database['public']['Tables']['game_sessions']['Update'];
 
 // Auth-related types
 export interface AuthState {
