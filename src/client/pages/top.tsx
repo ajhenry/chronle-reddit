@@ -4,9 +4,9 @@ import Confetti from 'react-confetti';
 import { GameLayout } from '../components/GameLayout';
 import { toast } from 'sonner';
 
-import { Input } from '../components/ui/input';
 import { Card, CardContent } from '../components/ui/card';
 import { Button } from '../components/ui/button';
+import { Combobox, ComboboxOption } from '../components/ui/combobox';
 import {
   Dialog,
   DialogContent,
@@ -76,7 +76,6 @@ interface GameState {
   guessedAnswers: GuessedAnswer[];
   incorrectAnswers: string[];
   currentInput: string;
-  showSuggestions: boolean;
   gameComplete: boolean;
   gameWon: boolean;
   isShaking: boolean;
@@ -90,7 +89,6 @@ interface GameState {
 }
 
 export const TopPage = ({ onBack }: { onBack?: () => void }) => {
-  const inputRef = useRef<HTMLInputElement>(null);
   const answerListRef = useRef<HTMLDivElement>(null);
   const [showDevButtons, setShowDevButtons] = useState(false);
   const [showGoldShimmer, setShowGoldShimmer] = useState(false);
@@ -109,7 +107,6 @@ export const TopPage = ({ onBack }: { onBack?: () => void }) => {
     guessedAnswers: [],
     incorrectAnswers: [],
     currentInput: '',
-    showSuggestions: false,
     gameComplete: false,
     gameWon: false,
     isShaking: false,
@@ -122,16 +119,18 @@ export const TopPage = ({ onBack }: { onBack?: () => void }) => {
   const number = gameData?.count ?? 3;
   const category = gameData?.category ?? 'items';
 
-  // Filter suggestions based on current input
-  const filteredSuggestions =
+  // Create combobox options from suggestions, excluding already guessed/incorrect answers
+  const comboboxOptions: ComboboxOption[] =
     gameData?.suggestions
       ?.filter(
         (suggestion) =>
-          suggestion.toLowerCase().includes(gameState.currentInput.toLowerCase()) &&
           !gameState.guessedAnswers.some((ga) => ga.answer === suggestion) &&
           !gameState.incorrectAnswers.includes(suggestion)
       )
-      .slice(0, 8) || []; // Limit to 8 suggestions for better UX
+      .map((suggestion) => ({
+        value: suggestion,
+        label: suggestion,
+      })) || [];
 
   // Real-time score updating effect
   useEffect(() => {
@@ -248,12 +247,7 @@ export const TopPage = ({ onBack }: { onBack?: () => void }) => {
     void loadDailyGame();
   }, []);
 
-  // Auto-focus input on mount (after game data loads)
-  useEffect(() => {
-    if (inputRef.current && !loading && gameData) {
-      inputRef.current.focus();
-    }
-  }, [loading, gameData]);
+  // Note: Auto-focus is now handled by the Combobox component internally
 
   // Reset shake animation after it completes
   useEffect(() => {
@@ -324,18 +318,18 @@ export const TopPage = ({ onBack }: { onBack?: () => void }) => {
 
   // Game state management simplified with new API
 
-  const handleSuggestionClick = async (suggestion: string) => {
-    if (!gameData || gameState.gameComplete) return;
+  const handleAnswerSubmit = async (answer: string) => {
+    if (!gameData || gameState.gameComplete || !answer.trim()) return;
 
     const timestamp = Date.now();
 
     try {
       // Submit attempt to server
-      await submitAttempt(suggestion, timestamp);
+      await submitAttempt(answer, timestamp);
 
       // Add to submissions for local tracking
       const newSubmission = {
-        answer: suggestion,
+        answer: answer,
         timestamp,
         locallyCorrect: undefined, // Will be determined later
       };
@@ -343,16 +337,16 @@ export const TopPage = ({ onBack }: { onBack?: () => void }) => {
       // Optimistic local validation for UI responsiveness
       const isLocallyCorrect = gameData.solution
         .map((s) => s.toLowerCase().trim())
-        .includes(suggestion.toLowerCase().trim());
+        .includes(answer.toLowerCase().trim());
 
       if (isLocallyCorrect) {
         // Find position in solution array
         const position =
           gameData.solution.findIndex(
-            (s) => s.toLowerCase().trim() === suggestion.toLowerCase().trim()
+            (s) => s.toLowerCase().trim() === answer.toLowerCase().trim()
           ) + 1;
         const newGuessedAnswer: GuessedAnswer = {
-          answer: suggestion,
+          answer: answer,
           position: position,
         };
 
@@ -365,7 +359,6 @@ export const TopPage = ({ onBack }: { onBack?: () => void }) => {
           guessedAnswers: newGuessedAnswers,
           submissions: [...prev.submissions, { ...newSubmission, locallyCorrect: true }],
           currentInput: '',
-          showSuggestions: false,
           gameWon: isGameWon,
           gameComplete: isGameComplete,
         }));
@@ -375,7 +368,7 @@ export const TopPage = ({ onBack }: { onBack?: () => void }) => {
           await handleGameComplete();
         }
       } else {
-        const newIncorrectAnswers = [...gameState.incorrectAnswers, suggestion];
+        const newIncorrectAnswers = [...gameState.incorrectAnswers, answer];
         const newAttempts = gameState.attempts + 1;
         const isGameComplete = newAttempts >= 5;
 
@@ -386,7 +379,6 @@ export const TopPage = ({ onBack }: { onBack?: () => void }) => {
           attempts: newAttempts,
           submissions: [...prev.submissions, { ...newSubmission, locallyCorrect: false }],
           currentInput: '',
-          showSuggestions: false,
           gameComplete: isGameComplete,
         }));
 
@@ -614,46 +606,17 @@ export const TopPage = ({ onBack }: { onBack?: () => void }) => {
           {gameData.prompt}
         </h2>
 
-        {/* Input Section with Dropdown */}
+        {/* Answer Input Combobox */}
         {!gameState.gameComplete && (
-          <div className="relative">
-            <Input
-              ref={inputRef}
-              value={gameState.currentInput}
-              onChange={(e) => {
-                const value = e.target.value;
-                setGameState((prev) => ({ ...prev, currentInput: value }));
-                // If it's a complete suggestion match, treat it as a submission
-                if (gameData.suggestions.includes(value)) {
-                  void handleSuggestionClick(value);
-                }
-              }}
-              placeholder="Type your answer..."
+          <div className={gameState.isShaking ? 'animate-shake' : ''}>
+            <Combobox
+              options={comboboxOptions}
+              value=""
+              onValueChange={handleAnswerSubmit}
+              placeholder="Type to search for your answer..."
               disabled={gameState.gameComplete}
-              className={gameState.isShaking ? 'animate-shake' : ''}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter' && gameState.currentInput.trim()) {
-                  void handleSuggestionClick(gameState.currentInput.trim());
-                }
-              }}
+              maxHeight={240}
             />
-
-            {/* Dropdown Suggestions */}
-            {gameState.currentInput && filteredSuggestions.length > 0 && (
-              <div className="absolute top-full left-0 right-0 z-50 mt-1 bg-background border-2 border-border rounded-none max-h-60 overflow-y-auto">
-                {filteredSuggestions.map((suggestion, index) => (
-                  <button
-                    key={index}
-                    className="w-full px-4 py-3 text-left text-foreground hover:bg-accent hover:text-accent-foreground transition-colors duration-150 border-b border-border last:border-b-0"
-                    onClick={() => {
-                      void handleSuggestionClick(suggestion);
-                    }}
-                  >
-                    {suggestion}
-                  </button>
-                ))}
-              </div>
-            )}
           </div>
         )}
 
