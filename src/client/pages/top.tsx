@@ -17,19 +17,7 @@ import {
 import { TopXGameData, TopXValidateResponse } from '../../shared/types/api';
 import { apiFetch } from '../lib/utils';
 
-// Function to parse prompt and extract number and category
-const parsePrompt = (prompt: string | undefined) => {
-  if (!prompt) return { number: 3, category: 'items' };
-
-  const match = prompt.match(/top (\d+) (.+?) that/);
-  if (match && match[1] && match[2]) {
-    return {
-      number: parseInt(match[1]),
-      category: match[2],
-    };
-  }
-  return { number: 3, category: 'items' }; // fallback
-};
+const isDevelopment = process.env.NODE_ENV === 'development';
 
 // API functions
 const fetchRandomGame = async (): Promise<TopXGameData> => {
@@ -109,10 +97,9 @@ export const TopPage = ({ onBack }: { onBack?: () => void }) => {
     showConfetti: false,
   });
 
-  // Parse the prompt to extract number and category
-  const { number, category } = gameData
-    ? parsePrompt(gameData.prompt)
-    : { number: 3, category: 'items' };
+  // Use number and category directly from server data
+  const number = gameData?.number ?? 3;
+  const category = gameData?.category ?? 'items';
 
   // Filter suggestions based on current input
   const filteredSuggestions =
@@ -449,39 +436,41 @@ export const TopPage = ({ onBack }: { onBack?: () => void }) => {
       onLeaderboard={() => console.log('Leaderboard clicked')}
     >
       {/* Development Controls */}
-      <div className="mb-4">
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={() => setShowDevButtons(!showDevButtons)}
-          className="text-xs text-muted-foreground"
-        >
-          {showDevButtons ? '🔧 Hide Dev Tools' : '🔧 Show Dev Tools'}
-        </Button>
+      {isDevelopment && (
+        <div className="mb-4">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => setShowDevButtons(!showDevButtons)}
+            className="text-xs text-muted-foreground"
+          >
+            {showDevButtons ? '🔧 Hide Dev Tools' : '🔧 Show Dev Tools'}
+          </Button>
 
-        {showDevButtons && (
-          <div className="mt-2 flex gap-2 flex-wrap">
-            <Button
-              variant="destructive"
-              size="sm"
-              onClick={forceGameLoss}
-              disabled={gameState.gameComplete || !gameData}
-              className="text-xs"
-            >
-              💔 Force Loss
-            </Button>
-            <Button
-              variant="default"
-              size="sm"
-              onClick={forceGameWin}
-              disabled={gameState.gameComplete || !gameData}
-              className="text-xs bg-green-600 hover:bg-green-700"
-            >
-              🎉 Force Win
-            </Button>
-          </div>
-        )}
-      </div>
+          {showDevButtons && (
+            <div className="mt-2 flex gap-2 flex-wrap">
+              <Button
+                variant="destructive"
+                size="sm"
+                onClick={forceGameLoss}
+                disabled={gameState.gameComplete || !gameData}
+                className="text-xs"
+              >
+                💔 Force Loss
+              </Button>
+              <Button
+                variant="default"
+                size="sm"
+                onClick={forceGameWin}
+                disabled={gameState.gameComplete || !gameData}
+                className="text-xs bg-green-600 hover:bg-green-700"
+              >
+                🎉 Force Win
+              </Button>
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Game Content */}
       <div className="space-y-6">
@@ -546,6 +535,13 @@ export const TopPage = ({ onBack }: { onBack?: () => void }) => {
             const guessedAnswer = gameState.guessedAnswers.find(
               (answer) => answer.position === position
             );
+
+            // When game is lost, show all correct answers
+            const isGameLost = gameState.gameComplete && !gameState.gameWon;
+            const correctAnswer = isGameLost ? gameData.correctAnswers[index] : null;
+            const answerToShow = guessedAnswer?.answer || correctAnswer;
+            const wasGuessed = !!guessedAnswer;
+
             return (
               <Card
                 key={index}
@@ -559,9 +555,11 @@ export const TopPage = ({ onBack }: { onBack?: () => void }) => {
                       className={`w-8 h-8 text-white font-semibold flex items-center justify-center rounded transition-all duration-200 ${
                         guessedAnswer && showGoldShimmer && gameState.gameWon
                           ? 'gold-shimmer-number'
-                          : guessedAnswer
+                          : wasGuessed
                             ? 'bg-green-600'
-                            : 'bg-gray-400'
+                            : isGameLost
+                              ? 'bg-gray-500' // Grey for missed answers when game is lost
+                              : 'bg-gray-400'
                       }`}
                     >
                       {position}
@@ -570,12 +568,12 @@ export const TopPage = ({ onBack }: { onBack?: () => void }) => {
                       className={`${
                         guessedAnswer && showGoldShimmer && gameState.gameWon
                           ? 'gold-shimmer-text'
-                          : guessedAnswer
+                          : wasGuessed || isGameLost
                             ? 'text-card-foreground'
                             : 'text-muted-foreground italic'
                       }`}
                     >
-                      {guessedAnswer?.answer ?? ''}
+                      {answerToShow || ''}
                       {guessedAnswer &&
                         (() => {
                           console.log(`Rendering position ${position}:`, guessedAnswer.answer);
