@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import pluralize from 'pluralize';
+import Confetti from 'react-confetti';
 import { GameLayout } from '../components/GameLayout';
 import { toast } from 'sonner';
 
@@ -81,10 +82,14 @@ interface GameState {
   gameComplete: boolean;
   gameWon: boolean;
   isShaking: boolean;
+  showConfetti: boolean;
 }
 
 export const TopPage = ({ onBack }: { onBack?: () => void }) => {
   const inputRef = useRef<HTMLInputElement>(null);
+  const answerListRef = useRef<HTMLDivElement>(null);
+  const [showDevButtons, setShowDevButtons] = useState(false);
+  const [showGoldShimmer, setShowGoldShimmer] = useState(false);
   const [gameData, setGameData] = useState<TopXGameData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -101,6 +106,7 @@ export const TopPage = ({ onBack }: { onBack?: () => void }) => {
     gameComplete: false,
     gameWon: false,
     isShaking: false,
+    showConfetti: false,
   });
 
   // Parse the prompt to extract number and category
@@ -160,20 +166,51 @@ export const TopPage = ({ onBack }: { onBack?: () => void }) => {
   // Show game over modal when game completes
   useEffect(() => {
     if (gameState.gameComplete) {
-      // Show "Close one!" toast first
-      toast.success('Close one!', {
-        description: 'Game over! Check your results.',
-        duration: 2000,
-      });
+      if (gameState.gameWon) {
+        // For wins: brief pause, then confetti, then modal
+        toast.success('🎉 Amazing!', {
+          description: 'You got them all!',
+          duration: 1500,
+        });
 
-      // Show modal after 2 seconds
-      const timer = setTimeout(() => {
-        setShowGameOverModal(true);
-      }, 2000);
+        // Show confetti and gold shimmer after 1 second
+        const confettiTimer = setTimeout(() => {
+          console.log('🎆 Triggering confetti and gold shimmer for win!');
+          setGameState((prev) => ({ ...prev, showConfetti: true }));
+          setShowGoldShimmer(true);
+        }, 1000);
 
-      return () => clearTimeout(timer);
+        // Hide confetti after 4 seconds
+        const hideConfettiTimer = setTimeout(() => {
+          setGameState((prev) => ({ ...prev, showConfetti: false }));
+        }, 4000);
+
+        // Show modal after confetti has been showing for 3 seconds
+        const modalTimer = setTimeout(() => {
+          setShowGameOverModal(true);
+        }, 4000);
+
+        return () => {
+          clearTimeout(confettiTimer);
+          clearTimeout(hideConfettiTimer);
+          clearTimeout(modalTimer);
+        };
+      } else {
+        // For losses: show toast then modal immediately
+        toast.success('Close one!', {
+          description: 'Game over! Check your results.',
+          duration: 2000,
+        });
+
+        // Show modal after 2 seconds
+        const timer = setTimeout(() => {
+          setShowGameOverModal(true);
+        }, 2000);
+
+        return () => clearTimeout(timer);
+      }
     }
-  }, [gameState.gameComplete]);
+  }, [gameState.gameComplete, gameState.gameWon]);
 
   // Function to trigger shake animation
   const triggerShake = () => {
@@ -196,8 +233,15 @@ export const TopPage = ({ onBack }: { onBack?: () => void }) => {
           answer: suggestion,
           position: result.position || 1, // fallback to 1 if position is undefined
         };
+        console.log(
+          'Adding correct answer (API):',
+          suggestion,
+          'at position:',
+          result.position || 1
+        );
         const newGuessedAnswers = [...gameState.guessedAnswers, newGuessedAnswer];
         const newScore = gameState.score + 100; // 100 points per correct answer
+        const isGameWon = newGuessedAnswers.length === number;
 
         setGameState((prev) => ({
           ...prev,
@@ -206,9 +250,14 @@ export const TopPage = ({ onBack }: { onBack?: () => void }) => {
           // Don't increment attempts for correct answers
           currentInput: '',
           showSuggestions: false,
-          gameWon: newGuessedAnswers.length === number,
-          gameComplete: newGuessedAnswers.length === number || prev.attempts >= 5,
+          gameWon: isGameWon,
+          gameComplete: isGameWon || prev.attempts >= 5,
         }));
+
+        // Force re-render to ensure the answer appears before confetti
+        setTimeout(() => {
+          // Small delay to ensure state has updated
+        }, 50);
       } else {
         const newIncorrectAnswers = [...gameState.incorrectAnswers, suggestion];
         triggerShake(); // Trigger shake animation for wrong answer
@@ -233,8 +282,10 @@ export const TopPage = ({ onBack }: { onBack?: () => void }) => {
           answer: suggestion,
           position: position,
         };
+        console.log('Adding correct answer (fallback):', suggestion, 'at position:', position);
         const newGuessedAnswers = [...gameState.guessedAnswers, newGuessedAnswer];
         const newScore = gameState.score + 100;
+        const isGameWon = newGuessedAnswers.length === number;
 
         setGameState((prev) => ({
           ...prev,
@@ -243,9 +294,14 @@ export const TopPage = ({ onBack }: { onBack?: () => void }) => {
           // Don't increment attempts for correct answers
           currentInput: '',
           showSuggestions: false,
-          gameWon: newGuessedAnswers.length === number,
-          gameComplete: newGuessedAnswers.length === number || prev.attempts >= 5,
+          gameWon: isGameWon,
+          gameComplete: isGameWon || prev.attempts >= 5,
         }));
+
+        // Force re-render to ensure the answer appears before confetti
+        setTimeout(() => {
+          // Small delay to ensure state has updated
+        }, 50);
       } else {
         const newIncorrectAnswers = [...gameState.incorrectAnswers, suggestion];
         triggerShake(); // Trigger shake animation for wrong answer
@@ -280,7 +336,9 @@ export const TopPage = ({ onBack }: { onBack?: () => void }) => {
         gameComplete: false,
         gameWon: false,
         isShaking: false,
+        showConfetti: false,
       });
+      setShowGoldShimmer(false);
 
       setError(null);
     } catch (err) {
@@ -291,6 +349,47 @@ export const TopPage = ({ onBack }: { onBack?: () => void }) => {
         inputRef.current.focus();
       }
     }
+  };
+
+  // Development functions
+  const forceGameWin = () => {
+    if (!gameData) return;
+
+    console.log('🎯 Forcing game win for development testing');
+
+    // Fill all correct answers
+    const correctGuessedAnswers = gameData.correctAnswers.map((answer, index) => ({
+      answer: answer,
+      position: index + 1,
+    }));
+
+    setGameState((prev) => ({
+      ...prev,
+      guessedAnswers: correctGuessedAnswers,
+      score: correctGuessedAnswers.length * 100,
+      gameWon: true,
+      gameComplete: true,
+      showConfetti: false, // Will be set to true by the useEffect
+    }));
+
+    // Trigger gold shimmer immediately for testing
+    setTimeout(() => {
+      setShowGoldShimmer(true);
+    }, 100);
+  };
+
+  const forceGameLoss = () => {
+    if (!gameData) return;
+
+    console.log('💔 Forcing game loss for development testing');
+
+    setGameState((prev) => ({
+      ...prev,
+      attempts: prev.maxAttempts,
+      gameWon: false,
+      gameComplete: true,
+      showConfetti: false,
+    }));
   };
 
   const handleBackToMenu = () => {
@@ -349,6 +448,41 @@ export const TopPage = ({ onBack }: { onBack?: () => void }) => {
       onBack={handleBackToMenu}
       onLeaderboard={() => console.log('Leaderboard clicked')}
     >
+      {/* Development Controls */}
+      <div className="mb-4">
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={() => setShowDevButtons(!showDevButtons)}
+          className="text-xs text-muted-foreground"
+        >
+          {showDevButtons ? '🔧 Hide Dev Tools' : '🔧 Show Dev Tools'}
+        </Button>
+
+        {showDevButtons && (
+          <div className="mt-2 flex gap-2 flex-wrap">
+            <Button
+              variant="destructive"
+              size="sm"
+              onClick={forceGameLoss}
+              disabled={gameState.gameComplete || !gameData}
+              className="text-xs"
+            >
+              💔 Force Loss
+            </Button>
+            <Button
+              variant="default"
+              size="sm"
+              onClick={forceGameWin}
+              disabled={gameState.gameComplete || !gameData}
+              className="text-xs bg-green-600 hover:bg-green-700"
+            >
+              🎉 Force Win
+            </Button>
+          </div>
+        )}
+      </div>
+
       {/* Game Content */}
       <div className="space-y-6">
         {/* Prompt */}
@@ -405,7 +539,7 @@ export const TopPage = ({ onBack }: { onBack?: () => void }) => {
         </h3>
 
         {/* Correct Answers */}
-        <div className="space-y-3">
+        <div ref={answerListRef} className="space-y-3">
           {Array.from({ length: number }, (_, index) => {
             const position = index + 1;
             // Find the guessed answer for this position
@@ -413,22 +547,40 @@ export const TopPage = ({ onBack }: { onBack?: () => void }) => {
               (answer) => answer.position === position
             );
             return (
-              <Card key={index}>
+              <Card
+                key={index}
+                className={`${
+                  guessedAnswer && showGoldShimmer && gameState.gameWon ? 'gold-shimmer-card' : ''
+                }`}
+              >
                 <CardContent className="p-3">
                   <div className="flex items-center gap-4">
                     <div
-                      className={`w-8 h-8 text-white font-semibold flex items-center justify-center rounded ${
-                        guessedAnswer ? 'bg-green-600' : 'bg-gray-400'
+                      className={`w-8 h-8 text-white font-semibold flex items-center justify-center rounded transition-all duration-200 ${
+                        guessedAnswer && showGoldShimmer && gameState.gameWon
+                          ? 'gold-shimmer-number'
+                          : guessedAnswer
+                            ? 'bg-green-600'
+                            : 'bg-gray-400'
                       }`}
                     >
                       {position}
                     </div>
                     <div
                       className={`${
-                        guessedAnswer ? 'text-card-foreground' : 'text-muted-foreground italic'
+                        guessedAnswer && showGoldShimmer && gameState.gameWon
+                          ? 'gold-shimmer-text'
+                          : guessedAnswer
+                            ? 'text-card-foreground'
+                            : 'text-muted-foreground italic'
                       }`}
                     >
                       {guessedAnswer?.answer ?? ''}
+                      {guessedAnswer &&
+                        (() => {
+                          console.log(`Rendering position ${position}:`, guessedAnswer.answer);
+                          return null;
+                        })()}
                     </div>
                   </div>
                 </CardContent>
@@ -461,8 +613,40 @@ export const TopPage = ({ onBack }: { onBack?: () => void }) => {
         )}
       </div>
 
+      {/* Confetti Animation */}
+      {gameState.showConfetti && (
+        <>
+          {console.log('🎆 Confetti is active!')}
+          <Confetti
+            width={window.innerWidth}
+            height={window.innerHeight}
+            recycle={false}
+            numberOfPieces={600}
+            gravity={0.2}
+            colors={['#10B981', '#F59E0B', '#EF4444', '#8B5CF6', '#06B6D4', '#F97316']}
+            style={{
+              position: 'fixed',
+              top: 0,
+              left: 0,
+              zIndex: 1000,
+              pointerEvents: 'none',
+            }}
+          />
+        </>
+      )}
+
       {/* Game Over Modal */}
-      <Dialog open={showGameOverModal} onOpenChange={setShowGameOverModal}>
+      <Dialog
+        open={showGameOverModal}
+        onOpenChange={(open) => {
+          setShowGameOverModal(open);
+          if (!open) {
+            // Hide confetti and gold shimmer when modal is closed
+            setGameState((prev) => ({ ...prev, showConfetti: false }));
+            setShowGoldShimmer(false);
+          }
+        }}
+      >
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
             <DialogTitle
@@ -573,6 +757,7 @@ export const TopPage = ({ onBack }: { onBack?: () => void }) => {
               <Button
                 onClick={() => {
                   setShowGameOverModal(false);
+                  setGameState((prev) => ({ ...prev, showConfetti: false }));
                   void resetGame();
                 }}
                 className="w-full"

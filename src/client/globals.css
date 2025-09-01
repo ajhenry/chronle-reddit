@@ -240,3 +240,10 @@ body {
   vertical-align: baseline;
   padding: 0 0.1em;
 }
+
+/* Simple gold border for winning answers */
+.gold-shimmer-card {
+  border: 2px solid #ffd700 !important;
+  position: relative;
+  z-index: 10;
+}
