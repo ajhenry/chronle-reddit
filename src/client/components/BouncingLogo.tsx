@@ -10,19 +10,22 @@ interface BouncingLogoProps {
 export const BouncingLogo: React.FC<BouncingLogoProps> = ({ src, alt, className = '' }) => {
   const [position, setPosition] = useState({ x: 0, y: 0 });
   const [velocity, setVelocity] = useState({ x: 1, y: 1 });
-  const [containerDimensions, setContainerDimensions] = useState({ width: 0, height: 200 });
+  const [containerDimensions, setContainerDimensions] = useState({ width: 0, height: 0 });
   const containerRef = useRef<HTMLDivElement>(null);
 
-  const logoSize = 80;
+  const logoWidth = 60; // Reduced from 80
+  const logoHeight = logoWidth * 0.75; // 75% of width
 
   // Get container width on mount and resize
   useEffect(() => {
     const updateDimensions = () => {
       if (containerRef.current) {
         const rect = containerRef.current.getBoundingClientRect();
+        // Make container height proportional to width (e.g., 25% of width, with minimum height)
+        const dynamicHeight = Math.max(rect.width * 0.25, 100);
         setContainerDimensions({
           width: rect.width,
-          height: 200,
+          height: dynamicHeight,
         });
       }
     };
@@ -42,14 +45,14 @@ export const BouncingLogo: React.FC<BouncingLogoProps> = ({ src, alt, className 
         let newVelY = velocity.y;
 
         // Bounce off walls
-        if (newX <= 0 || newX >= containerDimensions.width - logoSize) {
+        if (newX <= 0 || newX >= containerDimensions.width - logoWidth) {
           newVelX = -velocity.x;
-          newX = newX <= 0 ? 0 : containerDimensions.width - logoSize;
+          newX = newX <= 0 ? 0 : containerDimensions.width - logoWidth;
         }
 
-        if (newY <= 0 || newY >= containerDimensions.height - logoSize) {
+        if (newY <= 0 || newY >= containerDimensions.height - logoHeight) {
           newVelY = -velocity.y;
-          newY = newY <= 0 ? 0 : containerDimensions.height - logoSize;
+          newY = newY <= 0 ? 0 : containerDimensions.height - logoHeight;
         }
 
         setVelocity({ x: newVelX, y: newVelY });
@@ -59,7 +62,7 @@ export const BouncingLogo: React.FC<BouncingLogoProps> = ({ src, alt, className 
     }, 16); // ~60fps
 
     return () => clearInterval(interval);
-  }, [velocity, containerDimensions.width, containerDimensions.height, logoSize]);
+  }, [velocity, containerDimensions.width, containerDimensions.height, logoWidth, logoHeight]);
 
   return (
     <div
@@ -80,8 +83,8 @@ export const BouncingLogo: React.FC<BouncingLogoProps> = ({ src, alt, className 
           ease: 'linear',
         }}
         style={{
-          width: `${logoSize}px`,
-          height: `${logoSize}px`,
+          width: `${logoWidth}px`,
+          height: `${logoHeight}px`,
         }}
       >
         <img

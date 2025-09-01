@@ -135,7 +135,7 @@ export const App = () => {
           </div>
 
           {/* Snoodle Logo */}
-          <div className="text-center w-full -mt-24">
+          <div className="text-center w-full">
             <div className="text-center space-y-4">
               <div className="relative animate-bounce-shadow">
                 {/* Season Banner */}
