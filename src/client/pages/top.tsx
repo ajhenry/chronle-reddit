@@ -318,6 +318,10 @@ export const TopPage = ({ onBack }: { onBack?: () => void }) => {
 
   // Game state management simplified with new API
 
+  const handleInputChange = (input: string) => {
+    setGameState((prev) => ({ ...prev, currentInput: input }));
+  };
+
   const handleAnswerSubmit = async (answer: string) => {
     if (!gameData || gameState.gameComplete || !answer.trim()) return;
 
@@ -611,8 +615,9 @@ export const TopPage = ({ onBack }: { onBack?: () => void }) => {
           <div className={gameState.isShaking ? 'animate-shake' : ''}>
             <Combobox
               options={comboboxOptions}
-              value=""
+              value={gameState.currentInput}
               onValueChange={handleAnswerSubmit}
+              onInputChange={handleInputChange}
               placeholder="Type to search for your answer..."
               disabled={gameState.gameComplete}
               maxHeight={240}

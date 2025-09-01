@@ -10,6 +10,7 @@ export type ComboboxProps = {
   options: ComboboxOption[];
   value?: string;
   onValueChange?: (value: string) => void;
+  onInputChange?: (input: string) => void;
   placeholder?: string;
   disabled?: boolean;
   className?: string;
@@ -25,6 +26,7 @@ export const Combobox: React.FC<ComboboxProps> = ({
   options,
   value = '',
   onValueChange,
+  onInputChange,
   placeholder = 'Search...',
   disabled = false,
   className,
@@ -34,48 +36,58 @@ export const Combobox: React.FC<ComboboxProps> = ({
   const [isOpen, setIsOpen] = useState(false);
   const [query, setQuery] = useState('');
   const [focusedIndex, setFocusedIndex] = useState(-1);
-  
+
   const inputRef = useRef<HTMLInputElement>(null);
   const listRef = useRef<HTMLDivElement>(null);
   const comboboxRef = useRef<HTMLDivElement>(null);
 
   // Filter options based on query
-  const filteredOptions = options.filter((option) =>
-    filterFunction(option, query)
-  );
+  const filteredOptions = options.filter((option) => filterFunction(option, query));
 
-  // Reset focused index when filtered options change
+  // Reset focused index when filtered options change, but preserve focus during keyboard navigation
   useEffect(() => {
-    setFocusedIndex(-1);
-  }, [filteredOptions.length, query]);
+    setFocusedIndex((prev) => {
+      // If no previous focus or the previous focus is out of bounds, reset to -1
+      if (prev < 0 || prev >= filteredOptions.length) {
+        return -1;
+      }
+      // Keep the current focus if it's still valid
+      return prev;
+    });
+  }, [filteredOptions.length]);
 
   // Close dropdown when clicking outside
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
       if (comboboxRef.current && !comboboxRef.current.contains(event.target as Node)) {
         setIsOpen(false);
-        // Reset query to current value when closing
-        const selectedOption = options.find(opt => opt.value === value);
-        setQuery(selectedOption?.label || '');
       }
     };
 
     document.addEventListener('mousedown', handleClickOutside);
     return () => document.removeEventListener('mousedown', handleClickOutside);
-  }, [value, options]);
+  }, []);
 
   // Update query when value changes externally
   useEffect(() => {
-    const selectedOption = options.find(opt => opt.value === value);
-    setQuery(selectedOption?.label || '');
-  }, [value, options]);
+    if (value !== undefined) {
+      setQuery(value);
+    }
+  }, [value]);
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const newQuery = e.target.value;
     setQuery(newQuery);
-    
+
+    // Call the input change callback
+    onInputChange?.(newQuery);
+
     if (!isOpen) {
       setIsOpen(true);
+      // When opening due to typing, focus the first item if query is not empty
+      if (newQuery.trim()) {
+        setFocusedIndex(0);
+      }
     }
   };
 
@@ -83,18 +95,26 @@ export const Combobox: React.FC<ComboboxProps> = ({
     setIsOpen(true);
   };
 
-  const selectOption = useCallback((option: ComboboxOption) => {
-    onValueChange?.(option.value);
-    setQuery(option.label);
-    setIsOpen(false);
-    setFocusedIndex(-1);
-  }, [onValueChange]);
+  const selectOption = useCallback(
+    (option: ComboboxOption) => {
+      onValueChange?.(option.value);
+      setIsOpen(false);
+      setFocusedIndex(-1);
+    },
+    [onValueChange]
+  );
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
     if (!isOpen) {
       if (e.key === 'ArrowDown' || e.key === 'ArrowUp' || e.key === 'Enter') {
         setIsOpen(true);
         e.preventDefault();
+        // Focus first item when opening with arrow down, last item with arrow up
+        if (e.key === 'ArrowDown' && filteredOptions.length > 0) {
+          setFocusedIndex(0);
+        } else if (e.key === 'ArrowUp' && filteredOptions.length > 0) {
+          setFocusedIndex(filteredOptions.length - 1);
+        }
         return;
       }
     }
@@ -102,18 +122,20 @@ export const Combobox: React.FC<ComboboxProps> = ({
     switch (e.key) {
       case 'ArrowDown':
         e.preventDefault();
-        setFocusedIndex(prev => 
-          prev < filteredOptions.length - 1 ? prev + 1 : 0
-        );
+        setFocusedIndex((prev) => {
+          if (prev < 0) return 0; // Start from first item if no focus
+          return prev < filteredOptions.length - 1 ? prev + 1 : 0;
+        });
         break;
-      
+
       case 'ArrowUp':
         e.preventDefault();
-        setFocusedIndex(prev => 
-          prev > 0 ? prev - 1 : filteredOptions.length - 1
-        );
+        setFocusedIndex((prev) => {
+          if (prev < 0) return filteredOptions.length - 1; // Start from last item if no focus
+          return prev > 0 ? prev - 1 : filteredOptions.length - 1;
+        });
         break;
-      
+
       case 'Enter':
         e.preventDefault();
         if (focusedIndex >= 0 && focusedIndex < filteredOptions.length) {
@@ -123,21 +145,16 @@ export const Combobox: React.FC<ComboboxProps> = ({
           selectOption(filteredOptions[0]);
         }
         break;
-      
+
       case 'Escape':
         e.preventDefault();
         setIsOpen(false);
-        // Reset query to current value
-        const selectedOption = options.find(opt => opt.value === value);
-        setQuery(selectedOption?.label || '');
         inputRef.current?.blur();
         break;
-      
+
       case 'Tab':
         // Allow tab to close the dropdown and move to next element
         setIsOpen(false);
-        const currentSelectedOption = options.find(opt => opt.value === value);
-        setQuery(currentSelectedOption?.label || '');
         break;
     }
   };
@@ -149,7 +166,7 @@ export const Combobox: React.FC<ComboboxProps> = ({
       if (focusedElement) {
         focusedElement.scrollIntoView({
           block: 'nearest',
-          behavior: 'smooth'
+          behavior: 'smooth',
         });
       }
     }
@@ -180,7 +197,7 @@ export const Combobox: React.FC<ComboboxProps> = ({
         aria-haspopup="listbox"
         aria-autocomplete="list"
       />
-      
+
       {isOpen && filteredOptions.length > 0 && (
         <div
           ref={listRef}
@@ -198,8 +215,8 @@ export const Combobox: React.FC<ComboboxProps> = ({
               className={cn(
                 'w-full px-4 py-3 text-left text-foreground cursor-pointer',
                 'transition-colors duration-150 border-b border-border last:border-b-0',
-                index === focusedIndex 
-                  ? 'bg-accent text-accent-foreground' 
+                index === focusedIndex
+                  ? 'bg-accent text-accent-foreground'
                   : 'hover:bg-accent hover:text-accent-foreground'
               )}
               onClick={() => selectOption(option)}
@@ -211,7 +228,7 @@ export const Combobox: React.FC<ComboboxProps> = ({
           ))}
         </div>
       )}
-      
+
       {isOpen && filteredOptions.length === 0 && query.trim() && (
         <div
           className={cn(
