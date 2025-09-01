@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { TopPage } from './pages/top';
 import { Card, CardHeader, CardTitle, CardContent } from './components/ui/card';
 import { Button } from './components/ui/button';
+import { Toaster } from 'sonner';
 
 export const App = () => {
   const [currentRoute, setCurrentRoute] = useState<string>(window.location.pathname);
@@ -135,6 +136,9 @@ export const App = () => {
           </Button>
         ))}
       </footer>
+
+      {/* Toast notifications */}
+      <Toaster position="top-center" />
     </div>
   );
 };

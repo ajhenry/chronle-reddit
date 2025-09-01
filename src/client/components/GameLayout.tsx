@@ -1,4 +1,5 @@
-import { ReactNode, useState } from 'react';
+import { ReactNode, useState, useEffect } from 'react';
+import { motion, AnimatePresence } from 'framer-motion';
 import { Button } from './ui/button';
 import { Card, CardContent } from './ui/card';
 
@@ -10,31 +11,71 @@ interface GameLayoutProps {
   children: ReactNode;
   onBack: () => void;
   onLeaderboard?: () => void;
-  isAttemptsAnimating?: boolean;
-  previousAttempts?: number;
 }
 
-const AnimatedNumber = ({
-  current,
-  previous,
-  isAnimating,
-}: {
-  current: number;
-  previous: number;
-  isAnimating: boolean;
-}) => {
-  if (!isAnimating) {
-    return <span>{current}</span>;
-  }
+const AnimatedNumber = ({ value }: { value: number }) => {
+  const [displayValue, setDisplayValue] = useState(value);
+  const [previousValue, setPreviousValue] = useState(value);
+  const [isAnimating, setIsAnimating] = useState(false);
+
+  useEffect(() => {
+    if (value !== displayValue) {
+      setPreviousValue(displayValue);
+      setDisplayValue(value);
+      setIsAnimating(true);
+
+      // Reset animation state after animation completes
+      const timer = setTimeout(() => {
+        setIsAnimating(false);
+      }, 600); // Match the animation duration
+
+      return () => clearTimeout(timer);
+    }
+  }, [value, displayValue]);
 
   return (
-    <span className="number-container">
-      <span key={`out-${previous}`} className="absolute animate-number-push-out">
-        {previous}
-      </span>
-      <span key={`in-${current}`} className="animate-number-push-up">
-        {current}
-      </span>
+    <span className="number-container relative inline-block">
+      <AnimatePresence mode="wait">
+        {isAnimating ? (
+          <>
+            <motion.span
+              key={`out-${previousValue}`}
+              initial={{ y: 0, opacity: 1 }}
+              animate={{ y: -24, opacity: 0 }}
+              exit={{ y: -24, opacity: 0 }}
+              transition={{
+                duration: 0.6,
+                ease: [0.68, -0.55, 0.265, 1.55],
+              }}
+              className="absolute inset-0 flex items-center justify-center"
+            >
+              {previousValue}
+            </motion.span>
+            <motion.span
+              key={`in-${displayValue}`}
+              initial={{ y: 24, opacity: 0 }}
+              animate={{ y: 0, opacity: 1 }}
+              exit={{ y: 0, opacity: 1 }}
+              transition={{
+                duration: 0.6,
+                ease: [0.68, -0.55, 0.265, 1.55],
+              }}
+              className="absolute inset-0 flex items-center justify-center"
+            >
+              {displayValue}
+            </motion.span>
+          </>
+        ) : (
+          <motion.span
+            key={`static-${displayValue}`}
+            initial={{ opacity: 1 }}
+            animate={{ opacity: 1 }}
+            className="absolute inset-0 flex items-center justify-center"
+          >
+            {displayValue}
+          </motion.span>
+        )}
+      </AnimatePresence>
     </span>
   );
 };
@@ -47,8 +88,6 @@ export const GameLayout = ({
   children,
   onBack,
   onLeaderboard,
-  isAttemptsAnimating = false,
-  previousAttempts = 0,
 }: GameLayoutProps) => {
   const [showHelpModal, setShowHelpModal] = useState(false);
 
@@ -112,14 +151,8 @@ export const GameLayout = ({
       {/* Attempts Counter */}
       <div className="text-center mb-6">
         <Card className="px-4 py-2 inline-block">
-          <span className="font-medium text-card-foreground">
-            ATTEMPTS:{' '}
-            <AnimatedNumber
-              current={attempts}
-              previous={previousAttempts}
-              isAnimating={isAttemptsAnimating}
-            />
-            /{maxAttempts}
+          <span className="font-medium text-card-foreground flex flex-row items-center gap-2">
+            ATTEMPTS LEFT <AnimatedNumber value={maxAttempts - attempts} />
           </span>
         </Card>
       </div>

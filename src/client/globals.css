@@ -229,40 +229,14 @@ body {
   animation: shake 0.5s ease-in-out;
 }
 
-@keyframes number-push-up {
-  0% {
-    transform: translateY(100%);
-    opacity: 0;
-  }
-  100% {
-    transform: translateY(0);
-    opacity: 1;
-  }
-}
-
-@keyframes number-push-out {
-  0% {
-    transform: translateY(0);
-    opacity: 1;
-  }
-  100% {
-    transform: translateY(-100%);
-    opacity: 0;
-  }
-}
-
-.animate-number-push-up {
-  animation: number-push-up 0.6s cubic-bezier(0.68, -0.55, 0.265, 1.55);
-}
-
-.animate-number-push-out {
-  animation: number-push-out 0.6s cubic-bezier(0.68, -0.55, 0.265, 1.55);
-}
-
 .number-container {
   position: relative;
   overflow: hidden;
   display: inline-block;
-  min-width: 1.2em;
+  width: 1.5em;
+  height: 1.2em;
+  line-height: 1.2em;
   text-align: center;
+  vertical-align: baseline;
+  padding: 0 0.1em;
 }

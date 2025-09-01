@@ -1,10 +1,18 @@
 import { useState, useEffect, useRef } from 'react';
 import pluralize from 'pluralize';
 import { GameLayout } from '../components/GameLayout';
+import { toast } from 'sonner';
 
 import { Input } from '../components/ui/input';
 import { Card, CardContent } from '../components/ui/card';
 import { Button } from '../components/ui/button';
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+} from '../components/ui/dialog';
 import { TopXGameData, TopXValidateResponse } from '../../shared/types/api';
 import { apiFetch } from '../lib/utils';
 
@@ -68,8 +76,6 @@ interface GameState {
   gameComplete: boolean;
   gameWon: boolean;
   isShaking: boolean;
-  isAttemptsAnimating: boolean;
-  previousAttempts: number;
 }
 
 export const TopPage = ({ onBack }: { onBack?: () => void }) => {
@@ -77,10 +83,11 @@ export const TopPage = ({ onBack }: { onBack?: () => void }) => {
   const [gameData, setGameData] = useState<TopXGameData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [showDropdown, setShowDropdown] = useState(false);
+  const [showGameOverModal, setShowGameOverModal] = useState(false);
+
   const [gameState, setGameState] = useState<GameState>({
     score: 0,
-    attempts: 0,
+    attempts: 1,
     maxAttempts: 5,
     guessedAnswers: [],
     incorrectAnswers: [],
@@ -89,8 +96,6 @@ export const TopPage = ({ onBack }: { onBack?: () => void }) => {
     gameComplete: false,
     gameWon: false,
     isShaking: false,
-    isAttemptsAnimating: false,
-    previousAttempts: 0,
   });
 
   // Parse the prompt to extract number and category
@@ -134,33 +139,36 @@ export const TopPage = ({ onBack }: { onBack?: () => void }) => {
     }
   }, [loading, gameData]);
 
-  // Reset shake animation after it completes and trigger attempts counter animation
+  // Reset shake animation after it completes
   useEffect(() => {
     if (gameState.isShaking) {
       const timer = setTimeout(() => {
         setGameState((prev) => ({
           ...prev,
           isShaking: false,
-          isAttemptsAnimating: true,
         }));
       }, 500); // Match the animation duration (0.5s)
       return () => clearTimeout(timer);
     }
   }, [gameState.isShaking]);
 
-  // Reset attempts counter animation after it completes
+  // Show game over modal when game completes
   useEffect(() => {
-    if (gameState.isAttemptsAnimating) {
+    if (gameState.gameComplete) {
+      // Show "Close one!" toast first
+      toast.success('Close one!', {
+        description: 'Game over! Check your results.',
+        duration: 2000,
+      });
+
+      // Show modal after 2 seconds
       const timer = setTimeout(() => {
-        setGameState((prev) => ({
-          ...prev,
-          isAttemptsAnimating: false,
-          previousAttempts: prev.attempts,
-        }));
-      }, 600); // Match the animation duration (0.6s)
+        setShowGameOverModal(true);
+      }, 2000);
+
       return () => clearTimeout(timer);
     }
-  }, [gameState.isAttemptsAnimating]);
+  }, [gameState.gameComplete]);
 
   // Function to trigger shake animation
   const triggerShake = () => {
@@ -186,11 +194,11 @@ export const TopPage = ({ onBack }: { onBack?: () => void }) => {
           ...prev,
           guessedAnswers: newGuessedAnswers,
           score: newScore,
-          attempts: prev.attempts + 1,
+          // Don't increment attempts for correct answers
           currentInput: '',
           showSuggestions: false,
           gameWon: newGuessedAnswers.length === number,
-          gameComplete: newGuessedAnswers.length === number || prev.attempts + 1 >= 5,
+          gameComplete: newGuessedAnswers.length === number || prev.attempts >= 5,
         }));
       } else {
         const newIncorrectAnswers = [...gameState.incorrectAnswers, suggestion];
@@ -198,7 +206,6 @@ export const TopPage = ({ onBack }: { onBack?: () => void }) => {
         setGameState((prev) => ({
           ...prev,
           incorrectAnswers: newIncorrectAnswers,
-          previousAttempts: prev.attempts, // Store current attempts before incrementing
           attempts: prev.attempts + 1,
           currentInput: '',
           showSuggestions: false,
@@ -209,7 +216,6 @@ export const TopPage = ({ onBack }: { onBack?: () => void }) => {
       console.error('Error validating answer:', err);
       // Fallback to local validation if API fails
       const isCorrect = gameData.correctAnswers.includes(suggestion);
-      const newAttempts = gameState.attempts + 1;
 
       if (isCorrect) {
         const newGuessedAnswers = [...gameState.guessedAnswers, suggestion];
@@ -219,19 +225,19 @@ export const TopPage = ({ onBack }: { onBack?: () => void }) => {
           ...prev,
           guessedAnswers: newGuessedAnswers,
           score: newScore,
-          attempts: newAttempts,
+          // Don't increment attempts for correct answers
           currentInput: '',
           showSuggestions: false,
           gameWon: newGuessedAnswers.length === number,
-          gameComplete: newGuessedAnswers.length === number || newAttempts >= 5,
+          gameComplete: newGuessedAnswers.length === number || prev.attempts >= 5,
         }));
       } else {
         const newIncorrectAnswers = [...gameState.incorrectAnswers, suggestion];
         triggerShake(); // Trigger shake animation for wrong answer
+        const newAttempts = gameState.attempts + 1;
         setGameState((prev) => ({
           ...prev,
           incorrectAnswers: newIncorrectAnswers,
-          previousAttempts: prev.attempts, // Store current attempts before incrementing
           attempts: newAttempts,
           currentInput: '',
           showSuggestions: false,
@@ -244,12 +250,13 @@ export const TopPage = ({ onBack }: { onBack?: () => void }) => {
   const resetGame = async () => {
     try {
       setLoading(true);
+      setShowGameOverModal(false); // Close modal before resetting
       const newGame = await fetchRandomGame();
       setGameData(newGame);
 
       setGameState({
         score: 0,
-        attempts: 0,
+        attempts: 1,
         maxAttempts: 5,
         guessedAnswers: [],
         incorrectAnswers: [],
@@ -258,8 +265,6 @@ export const TopPage = ({ onBack }: { onBack?: () => void }) => {
         gameComplete: false,
         gameWon: false,
         isShaking: false,
-        isAttemptsAnimating: false,
-        previousAttempts: 0,
       });
 
       setError(null);
@@ -289,7 +294,7 @@ export const TopPage = ({ onBack }: { onBack?: () => void }) => {
       <GameLayout
         gameTitle="Top X"
         score={0}
-        attempts={0}
+        attempts={1}
         maxAttempts={5}
         onBack={handleBackToMenu}
       >
@@ -306,7 +311,7 @@ export const TopPage = ({ onBack }: { onBack?: () => void }) => {
       <GameLayout
         gameTitle="Top X"
         score={0}
-        attempts={0}
+        attempts={1}
         maxAttempts={5}
         onBack={handleBackToMenu}
       >
@@ -328,8 +333,6 @@ export const TopPage = ({ onBack }: { onBack?: () => void }) => {
       maxAttempts={gameState.maxAttempts}
       onBack={handleBackToMenu}
       onLeaderboard={() => console.log('Leaderboard clicked')}
-      isAttemptsAnimating={gameState.isAttemptsAnimating}
-      previousAttempts={gameState.previousAttempts}
     >
       {/* Game Content */}
       <div className="space-y-6">
@@ -360,12 +363,10 @@ export const TopPage = ({ onBack }: { onBack?: () => void }) => {
                   void handleSuggestionClick(gameState.currentInput.trim());
                 }
               }}
-              onFocus={() => setShowDropdown(true)}
-              onBlur={() => setTimeout(() => setShowDropdown(false), 200)}
             />
 
             {/* Dropdown Suggestions */}
-            {showDropdown && gameState.currentInput && filteredSuggestions.length > 0 && (
+            {gameState.currentInput && filteredSuggestions.length > 0 && (
               <div className="absolute top-full left-0 right-0 z-50 mt-1 bg-background border-2 border-border rounded-none max-h-60 overflow-y-auto">
                 {filteredSuggestions.map((suggestion, index) => (
                   <button
@@ -373,9 +374,7 @@ export const TopPage = ({ onBack }: { onBack?: () => void }) => {
                     className="w-full px-4 py-3 text-left text-foreground hover:bg-accent hover:text-accent-foreground transition-colors duration-150 border-b border-border last:border-b-0"
                     onClick={() => {
                       void handleSuggestionClick(suggestion);
-                      setShowDropdown(false);
                     }}
-                    onMouseDown={(e) => e.preventDefault()} // Prevent blur on click
                   >
                     {suggestion}
                   </button>
@@ -441,38 +440,123 @@ export const TopPage = ({ onBack }: { onBack?: () => void }) => {
             </div>
           </div>
         )}
+      </div>
 
-        {/* Game Complete Message */}
-        {gameState.gameComplete && (
-          <Card className="text-center">
-            <CardContent>
-              <h3
-                className={`text-xl font-semibold mb-4 ${gameState.gameWon ? 'text-green-600' : 'text-destructive'}`}
-              >
-                {gameState.gameWon ? 'CONGRATULATIONS!' : 'GAME OVER!'}
-              </h3>
-              <p className="text-base text-card-foreground mb-4">
-                {gameState.gameWon
-                  ? `You got all ${number} answers! Final score: ${gameState.score}`
-                  : `You used all ${gameState.maxAttempts} attempts. Better luck next time!`}
-              </p>
-              {!gameState.gameWon && (
-                <div className="mb-4">
-                  <p className="text-sm text-card-foreground mb-2">Correct answers were:</p>
-                  <div className="space-y-1">
-                    {gameData.correctAnswers.map((answer, index) => (
-                      <div key={answer} className="text-sm text-muted-foreground">
-                        {index + 1}. {answer}
+      {/* Game Over Modal */}
+      <Dialog open={showGameOverModal} onOpenChange={setShowGameOverModal}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle
+              className={`text-center text-2xl font-bold ${
+                gameState.gameWon ? 'text-green-600' : 'text-red-600'
+              }`}
+            >
+              {gameState.gameWon ? '🎉 CONGRATULATIONS!' : '💔 GAME OVER'}
+            </DialogTitle>
+            <DialogDescription className="text-center text-base">
+              {gameState.gameWon
+                ? `You found all ${number} answers!`
+                : `You used all ${gameState.maxAttempts} attempts`}
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-4">
+            {/* Game Stats */}
+            <div className="grid grid-cols-2 gap-4">
+              <div className="text-center">
+                <div className="text-2xl font-bold text-primary">{gameState.score}</div>
+                <div className="text-sm text-muted-foreground">Final Score</div>
+              </div>
+              <div className="text-center">
+                <div className="text-2xl font-bold text-primary">
+                  {gameState.guessedAnswers.length}/{number}
+                </div>
+                <div className="text-sm text-muted-foreground">Correct Answers</div>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-4">
+              <div className="text-center">
+                <div className="text-2xl font-bold text-orange-600">
+                  {gameState.incorrectAnswers.length}
+                </div>
+                <div className="text-sm text-muted-foreground">Wrong Guesses</div>
+              </div>
+              <div className="text-center">
+                <div className="text-2xl font-bold text-blue-600">{gameState.attempts - 1}</div>
+                <div className="text-sm text-muted-foreground">Attempts Used</div>
+              </div>
+            </div>
+
+            {/* Correct Answers Found */}
+            {gameState.guessedAnswers.length > 0 && (
+              <div>
+                <h4 className="text-sm font-semibold text-green-700 mb-2">
+                  ✅ Correct Answers Found:
+                </h4>
+                <div className="space-y-1">
+                  {gameState.guessedAnswers.map((answer, index) => (
+                    <div
+                      key={answer}
+                      className="text-sm text-green-600 bg-green-50 px-2 py-1 rounded"
+                    >
+                      {index + 1}. {answer}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Incorrect Answers */}
+            {gameState.incorrectAnswers.length > 0 && (
+              <div>
+                <h4 className="text-sm font-semibold text-red-700 mb-2">❌ Incorrect Guesses:</h4>
+                <div className="space-y-1">
+                  {gameState.incorrectAnswers.map((answer) => (
+                    <div key={answer} className="text-sm text-red-600 bg-red-50 px-2 py-1 rounded">
+                      {answer}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Show missed answers for losses */}
+            {!gameState.gameWon && gameData && (
+              <div>
+                <h4 className="text-sm font-semibold text-blue-700 mb-2">
+                  🎯 Correct Answers You Missed:
+                </h4>
+                <div className="space-y-1">
+                  {gameData.correctAnswers
+                    .filter((answer) => !gameState.guessedAnswers.includes(answer))
+                    .map((answer, index) => (
+                      <div
+                        key={answer}
+                        className="text-sm text-blue-600 bg-blue-50 px-2 py-1 rounded"
+                      >
+                        {gameState.guessedAnswers.length + index + 1}. {answer}
                       </div>
                     ))}
-                  </div>
                 </div>
-              )}
-              <Button onClick={() => void resetGame()}>PLAY AGAIN</Button>
-            </CardContent>
-          </Card>
-        )}
-      </div>
+              </div>
+            )}
+
+            {/* Play Again Button */}
+            <div className="flex justify-center pt-4">
+              <Button
+                onClick={() => {
+                  setShowGameOverModal(false);
+                  void resetGame();
+                }}
+                className="w-full"
+              >
+                🎮 PLAY AGAIN
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
     </GameLayout>
   );
 };
