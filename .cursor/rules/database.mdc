@@ -1,0 +1,10 @@
+---
+description: Use when writing database code
+globs: supabase/**/*
+alwaysApply: false
+---
+
+Guidelines:
+
+- When creating new tables, do not use UUIDs, use KSUIDs with a prefix of the entity name. For example, if creating a table for users, the KSUID should be prefixed with "user\_".
+- Do not use RLS, we will use service roles for all operations.

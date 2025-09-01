@@ -20,11 +20,12 @@ export type DecrementResponse = {
 export type TopXGameData = {
   id: string;
   prompt: string;
-  correctAnswers: string[];
-  searchSuggestions: string[];
+  solution: string[]; // Changed from correctAnswers
+  suggestions: string[]; // Changed from searchSuggestions
   category: string;
-  number: number;
-  createdAt: string;
+  count: number; // Changed from number
+  created_at: string; // Changed from createdAt
+  updated_at: string; // Added updated_at
 };
 
 export type TopXGameResponse = {
@@ -45,6 +46,51 @@ export type TopXGamesResponse = {
   games: TopXGameData[];
 };
 
+export type TopXDailyGameResponse = {
+  type: 'topx_daily_game';
+  dailyGameId: string;
+  game: TopXGameData;
+  day: string; // ISO date string
+  session?: {
+    id: string;
+    startedAt: string;
+    currentScore: number;
+    initialScore: number;
+    isCompleted: boolean;
+    submissions: Array<{
+      answer: string;
+      submittedAt: string;
+      isCorrect: boolean;
+      position?: number;
+      scoreAtSubmission: number;
+    }>;
+  };
+};
+
+export type TopXAttemptRequest = {
+  userId: string;
+  answer: string;
+  timestamp: number;
+};
+
+export type TopXSubmissionResponse = {
+  type: 'topx_submission';
+  submissionId: string;
+  accepted: boolean; // Whether submission was recorded (not validation)
+};
+
+export type TopXGameCompleteResponse = {
+  type: 'topx_game_complete';
+  finalScore: number;
+  correctAnswers: Array<{
+    answer: string;
+    position: number;
+    points: number;
+  }>;
+  totalCorrect: number;
+  isValid: boolean; // Whether the game session is valid
+};
+
 export type Season = {
   id: string;
   name: string;
@@ -59,14 +105,10 @@ export type LeaderboardEntry = {
   rank: number;
   userId: string;
   redditHandle: string;
-  totalScore: number;
+  totalPoints: number;
   gamesPlayed: number;
-  gamesWon: number;
+  latestGame: string;
   averageScore: number;
-  winRate: number;
-  bestScore: number;
-  totalCorrectAnswers: number;
-  averageAttempts: number;
 };
 
 export type SeasonResponse = {
@@ -82,7 +124,14 @@ export type SeasonsResponse = {
 export type LeaderboardResponse = {
   type: 'leaderboard';
   entries: LeaderboardEntry[];
-  seasonId: string;
+  totalPlayers: number;
+};
+
+export type UserLeaderboardPositionResponse = {
+  type: 'user_leaderboard_position';
+  rank: number;
+  totalPoints: number;
+  gamesPlayed: number;
   totalPlayers: number;
 };
 

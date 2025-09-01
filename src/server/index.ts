@@ -5,6 +5,8 @@ import userRoutes from './handlers/user';
 import postRoutes from './handlers/post';
 import gameRoutes from './handlers/game';
 import seasonRoutes from './handlers/season';
+import adminRoutes from './handlers/admin';
+import leaderboardRoutes from './handlers/leaderboard';
 
 // Environment detection - use LOCAL_MODE flag for local development
 // Set LOCAL_MODE=true to use regular Express server instead of Reddit's server
@@ -53,6 +55,8 @@ app.use(userRoutes);
 app.use(postRoutes);
 app.use(gameRoutes);
 app.use(seasonRoutes);
+app.use(adminRoutes);
+app.use(leaderboardRoutes);
 
 // Health check endpoint for local development
 if (isLocal) {

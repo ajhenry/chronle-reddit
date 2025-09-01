@@ -14,42 +14,51 @@ import {
   DialogTitle,
   DialogDescription,
 } from '../components/ui/dialog';
-import { TopXGameData, TopXValidateResponse, Season } from '../../shared/types/api';
+import {
+  TopXGameData,
+  TopXDailyGameResponse,
+  TopXSubmissionResponse,
+  TopXGameCompleteResponse,
+  Season,
+} from '../../shared/types/api';
 import { apiFetch } from '../lib/utils';
 import { isDevelopment } from '../lib/dev-utils';
 
-// API functions
-const fetchRandomGame = async (): Promise<TopXGameData> => {
-  const response = await apiFetch('/api/topx/games/random', {
+// API functions for daily TopX game
+const fetchTodaysGame = async (): Promise<TopXDailyGameResponse> => {
+  const response = await apiFetch('/api/topx/game', {
     method: 'GET',
   });
-  console.log('Response:', response);
   if (!response.ok) {
-    throw new Error('Failed to fetch game');
+    throw new Error("Failed to fetch today's game");
   }
-  const data = await response.json();
-  return data.game;
+  return await response.json();
 };
 
-const validateAnswer = async (
-  gameId: string,
+const submitAttempt = async (
   answer: string,
-  guessedAnswers: string[],
-  maxAttempts: number
-): Promise<TopXValidateResponse> => {
-  const response = await apiFetch(`/api/topx/game/${gameId}/validate`, {
+  timestamp: number
+): Promise<TopXSubmissionResponse> => {
+  const response = await apiFetch('/api/topx/attempt', {
     method: 'POST',
     body: JSON.stringify({
       answer,
-      guessedAnswers,
-      maxAttempts,
+      timestamp,
     }),
   });
-
   if (!response.ok) {
-    throw new Error('Failed to validate answer');
+    throw new Error('Failed to submit attempt');
   }
+  return await response.json();
+};
 
+const getPostgameResults = async (): Promise<TopXGameCompleteResponse> => {
+  const response = await apiFetch('/api/topx/postgame', {
+    method: 'GET',
+  });
+  if (!response.ok) {
+    throw new Error('Failed to get postgame results');
+  }
   return await response.json();
 };
 
@@ -60,6 +69,7 @@ interface GuessedAnswer {
 
 interface GameState {
   score: number;
+  initialScore: number;
   attempts: number;
   maxAttempts: number;
   guessedAnswers: GuessedAnswer[];
@@ -70,6 +80,12 @@ interface GameState {
   gameWon: boolean;
   isShaking: boolean;
   showConfetti: boolean;
+  gameStartTime: number | null;
+  submissions: Array<{
+    answer: string;
+    timestamp: number;
+    locallyCorrect?: boolean; // Client-side guess
+  }>;
 }
 
 export const TopPage = ({ onBack }: { onBack?: () => void }) => {
@@ -82,9 +98,11 @@ export const TopPage = ({ onBack }: { onBack?: () => void }) => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [showGameOverModal, setShowGameOverModal] = useState(false);
+  const [scoreUpdateTimer, setScoreUpdateTimer] = useState<NodeJS.Timeout | null>(null);
 
   const [gameState, setGameState] = useState<GameState>({
-    score: 0,
+    score: 5000,
+    initialScore: 5000,
     attempts: 1,
     maxAttempts: 5,
     guessedAnswers: [],
@@ -95,15 +113,17 @@ export const TopPage = ({ onBack }: { onBack?: () => void }) => {
     gameWon: false,
     isShaking: false,
     showConfetti: false,
+    gameStartTime: null,
+    submissions: [],
   });
 
-  // Use number and category directly from server data
-  const number = gameData?.number ?? 3;
+  // Use count and category directly from server data
+  const number = gameData?.count ?? 3;
   const category = gameData?.category ?? 'items';
 
   // Filter suggestions based on current input
   const filteredSuggestions =
-    gameData?.searchSuggestions
+    gameData?.suggestions
       ?.filter(
         (suggestion) =>
           suggestion.toLowerCase().includes(gameState.currentInput.toLowerCase()) &&
@@ -112,9 +132,36 @@ export const TopPage = ({ onBack }: { onBack?: () => void }) => {
       )
       .slice(0, 8) || []; // Limit to 8 suggestions for better UX
 
-  // Fetch game data and season on mount
+  // Real-time score updating effect
   useEffect(() => {
-    const loadGame = async () => {
+    if (gameState.gameStartTime && !gameState.gameComplete) {
+      const timer = setInterval(() => {
+        const now = Date.now();
+        const elapsedSeconds = (now - gameState.gameStartTime!) / 1000;
+        const incorrectCount = gameState.incorrectAnswers.length;
+        const decayMultiplier = Math.pow(1.5, incorrectCount);
+        const scoreDecay = Math.floor(elapsedSeconds * decayMultiplier);
+        const currentScore = Math.max(0, gameState.initialScore - scoreDecay);
+
+        setGameState((prev) => ({ ...prev, score: currentScore }));
+      }, 100); // Update every 100ms for smooth score decay
+
+      setScoreUpdateTimer(timer);
+      return () => {
+        clearInterval(timer);
+        setScoreUpdateTimer(null);
+      };
+    }
+  }, [
+    gameState.gameStartTime,
+    gameState.gameComplete,
+    gameState.incorrectAnswers.length,
+    gameState.initialScore,
+  ]);
+
+  // Fetch daily game on mount
+  useEffect(() => {
+    const loadDailyGame = async () => {
       try {
         setLoading(true);
 
@@ -126,21 +173,78 @@ export const TopPage = ({ onBack }: { onBack?: () => void }) => {
         const seasonData = await seasonResponse.json();
         setSeason(seasonData.season);
 
-        // Fetch game data
-        const game = await fetchRandomGame();
-        setGameData(game);
+        // Fetch today's daily game
+        const dailyGame = await fetchTodaysGame();
+        setGameData(dailyGame.game);
 
-        // Since game_sessions is removed, no session tracking
+        // Set up initial game state - restore from session if available
+        let startTime = Date.now();
+        let score = 5000;
+        let initialScore = 5000;
+        let gameComplete = false;
+        let guessedAnswers: GuessedAnswer[] = [];
+        let incorrectAnswers: string[] = [];
+        let submissions: Array<{
+          answer: string;
+          timestamp: number;
+          locallyCorrect?: boolean;
+        }> = [];
+
+        if (dailyGame.session) {
+          // Restore from existing session
+          startTime = new Date(dailyGame.session.startedAt).getTime();
+          score = dailyGame.session.currentScore;
+          initialScore = dailyGame.session.initialScore;
+          gameComplete = dailyGame.session.isCompleted;
+
+          // Restore previous submissions and answers
+          submissions = dailyGame.session.submissions.map((sub) => ({
+            answer: sub.answer,
+            timestamp: new Date(sub.submittedAt).getTime(),
+            locallyCorrect: sub.isCorrect,
+          }));
+
+          // Rebuild guessed answers and incorrect answers from submissions
+          for (const sub of dailyGame.session.submissions) {
+            if (sub.isCorrect && sub.position) {
+              guessedAnswers.push({
+                answer: sub.answer,
+                position: sub.position,
+              });
+            } else {
+              incorrectAnswers.push(sub.answer);
+            }
+          }
+        }
+
+        setGameState((prev) => ({
+          ...prev,
+          score,
+          initialScore,
+          gameStartTime: startTime,
+          gameComplete,
+          guessedAnswers,
+          incorrectAnswers,
+          submissions,
+          gameWon: gameComplete && guessedAnswers.length === dailyGame.game.count,
+        }));
+
+        // If game is already completed, show the modal after a brief delay
+        if (gameComplete) {
+          setTimeout(() => {
+            setShowGameOverModal(true);
+          }, 500);
+        }
 
         setError(null);
       } catch (err) {
-        setError(err instanceof Error ? err.message : 'Failed to load game');
+        setError(err instanceof Error ? err.message : 'Failed to load daily game');
       } finally {
         setLoading(false);
       }
     };
 
-    void loadGame();
+    void loadDailyGame();
   }, []);
 
   // Auto-focus input on mount (after game data loads)
@@ -217,104 +321,58 @@ export const TopPage = ({ onBack }: { onBack?: () => void }) => {
     setGameState((prev) => ({ ...prev, isShaking: true }));
   };
 
-  // Game session tracking removed
+  // Game state management simplified with new API
 
   const handleSuggestionClick = async (suggestion: string) => {
-    if (!gameData) return;
+    if (!gameData || gameState.gameComplete) return;
+
+    const timestamp = Date.now();
 
     try {
-      const result = await validateAnswer(
-        gameData.id,
-        suggestion,
-        gameState.guessedAnswers.map((ga) => ga.answer),
-        gameState.maxAttempts
-      );
+      // Submit attempt to server
+      await submitAttempt(suggestion, timestamp);
 
-      if (result.isCorrect) {
-        const newGuessedAnswer: GuessedAnswer = {
-          answer: suggestion,
-          position: result.position || 1, // fallback to 1 if position is undefined
-        };
-        console.log(
-          'Adding correct answer (API):',
-          suggestion,
-          'at position:',
-          result.position || 1
-        );
-        const newGuessedAnswers = [...gameState.guessedAnswers, newGuessedAnswer];
-        const newScore = gameState.score + 100; // 100 points per correct answer
-        const isGameWon = newGuessedAnswers.length === number;
-        const isGameComplete = isGameWon || gameState.attempts >= 5;
+      // Add to submissions for local tracking
+      const newSubmission = {
+        answer: suggestion,
+        timestamp,
+        locallyCorrect: undefined, // Will be determined later
+      };
 
-        setGameState((prev) => ({
-          ...prev,
-          guessedAnswers: newGuessedAnswers,
-          score: newScore,
-          // Don't increment attempts for correct answers
-          currentInput: '',
-          showSuggestions: false,
-          gameWon: isGameWon,
-          gameComplete: isGameComplete,
-        }));
+      // Optimistic local validation for UI responsiveness
+      const isLocallyCorrect = gameData.solution
+        .map((s) => s.toLowerCase().trim())
+        .includes(suggestion.toLowerCase().trim());
 
-        // Game session tracking removed
-
-        // Force re-render to ensure the answer appears before confetti
-        setTimeout(() => {
-          // Small delay to ensure state has updated
-        }, 50);
-      } else {
-        const newIncorrectAnswers = [...gameState.incorrectAnswers, suggestion];
-        const newAttempts = gameState.attempts + 1;
-        const isGameComplete = newAttempts >= 5;
-
-        triggerShake(); // Trigger shake animation for wrong answer
-        setGameState((prev) => ({
-          ...prev,
-          incorrectAnswers: newIncorrectAnswers,
-          attempts: newAttempts,
-          currentInput: '',
-          showSuggestions: false,
-          gameComplete: isGameComplete,
-        }));
-
-        // Game session tracking removed
-      }
-    } catch (err) {
-      console.error('Error validating answer:', err);
-      // Fallback to local validation if API fails
-      const isCorrect = gameData.correctAnswers.includes(suggestion);
-
-      if (isCorrect) {
-        // For fallback validation, we need to find the position from correctAnswers
-        const position = gameData.correctAnswers.indexOf(suggestion) + 1;
+      if (isLocallyCorrect) {
+        // Find position in solution array
+        const position =
+          gameData.solution.findIndex(
+            (s) => s.toLowerCase().trim() === suggestion.toLowerCase().trim()
+          ) + 1;
         const newGuessedAnswer: GuessedAnswer = {
           answer: suggestion,
           position: position,
         };
-        console.log('Adding correct answer (fallback):', suggestion, 'at position:', position);
+
         const newGuessedAnswers = [...gameState.guessedAnswers, newGuessedAnswer];
-        const newScore = gameState.score + 100;
         const isGameWon = newGuessedAnswers.length === number;
         const isGameComplete = isGameWon || gameState.attempts >= 5;
 
         setGameState((prev) => ({
           ...prev,
           guessedAnswers: newGuessedAnswers,
-          score: newScore,
-          // Don't increment attempts for correct answers
+          submissions: [...prev.submissions, { ...newSubmission, locallyCorrect: true }],
           currentInput: '',
           showSuggestions: false,
           gameWon: isGameWon,
           gameComplete: isGameComplete,
         }));
 
-        // Game session tracking removed
-
-        // Force re-render to ensure the answer appears before confetti
-        setTimeout(() => {
-          // Small delay to ensure state has updated
-        }, 50);
+        // Complete game if won
+        if (isGameWon) {
+          await handleGameComplete();
+        }
       } else {
         const newIncorrectAnswers = [...gameState.incorrectAnswers, suggestion];
         const newAttempts = gameState.attempts + 1;
@@ -325,57 +383,60 @@ export const TopPage = ({ onBack }: { onBack?: () => void }) => {
           ...prev,
           incorrectAnswers: newIncorrectAnswers,
           attempts: newAttempts,
+          submissions: [...prev.submissions, { ...newSubmission, locallyCorrect: false }],
           currentInput: '',
           showSuggestions: false,
           gameComplete: isGameComplete,
         }));
 
-        // Game session tracking removed
+        // Complete game if max attempts reached
+        if (isGameComplete) {
+          await handleGameComplete();
+        }
       }
+    } catch (err) {
+      console.error('Error submitting answer:', err);
+      toast.error('Failed to submit answer');
+    }
+  };
+
+  const handleGameComplete = async () => {
+    try {
+      const result = await getPostgameResults();
+
+      // Update final state with server results
+      setGameState((prev) => ({
+        ...prev,
+        score: result.finalScore,
+        gameComplete: true,
+      }));
+
+      // Clear score update timer
+      if (scoreUpdateTimer) {
+        clearInterval(scoreUpdateTimer);
+        setScoreUpdateTimer(null);
+      }
+
+      console.log('Game completed with final score:', result.finalScore);
+    } catch (err) {
+      console.error('Error completing game:', err);
+      toast.error('Failed to complete game');
     }
   };
 
   const resetGame = async () => {
-    try {
-      setLoading(true);
-      setShowGameOverModal(false); // Close modal before resetting
-      const newGame = await fetchRandomGame();
-      setGameData(newGame);
-
-      setGameState({
-        score: 0,
-        attempts: 1,
-        maxAttempts: 5,
-        guessedAnswers: [],
-        incorrectAnswers: [],
-        currentInput: '',
-        showSuggestions: false,
-        gameComplete: false,
-        gameWon: false,
-        isShaking: false,
-        showConfetti: false,
-      });
-      setShowGoldShimmer(false);
-
-      setError(null);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to load new game');
-    } finally {
-      setLoading(false);
-      if (inputRef.current) {
-        inputRef.current.focus();
-      }
-    }
+    // For daily games, we just reload the page since you can only play once per day
+    window.location.reload();
   };
 
   // Development functions
-  const forceGameWin = () => {
+  const forceGameWin = async () => {
     if (!gameData) return;
 
     console.log('🎯 Forcing game win for development testing');
 
     // Fill all correct answers
-    const correctGuessedAnswers = gameData.correctAnswers.map((answer, index) => ({
+    const correctGuessedAnswers = gameData.solution.map((answer, index) => ({
       answer: answer,
       position: index + 1,
     }));
@@ -383,11 +444,13 @@ export const TopPage = ({ onBack }: { onBack?: () => void }) => {
     setGameState((prev) => ({
       ...prev,
       guessedAnswers: correctGuessedAnswers,
-      score: correctGuessedAnswers.length * 100,
       gameWon: true,
       gameComplete: true,
       showConfetti: false, // Will be set to true by the useEffect
     }));
+
+    // Complete the game
+    await handleGameComplete();
 
     // Trigger gold shimmer immediately for testing
     setTimeout(() => {
@@ -395,7 +458,7 @@ export const TopPage = ({ onBack }: { onBack?: () => void }) => {
     }, 100);
   };
 
-  const forceGameLoss = () => {
+  const forceGameLoss = async () => {
     if (!gameData) return;
 
     console.log('💔 Forcing game loss for development testing');
@@ -407,6 +470,9 @@ export const TopPage = ({ onBack }: { onBack?: () => void }) => {
       gameComplete: true,
       showConfetti: false,
     }));
+
+    // Complete the game
+    await handleGameComplete();
   };
 
   const handleBackToMenu = () => {
@@ -423,14 +489,14 @@ export const TopPage = ({ onBack }: { onBack?: () => void }) => {
   if (loading) {
     return (
       <GameLayout
-        gameTitle="Top X"
+        gameTitle="Top X Daily"
         score={0}
         attempts={1}
         maxAttempts={5}
         onBack={handleBackToMenu}
       >
         <CardContent className="flex items-center justify-center p-8">
-          <div className="text-lg font-medium text-card-foreground">Loading game...</div>
+          <div className="text-lg font-medium text-card-foreground">Loading today's game...</div>
         </CardContent>
       </GameLayout>
     );
@@ -440,7 +506,7 @@ export const TopPage = ({ onBack }: { onBack?: () => void }) => {
   if (error || !gameData) {
     return (
       <GameLayout
-        gameTitle="Top X"
+        gameTitle="Top X Daily"
         score={0}
         attempts={1}
         maxAttempts={5}
@@ -448,7 +514,7 @@ export const TopPage = ({ onBack }: { onBack?: () => void }) => {
       >
         <CardContent className="flex flex-col items-center justify-center p-8 space-y-4">
           <div className="text-lg font-medium text-destructive text-center">
-            {error || 'Failed to load game'}
+            {error || "Failed to load today's game"}
           </div>
           <Button onClick={() => window.location.reload()}>Try Again</Button>
         </CardContent>
@@ -458,7 +524,7 @@ export const TopPage = ({ onBack }: { onBack?: () => void }) => {
 
   return (
     <GameLayout
-      gameTitle="Top X"
+      gameTitle="Top X Daily"
       score={gameState.score}
       attempts={gameState.attempts}
       maxAttempts={gameState.maxAttempts}
@@ -519,7 +585,7 @@ export const TopPage = ({ onBack }: { onBack?: () => void }) => {
                 const value = e.target.value;
                 setGameState((prev) => ({ ...prev, currentInput: value }));
                 // If it's a complete suggestion match, treat it as a submission
-                if (gameData.searchSuggestions.includes(value)) {
+                if (gameData.suggestions.includes(value)) {
                   void handleSuggestionClick(value);
                 }
               }}
@@ -568,7 +634,7 @@ export const TopPage = ({ onBack }: { onBack?: () => void }) => {
 
             // When game is lost, show all correct answers
             const isGameLost = gameState.gameComplete && !gameState.gameWon;
-            const correctAnswer = isGameLost ? gameData.correctAnswers[index] : null;
+            const correctAnswer = isGameLost ? gameData.solution[index] : null;
             const answerToShow = guessedAnswer?.answer || correctAnswer;
             const wasGuessed = !!guessedAnswer;
 
@@ -761,12 +827,12 @@ export const TopPage = ({ onBack }: { onBack?: () => void }) => {
                   🎯 Correct Answers You Missed:
                 </h4>
                 <div className="space-y-1">
-                  {gameData.correctAnswers
+                  {gameData.solution
                     .filter(
                       (answer) => !gameState.guessedAnswers.some((ga) => ga.answer === answer)
                     )
                     .map((answer) => {
-                      const position = gameData.correctAnswers.indexOf(answer) + 1;
+                      const position = gameData.solution.indexOf(answer) + 1;
                       return (
                         <div
                           key={answer}
@@ -790,7 +856,7 @@ export const TopPage = ({ onBack }: { onBack?: () => void }) => {
                 }}
                 className="w-full"
               >
-                🎮 PLAY AGAIN
+                🔄 RELOAD GAME
               </Button>
             </div>
           </div>

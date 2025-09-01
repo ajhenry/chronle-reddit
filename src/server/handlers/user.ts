@@ -1,13 +1,10 @@
 import { Router } from 'express';
 import { reddit } from '../lib/reddit-provider';
-import { supabaseServer } from '../../shared/supabase-server';
+
 import type { UserInsert } from '../../shared/types/supabase';
+import { supabase } from '../../shared/supabase-server';
 
 const router = Router();
-
-// Supabase service key - this should ideally come from environment variables
-const supabaseServiceKey =
-  'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imd3bndzcXRmdmtnY2lobXdncnNqIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc1NjY2NzY0NCwiZXhwIjoyMDcyMjQzNjQ0fQ.Ya8OJnhoeHC4LJK7TFuf94L4Z_3rIhTxZtnt2foAgYA';
 
 // User sync endpoint - creates/updates user in Supabase
 router.post('/api/sync-user', async (_req, res): Promise<void> => {
@@ -29,14 +26,11 @@ router.post('/api/sync-user', async (_req, res): Promise<void> => {
     // Try to upsert the user in Supabase
     const userData: UserInsert = {
       id: userId,
-      reddit_handle: redditUsername,
-      last_seen_at: new Date().toISOString(),
+      reddit_id: redditUsername,
+      handle: redditUsername,
     };
 
-    const { data, error } = await supabaseServer(
-      'https://gwnwsqtfvkgcihmwgrsj.supabase.co',
-      supabaseServiceKey
-    )
+    const { data, error } = await supabase
       .from('users')
       .upsert(userData, {
         onConflict: 'id',
