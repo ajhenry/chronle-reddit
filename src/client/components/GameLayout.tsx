@@ -98,9 +98,9 @@ export const GameLayout = ({
         {/* Logo */}
         <div className="flex items-center gap-3">
           <Button variant="ghost" size="icon" onClick={onBack}>
-            <img src="/snoodle-logo.png" alt="Snoodle Logo" className="w-8 h-8 object-contain" />
+            <img src="/top-x-logo.png" alt="Top X Logo" className="w-12 h-12 object-contain" />
           </Button>
-          <h1 className="text-2xl font-semibold text-foreground">{gameTitle}</h1>
+          <h1 className="text-2xl font-semibold text-foreground hidden md:block">{gameTitle}</h1>
         </div>
 
         {/* Score */}
