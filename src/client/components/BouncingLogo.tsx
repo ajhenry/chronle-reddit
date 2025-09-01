@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { motion } from 'framer-motion';
 
 interface BouncingLogoProps {
@@ -11,16 +11,20 @@ export const BouncingLogo: React.FC<BouncingLogoProps> = ({ src, alt, className 
   const [position, setPosition] = useState({ x: 0, y: 0 });
   const [velocity, setVelocity] = useState({ x: 1, y: 1 });
   const [containerDimensions, setContainerDimensions] = useState({ width: 0, height: 200 });
+  const containerRef = useRef<HTMLDivElement>(null);
 
   const logoSize = 80;
 
   // Get container width on mount and resize
   useEffect(() => {
     const updateDimensions = () => {
-      setContainerDimensions({
-        width: window.innerWidth,
-        height: 200,
-      });
+      if (containerRef.current) {
+        const rect = containerRef.current.getBoundingClientRect();
+        setContainerDimensions({
+          width: rect.width,
+          height: 200,
+        });
+      }
     };
 
     updateDimensions();
@@ -59,6 +63,7 @@ export const BouncingLogo: React.FC<BouncingLogoProps> = ({ src, alt, className 
 
   return (
     <div
+      ref={containerRef}
       className="relative overflow-hidden w-full"
       style={{
         height: `${containerDimensions.height}px`,
