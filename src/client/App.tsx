@@ -1,5 +1,4 @@
 import { useState, useEffect } from 'react';
-import { getGameThemes } from './lib/theme-utils';
 import { TopPage } from './pages/top';
 import { Card, CardHeader, CardTitle, CardContent } from './components/ui/card';
 import { Button } from './components/ui/button';
@@ -23,8 +22,6 @@ export const App = () => {
       window.removeEventListener('popstate', handleRouteChange);
     };
   }, []);
-
-  const games = getGameThemes();
 
   const handleGameSelect = (gameId: string) => {
     if (gameId === 'topx') {
@@ -54,10 +51,22 @@ export const App = () => {
             alt="Snoodle Logo"
           />
         </Card>
-        <h1 className="text-4xl font-bold text-foreground mb-2">SNOODLE</h1>
-        <Card className="px-4 py-2 inline-block">
-          <p className="text-lg font-medium text-card-foreground">DAILY REDDIT GAMES</p>
-        </Card>
+        <div className="text-center space-y-4">
+          <div>
+            <div className="bg-primary px-8 py-4 border-4 border-border animate-bounce-shadow">
+              <h1 className="text-6xl font-black text-black tracking-tight leading-none">
+                SNOODLE
+              </h1>
+            </div>
+          </div>
+          <div>
+            <Card className="px-6 py-3 bg-card border-4 border-border shadow-lg">
+              <p className="text-xl font-bold text-card-foreground tracking-wide">
+                DAILY REDDIT CHALLENGES
+              </p>
+            </Card>
+          </div>
+        </div>
       </div>
 
       {/* User Welcome */}
@@ -77,26 +86,28 @@ export const App = () => {
 
       {/* Game Selection */}
       <div className="grid grid-cols-1 gap-6 w-full max-w-md">
-        {games.map((game) => (
-          <Card key={game.id} className="transition-all duration-200 hover:shadow-md">
-            <CardContent className="flex flex-col items-center space-y-4 p-6">
-              <div className="text-center">
-                <h3 className="text-2xl font-bold text-card-foreground mb-2">{game.name}</h3>
-                <div className="bg-muted px-3 py-1 rounded">
-                  <p className="text-card-foreground text-sm">{game.description}</p>
-                </div>
-              </div>
-              <Button
-                className="w-full"
-                variant={!game.available ? 'secondary' : 'default'}
-                onClick={() => handleGameSelect(game.id)}
-                disabled={!game.available}
-              >
-                {game.available ? 'PLAY NOW!' : 'COMING SOON'}
-              </Button>
-            </CardContent>
-          </Card>
-        ))}
+        {/* TOP X Game */}
+        <div className="flex flex-col items-center space-y-2 w-full">
+          <h3 className="text-xl font-bold text-card-foreground mb-2 text-center">
+            A game where you guess the top answers to trivia questions
+          </h3>
+          <button
+            onClick={() => handleGameSelect('topx')}
+            className="relative overflow-hidden border-4 border-border shadow-lg hover:shadow-xl transition-all duration-200 hover:translate-x-[-2px] hover:translate-y-[-2px] w-full"
+            style={{
+              backgroundImage: 'url(/top-x-button.png)',
+              backgroundSize: 'cover',
+              backgroundPosition: 'center',
+              backgroundRepeat: 'no-repeat',
+            }}
+          >
+            <div className="bg-black/20 p-8 flex items-center justify-center min-h-[100px]">
+              <h2 className="text-4xl font-black text-white tracking-wider drop-shadow-lg">
+                TOP X
+              </h2>
+            </div>
+          </button>
+        </div>
       </div>
 
       <footer className="flex gap-4 mt-8">

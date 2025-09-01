@@ -44,7 +44,7 @@ export const GameLayout = ({
         {/* Action Buttons */}
         <div className="flex items-center gap-2">
           {/* Leaderboard Button */}
-          <Button variant="ghost" size="icon" onClick={onLeaderboard}>
+          <Button variant="outline" size="icon" onClick={onLeaderboard}>
             <svg
               width="20"
               height="20"
@@ -62,7 +62,7 @@ export const GameLayout = ({
           </Button>
 
           {/* Help Button */}
-          <Button variant="ghost" size="icon" onClick={() => setShowHelpModal(true)}>
+          <Button variant="outline" size="icon" onClick={() => setShowHelpModal(true)}>
             <svg
               width="20"
               height="20"
@@ -102,7 +102,7 @@ export const GameLayout = ({
                 variant="ghost"
                 size="icon"
                 onClick={() => setShowHelpModal(false)}
-                className="text-xl font-semibold text-card-foreground hover:text-muted-foreground"
+                className="text-xl font-semibold text-card-foreground"
               >
                 ×
               </Button>
@@ -116,7 +116,7 @@ export const GameLayout = ({
                 <p>5. You have {maxAttempts} attempts total</p>
               </div>
               <Button onClick={() => setShowHelpModal(false)} className="w-full mt-6">
-                GOT IT!
+                GOT IT
               </Button>
             </CardContent>
           </Card>

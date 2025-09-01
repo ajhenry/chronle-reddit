@@ -25,6 +25,7 @@
   },
   "dependencies": {
     "@devvit/web": "0.12.0",
+    "@fontsource/dm-sans": "^5.2.6",
     "@radix-ui/react-dialog": "^1.1.15",
     "@radix-ui/react-dropdown-menu": "^2.1.16",
     "@radix-ui/react-popover": "^1.1.15",
@@ -36,6 +37,7 @@
     "devvit": "0.12.0",
     "express": "5.1.0",
     "lucide-react": "^0.542.0",
+    "pluralize": "^8.0.0",
     "react": "19.1.0",
     "react-dom": "19.1.0",
     "tailwind-merge": "^3.3.0",
@@ -45,6 +47,7 @@
     "@eslint/js": "9.23.0",
     "@tailwindcss/vite": "4.1.6",
     "@types/express": "5.0.1",
+    "@types/pluralize": "^0.0.33",
     "@types/react": "19.1.4",
     "@types/react-dom": "19.1.5",
     "@vitejs/plugin-react": "4.4.1",

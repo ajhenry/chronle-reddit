@@ -1,5 +1,10 @@
 @import 'tailwindcss';
-@import url('https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,100..1000;1,9..40,100..1000&display=swap');
+@import '@fontsource/dm-sans/400.css';
+@import '@fontsource/dm-sans/500.css';
+@import '@fontsource/dm-sans/600.css';
+@import '@fontsource/dm-sans/700.css';
+@import '@fontsource/dm-sans/800.css';
+@import '@fontsource/dm-sans/900.css';
 
 * {
   font-family: var(--font-sans);
@@ -28,12 +33,12 @@ body {
   --destructive-foreground: rgb(255, 255, 255);
   --border: rgb(0, 0, 0);
   --input: rgb(0, 0, 0);
-  --ring: rgb(255, 51, 51);
-  --chart-1: rgb(255, 51, 51);
+  --ring: rgb(255, 0, 0);
+  --chart-1: rgb(255, 0, 0);
   --chart-2: rgb(255, 255, 0);
-  --chart-3: rgb(0, 102, 255);
-  --chart-4: rgb(0, 204, 0);
-  --chart-5: rgb(204, 0, 204);
+  --chart-3: rgb(0, 0, 255);
+  --chart-4: rgb(0, 255, 0);
+  --chart-5: rgb(255, 0, 255);
   --sidebar: rgb(240, 240, 240);
   --sidebar-foreground: rgb(0, 0, 0);
   --sidebar-primary: rgb(255, 51, 51);
@@ -46,16 +51,21 @@ body {
   --font-serif: ui-serif, Georgia, Cambria, 'Times New Roman', Times, serif;
   --font-mono: Space Mono, monospace;
   --radius: 0px;
-  --shadow-2xs: 4px 4px 0px 0px hsl(0 0% 0% / 0.5);
-  --shadow-xs: 4px 4px 0px 0px hsl(0 0% 0% / 0.5);
-  --shadow-sm: 4px 4px 0px 0px hsl(0 0% 0% / 1), 4px 1px 2px -1px hsl(0 0% 0% / 1);
-  --shadow: 4px 4px 0px 0px hsl(0 0% 0% / 1), 4px 1px 2px -1px hsl(0 0% 0% / 1);
-  --shadow-md: 4px 4px 0px 0px hsl(0 0% 0% / 1), 4px 2px 4px -1px hsl(0 0% 0% / 1);
-  --shadow-lg: 4px 4px 0px 0px hsl(0 0% 0% / 1), 4px 4px 6px -1px hsl(0 0% 0% / 1);
-  --shadow-xl: 4px 4px 0px 0px hsl(0 0% 0% / 1), 4px 8px 10px -1px hsl(0 0% 0% / 1);
-  --shadow-2xl: 4px 4px 0px 0px hsl(0 0% 0% / 2.5);
+  --shadow-2xs: 4px 4px 0px 0px rgb(0, 0, 0);
+  --shadow-xs: 4px 4px 0px 0px rgb(0, 0, 0);
+  --shadow-sm: 6px 6px 0px 0px rgb(0, 0, 0);
+  --shadow: 6px 6px 0px 0px rgb(0, 0, 0);
+  --shadow-md: 8px 8px 0px 0px rgb(0, 0, 0);
+  --shadow-lg: 10px 10px 0px 0px rgb(0, 0, 0);
+  --shadow-xl: 12px 12px 0px 0px rgb(0, 0, 0);
+  --shadow-2xl: 14px 14px 0px 0px rgb(0, 0, 0);
   --tracking-normal: 0em;
   --spacing: 0.25rem;
+  --transition-fast: all 0.15s cubic-bezier(0.4, 0, 0.2, 1);
+  --transition-normal: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  --transform-hover: translate(-2px, -2px);
+  --shadow-hover: 10px 10px 0px 0px rgb(0, 0, 0);
+  --outline: 4px solid var(--ring);
 }
 
 .dark {
@@ -77,12 +87,12 @@ body {
   --destructive-foreground: rgb(0, 0, 0);
   --border: rgb(255, 255, 255);
   --input: rgb(255, 255, 255);
-  --ring: rgb(255, 102, 102);
-  --chart-1: rgb(255, 102, 102);
-  --chart-2: rgb(255, 255, 51);
-  --chart-3: rgb(51, 153, 255);
-  --chart-4: rgb(51, 204, 51);
-  --chart-5: rgb(204, 51, 204);
+  --ring: rgb(255, 0, 0);
+  --chart-1: rgb(255, 0, 0);
+  --chart-2: rgb(255, 255, 0);
+  --chart-3: rgb(0, 100, 255);
+  --chart-4: rgb(0, 255, 0);
+  --chart-5: rgb(255, 0, 255);
   --sidebar: rgb(0, 0, 0);
   --sidebar-foreground: rgb(255, 255, 255);
   --sidebar-primary: rgb(255, 102, 102);
@@ -95,14 +105,19 @@ body {
   --font-serif: ui-serif, Georgia, Cambria, 'Times New Roman', Times, serif;
   --font-mono: Space Mono, monospace;
   --radius: 0px;
-  --shadow-2xs: 4px 4px 0px 0px hsl(0 0% 0% / 0.5);
-  --shadow-xs: 4px 4px 0px 0px hsl(0 0% 0% / 0.5);
-  --shadow-sm: 4px 4px 0px 0px hsl(0 0% 0% / 1), 4px 1px 2px -1px hsl(0 0% 0% / 1);
-  --shadow: 4px 4px 0px 0px hsl(0 0% 0% / 1), 4px 1px 2px -1px hsl(0 0% 0% / 1);
-  --shadow-md: 4px 4px 0px 0px hsl(0 0% 0% / 1), 4px 2px 4px -1px hsl(0 0% 0% / 1);
-  --shadow-lg: 4px 4px 0px 0px hsl(0 0% 0% / 1), 4px 4px 6px -1px hsl(0 0% 0% / 1);
-  --shadow-xl: 4px 4px 0px 0px hsl(0 0% 0% / 1), 4px 8px 10px -1px hsl(0 0% 0% / 1);
-  --shadow-2xl: 4px 4px 0px 0px hsl(0 0% 0% / 2.5);
+  --shadow-2xs: 4px 4px 0px 0px rgb(255, 255, 255);
+  --shadow-xs: 4px 4px 0px 0px rgb(255, 255, 255);
+  --shadow-sm: 6px 6px 0px 0px rgb(255, 255, 255);
+  --shadow: 6px 6px 0px 0px rgb(255, 255, 255);
+  --shadow-md: 8px 8px 0px 0px rgb(255, 255, 255);
+  --shadow-lg: 10px 10px 0px 0px rgb(255, 255, 255);
+  --shadow-xl: 12px 12px 0px 0px rgb(255, 255, 255);
+  --shadow-2xl: 14px 14px 0px 0px rgb(255, 255, 255);
+  --transition-fast: all 0.15s cubic-bezier(0.4, 0, 0.2, 1);
+  --transition-normal: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  --transform-hover: translate(-2px, -2px);
+  --shadow-hover: 10px 10px 0px 0px rgb(255, 255, 255);
+  --outline: 4px solid var(--ring);
 }
 
 @theme inline {
@@ -156,4 +171,36 @@ body {
   --shadow-lg: var(--shadow-lg);
   --shadow-xl: var(--shadow-xl);
   --shadow-2xl: var(--shadow-2xl);
+}
+
+@keyframes bounce-shadow {
+  0%,
+  100% {
+    transform: translateY(0px);
+    box-shadow: 6px 6px 0px 0px rgb(0, 0, 0);
+  }
+  50% {
+    transform: translateY(-4px);
+    box-shadow: 10px 10px 0px 0px rgb(0, 0, 0);
+  }
+}
+
+@keyframes bounce-shadow-dark {
+  0%,
+  100% {
+    transform: translateY(0px);
+    box-shadow: 6px 6px 0px 0px rgb(255, 255, 255);
+  }
+  50% {
+    transform: translateY(-4px);
+    box-shadow: 10px 10px 0px 0px rgb(255, 255, 255);
+  }
+}
+
+.dark .animate-bounce-shadow {
+  animation: bounce-shadow-dark 3s ease-in-out infinite;
+}
+
+.animate-bounce-shadow {
+  animation: bounce-shadow 3s ease-in-out infinite;
 }

@@ -1,5 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
+import pluralize from 'pluralize';
 import { GameLayout } from '../components/GameLayout';
+
 import { Input } from '../components/ui/input';
 import { Card, CardContent } from '../components/ui/card';
 import { Button } from '../components/ui/button';
@@ -21,7 +23,13 @@ const parsePrompt = (prompt: string | undefined) => {
 
 // API functions
 const fetchRandomGame = async (): Promise<TopXGameData> => {
-  const response = await fetch('/api/topx/game/random');
+  const response = await fetch('/api/topx/games/random', {
+    method: 'GET',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+  });
+  console.log('Response:', response);
   if (!response.ok) {
     throw new Error('Failed to fetch game');
   }
@@ -71,6 +79,7 @@ export const TopPage = ({ onBack }: { onBack?: () => void }) => {
   const [gameData, setGameData] = useState<TopXGameData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [showDropdown, setShowDropdown] = useState(false);
   const [gameState, setGameState] = useState<GameState>({
     score: 0,
     attempts: 0,
@@ -87,6 +96,17 @@ export const TopPage = ({ onBack }: { onBack?: () => void }) => {
   const { number, category } = gameData
     ? parsePrompt(gameData.prompt)
     : { number: 3, category: 'items' };
+
+  // Filter suggestions based on current input
+  const filteredSuggestions =
+    gameData?.searchSuggestions
+      ?.filter(
+        (suggestion) =>
+          suggestion.toLowerCase().includes(gameState.currentInput.toLowerCase()) &&
+          !gameState.guessedAnswers.includes(suggestion) &&
+          !gameState.incorrectAnswers.includes(suggestion)
+      )
+      .slice(0, 8) || []; // Limit to 8 suggestions for better UX
 
   // Fetch game data on mount
   useEffect(() => {
@@ -271,79 +291,112 @@ export const TopPage = ({ onBack }: { onBack?: () => void }) => {
       {/* Game Content */}
       <div className="space-y-6">
         {/* Prompt */}
-        <Card className="text-center">
-          <CardContent>
-            <h2 className="text-lg font-semibold text-card-foreground mb-2">TODAY'S CHALLENGE</h2>
-            <p className="text-base text-card-foreground">{gameData.prompt}</p>
-          </CardContent>
-        </Card>
+        <h2 className="font-black text-foreground text-3xl tracking-tight text-center">
+          {gameData.prompt}
+        </h2>
 
-        {/* Input Section */}
+        {/* Input Section with Dropdown */}
         {!gameState.gameComplete && (
-          <Input
-            ref={inputRef}
-            value={gameState.currentInput}
-            onChange={(e) => {
-              const value = e.target.value;
-              setGameState((prev) => ({ ...prev, currentInput: value }));
-              // If it's a complete suggestion match, treat it as a submission
-              if (gameData.searchSuggestions.includes(value)) {
-                void handleSuggestionClick(value);
-              }
-            }}
-            placeholder="Type your answer..."
-            disabled={gameState.gameComplete}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter' && gameState.currentInput.trim()) {
-                void handleSuggestionClick(gameState.currentInput.trim());
-              }
-            }}
-          />
+          <div className="relative">
+            <Input
+              ref={inputRef}
+              value={gameState.currentInput}
+              onChange={(e) => {
+                const value = e.target.value;
+                setGameState((prev) => ({ ...prev, currentInput: value }));
+                // If it's a complete suggestion match, treat it as a submission
+                if (gameData.searchSuggestions.includes(value)) {
+                  void handleSuggestionClick(value);
+                }
+              }}
+              placeholder="Type your answer..."
+              disabled={gameState.gameComplete}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' && gameState.currentInput.trim()) {
+                  void handleSuggestionClick(gameState.currentInput.trim());
+                }
+              }}
+              onFocus={() => setShowDropdown(true)}
+              onBlur={() => setTimeout(() => setShowDropdown(false), 200)}
+            />
+
+            {/* Dropdown Suggestions */}
+            {showDropdown && gameState.currentInput && filteredSuggestions.length > 0 && (
+              <div className="absolute top-full left-0 right-0 z-50 mt-1 bg-background border-2 border-border rounded-none max-h-60 overflow-y-auto">
+                {filteredSuggestions.map((suggestion, index) => (
+                  <button
+                    key={index}
+                    className="w-full px-4 py-3 text-left text-foreground hover:bg-accent hover:text-accent-foreground transition-colors duration-150 border-b border-border last:border-b-0"
+                    onClick={() => {
+                      void handleSuggestionClick(suggestion);
+                      setShowDropdown(false);
+                    }}
+                    onMouseDown={(e) => e.preventDefault()} // Prevent blur on click
+                  >
+                    {suggestion}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
         )}
 
-        {/* Answer List */}
-        <Card>
-          <CardContent>
-            <h3 className="text-lg font-semibold text-card-foreground mb-4 text-center">
-              The top {number} {category}
-            </h3>
-            <div className="space-y-3">
-              {gameState.guessedAnswers.map((answer, index) => (
-                <div
-                  key={index}
-                  className="flex items-center gap-4 p-3 bg-green-50 border border-green-200 rounded-md"
-                >
-                  <div className="w-8 h-8 bg-green-600 text-white font-semibold flex items-center justify-center rounded">
-                    {index + 1}
-                  </div>
-                  <div className="text-card-foreground">{answer}</div>
-                </div>
-              ))}
-            </div>
+        {/* Answer List Title */}
+        <h3 className="text-lg font-bold text-foreground mb-4 text-center">
+          Top {number} {pluralize(category, number)}
+        </h3>
 
-            {/* Incorrect Answers */}
-            {gameState.incorrectAnswers.length > 0 && (
-              <div className="mt-6 pt-4 border-t">
-                <h4 className="text-base font-medium text-card-foreground mb-3 text-center">
-                  Incorrect Answers
-                </h4>
-                <div className="space-y-2">
-                  {gameState.incorrectAnswers.map((answer, index) => (
+        {/* Correct Answers */}
+        <div className="space-y-3">
+          {Array.from({ length: number }, (_, index) => {
+            const guessedAnswer = gameState.guessedAnswers[index];
+            return (
+              <Card key={index}>
+                <CardContent className="p-3">
+                  <div className="flex items-center gap-4">
                     <div
-                      key={index}
-                      className="flex items-center gap-4 p-2 bg-red-50 border border-red-200 rounded-md"
+                      className={`w-8 h-8 text-white font-semibold flex items-center justify-center rounded ${
+                        guessedAnswer ? 'bg-green-600' : 'bg-gray-400'
+                      }`}
                     >
+                      {index + 1}
+                    </div>
+                    <div
+                      className={`${
+                        guessedAnswer ? 'text-card-foreground' : 'text-muted-foreground italic'
+                      }`}
+                    >
+                      {guessedAnswer ?? ''}
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+            );
+          })}
+        </div>
+
+        {/* Incorrect Answers */}
+        {gameState.incorrectAnswers.length > 0 && (
+          <div className="mt-6">
+            <h4 className="text-base font-semibold text-foreground mb-3 text-center">
+              Incorrect Answers
+            </h4>
+            <div className="space-y-2">
+              {gameState.incorrectAnswers.map((answer, index) => (
+                <Card key={index}>
+                  <CardContent className="p-2">
+                    <div className="flex items-center gap-4">
                       <div className="w-6 h-6 bg-red-600 text-white font-semibold flex items-center justify-center text-sm rounded">
                         ✗
                       </div>
-                      <div className="text-card-foreground text-sm">{answer}</div>
+                      <div className="text-card-foreground text-sm text-medium">{answer}</div>
                     </div>
-                  ))}
-                </div>
-              </div>
-            )}
-          </CardContent>
-        </Card>
+                  </CardContent>
+                </Card>
+              ))}
+            </div>
+          </div>
+        )}
 
         {/* Game Complete Message */}
         {gameState.gameComplete && (
