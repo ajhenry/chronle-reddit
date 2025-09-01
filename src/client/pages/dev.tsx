@@ -12,10 +12,12 @@ import {
   Trophy,
   GamepadIcon,
   ArrowLeft,
+  Puzzle,
 } from 'lucide-react';
 import { Season, TopXGameData } from '../../shared/types/api';
 import { apiFetch } from '../lib/utils';
 import { toast } from 'sonner';
+import { MOCK_GAMES } from '../lib/lettered-utils';
 
 interface DevPageProps {
   onBack?: () => void;
@@ -175,6 +177,17 @@ export const DevPage = ({ onBack }: DevPageProps) => {
     }
   };
 
+  const handleTestLetteredGame = (gameIndex: number) => {
+    // Store the selected game in localStorage for the lettered page to pick up
+    localStorage.setItem('dev_lettered_game_index', gameIndex.toString());
+
+    // Navigate to lettered page
+    window.history.pushState(null, '', '/lettered');
+    window.dispatchEvent(new PopStateEvent('popstate'));
+
+    toast.success(`Testing lettered game: ${MOCK_GAMES[gameIndex]?.phrase}`, { duration: 2000 });
+  };
+
   if (loading) {
     return (
       <div className="min-h-screen bg-background p-4">
@@ -250,7 +263,7 @@ export const DevPage = ({ onBack }: DevPageProps) => {
           </Card>
         )}
 
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-6">
           {/* Season Management */}
           <Card>
             <CardHeader>
@@ -337,9 +350,7 @@ export const DevPage = ({ onBack }: DevPageProps) => {
                 {games.map((game) => (
                   <div key={game.id} className="p-2 border rounded">
                     <div className="font-medium text-sm">{game.prompt}</div>
-                    <div className="text-xs text-muted-foreground">
-                      {game.category} • {game.number} answers • {game.correctAnswers.length} correct
-                    </div>
+                    <div className="text-xs text-muted-foreground">{game.category}</div>
                   </div>
                 ))}
               </div>
@@ -348,6 +359,67 @@ export const DevPage = ({ onBack }: DevPageProps) => {
                 <h4 className="text-sm font-semibold">Actions</h4>
                 <div className="text-xs text-muted-foreground">
                   Game session tracking has been removed.
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* Lettered Game Testing */}
+          <Card>
+            <CardHeader>
+              <div className="flex items-center gap-2">
+                <Puzzle className="h-5 w-5 text-primary" />
+                <CardTitle>Lettered Game Testing</CardTitle>
+              </div>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="flex justify-between items-center">
+                <h4 className="text-sm font-semibold">Available Boards</h4>
+                <Badge variant="outline">{MOCK_GAMES.length} boards</Badge>
+              </div>
+
+              <div className="space-y-2 max-h-64 overflow-y-auto">
+                {MOCK_GAMES.map((game, index) => (
+                  <div key={index} className="p-2 border rounded">
+                    <div className="flex items-center justify-between">
+                      <div className="flex-1">
+                        <div className="font-medium text-sm">{game.phrase}</div>
+                        <div className="text-xs text-muted-foreground">{game.category}</div>
+                      </div>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => handleTestLetteredGame(index)}
+                        className="ml-2"
+                      >
+                        Test
+                      </Button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              <div className="space-y-2">
+                <h4 className="text-sm font-semibold">Quick Actions</h4>
+                <div className="flex gap-2 flex-wrap">
+                  <Button
+                    size="sm"
+                    variant="default"
+                    onClick={() => handleTestLetteredGame(0)}
+                    className="text-xs"
+                  >
+                    Test First Board
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() =>
+                      handleTestLetteredGame(Math.floor(Math.random() * MOCK_GAMES.length))
+                    }
+                    className="text-xs"
+                  >
+                    Random Board
+                  </Button>
                 </div>
               </div>
             </CardContent>

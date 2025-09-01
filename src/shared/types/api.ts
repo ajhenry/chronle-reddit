@@ -157,3 +157,70 @@ export type EraseTopXResultsResponse = {
     sessionDeleted: boolean;
   };
 };
+
+// Lettered Game Types
+export type GridPosition = {
+  row: number;
+  col: number;
+};
+
+export type GridCell = {
+  letter: string | null; // null for empty cells
+  isPreFilled: boolean; // true for letters that start on the board
+  isSpace: boolean; // true for word boundaries (gray squares)
+  isUnused: boolean; // true for cells not part of the phrase (gray squares)
+};
+
+export type TetrisPiece = {
+  id: string;
+  letters: string[];
+  shape: GridPosition[]; // relative positions of each letter in the piece
+  color: string; // for visual distinction
+};
+
+export type LetteredGameData = {
+  id: string;
+  category: string;
+  phrase: string;
+  grid: GridCell[][]; // 8x8 grid
+  pieces: TetrisPiece[];
+  solution: GridPosition[][]; // where each piece should be placed
+  created_at: string;
+  updated_at: string;
+};
+
+export type LetteredGameResponse = {
+  type: 'lettered_game';
+  game: LetteredGameData;
+};
+
+export type LetteredDailyGameResponse = {
+  type: 'lettered_daily_game';
+  dailyGameId: string;
+  game: LetteredGameData;
+  day: string; // ISO date string
+  session?: {
+    id: string;
+    startedAt: string;
+    currentScore: number;
+    initialScore: number;
+    isCompleted: boolean;
+    placedPieces: Array<{
+      pieceId: string;
+      position: GridPosition;
+      placedAt: string;
+    }>;
+  };
+};
+
+export type LetteredSubmissionResponse = {
+  type: 'lettered_submission';
+  submissionId: string;
+  accepted: boolean;
+};
+
+export type LetteredGameCompleteResponse = {
+  type: 'lettered_game_complete';
+  finalScore: number;
+  isValid: boolean;
+};

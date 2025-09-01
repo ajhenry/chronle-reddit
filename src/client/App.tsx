@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { TopPage } from './pages/top';
 import { DevPage } from './pages/dev';
+import { LetteredPage } from './pages/lettered';
 import { Card, CardHeader, CardTitle, CardContent } from './components/ui/card';
 import { Button } from './components/ui/button';
 import { BouncingLogo } from './components/BouncingLogo';
@@ -81,6 +82,9 @@ export const App = () => {
     if (gameId === 'topx') {
       window.history.pushState(null, '', '/top');
       setCurrentRoute('/top');
+    } else if (gameId === 'lettered') {
+      window.history.pushState(null, '', '/lettered');
+      setCurrentRoute('/lettered');
     }
   };
 
@@ -107,6 +111,10 @@ export const App = () => {
   // Route handling
   if (currentRoute === '/top') {
     return <TopPage onBack={handleBackToMenu} />;
+  }
+
+  if (currentRoute === '/lettered') {
+    return <LetteredPage onBack={handleBackToMenu} />;
   }
 
   if (currentRoute === '/leaderboard') {
@@ -208,6 +216,29 @@ export const App = () => {
               </button>
               <h3 className="text-xl font-bold text-card-foreground mb-2 text-center mt-2">
                 A game where you guess the top answers to trivia questions
+              </h3>
+            </div>
+
+            {/* LETTERED Game */}
+            <div className="flex flex-col items-center space-y-2 w-full">
+              <button
+                onClick={() => handleGameSelect('lettered')}
+                className="relative overflow-hidden border-4 border-border shadow-lg hover:shadow-xl transition-all duration-200 hover:translate-x-[-2px] hover:translate-y-[-2px] w-full"
+                style={{
+                  backgroundImage: 'url(/lettered-button.png)',
+                  backgroundSize: 'cover',
+                  backgroundPosition: 'center',
+                  backgroundRepeat: 'no-repeat',
+                }}
+              >
+                <div className="bg-black/20 py-8 flex items-center justify-center min-h-[100px]">
+                  <h2 className="text-4xl font-black text-white tracking-wider drop-shadow-lg">
+                    LETTERED
+                  </h2>
+                </div>
+              </button>
+              <h3 className="text-xl font-bold text-card-foreground mb-2 text-center mt-2">
+                A crossover between Wheel of Fortune and Tetris
               </h3>
             </div>
           </div>
