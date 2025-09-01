@@ -10,7 +10,34 @@ interface GameLayoutProps {
   children: ReactNode;
   onBack: () => void;
   onLeaderboard?: () => void;
+  isAttemptsAnimating?: boolean;
+  previousAttempts?: number;
 }
+
+const AnimatedNumber = ({
+  current,
+  previous,
+  isAnimating,
+}: {
+  current: number;
+  previous: number;
+  isAnimating: boolean;
+}) => {
+  if (!isAnimating) {
+    return <span>{current}</span>;
+  }
+
+  return (
+    <span className="number-container">
+      <span key={`out-${previous}`} className="absolute animate-number-push-out">
+        {previous}
+      </span>
+      <span key={`in-${current}`} className="animate-number-push-up">
+        {current}
+      </span>
+    </span>
+  );
+};
 
 export const GameLayout = ({
   gameTitle,
@@ -20,6 +47,8 @@ export const GameLayout = ({
   children,
   onBack,
   onLeaderboard,
+  isAttemptsAnimating = false,
+  previousAttempts = 0,
 }: GameLayoutProps) => {
   const [showHelpModal, setShowHelpModal] = useState(false);
 
@@ -84,7 +113,13 @@ export const GameLayout = ({
       <div className="text-center mb-6">
         <Card className="px-4 py-2 inline-block">
           <span className="font-medium text-card-foreground">
-            ATTEMPTS: {attempts}/{maxAttempts}
+            ATTEMPTS:{' '}
+            <AnimatedNumber
+              current={attempts}
+              previous={previousAttempts}
+              isAnimating={isAttemptsAnimating}
+            />
+            /{maxAttempts}
           </span>
         </Card>
       </div>

@@ -6,6 +6,7 @@ import { Input } from '../components/ui/input';
 import { Card, CardContent } from '../components/ui/card';
 import { Button } from '../components/ui/button';
 import { TopXGameData, TopXValidateResponse } from '../../shared/types/api';
+import { apiFetch } from '../lib/utils';
 
 // Function to parse prompt and extract number and category
 const parsePrompt = (prompt: string | undefined) => {
@@ -23,11 +24,8 @@ const parsePrompt = (prompt: string | undefined) => {
 
 // API functions
 const fetchRandomGame = async (): Promise<TopXGameData> => {
-  const response = await fetch('/api/topx/games/random', {
+  const response = await apiFetch('/api/topx/games/random', {
     method: 'GET',
-    headers: {
-      'Content-Type': 'application/json',
-    },
   });
   console.log('Response:', response);
   if (!response.ok) {
@@ -43,11 +41,8 @@ const validateAnswer = async (
   guessedAnswers: string[],
   maxAttempts: number
 ): Promise<TopXValidateResponse> => {
-  const response = await fetch(`/api/topx/game/${gameId}/validate`, {
+  const response = await apiFetch(`/api/topx/game/${gameId}/validate`, {
     method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-    },
     body: JSON.stringify({
       answer,
       guessedAnswers,
@@ -72,6 +67,9 @@ interface GameState {
   showSuggestions: boolean;
   gameComplete: boolean;
   gameWon: boolean;
+  isShaking: boolean;
+  isAttemptsAnimating: boolean;
+  previousAttempts: number;
 }
 
 export const TopPage = ({ onBack }: { onBack?: () => void }) => {
@@ -90,6 +88,9 @@ export const TopPage = ({ onBack }: { onBack?: () => void }) => {
     showSuggestions: false,
     gameComplete: false,
     gameWon: false,
+    isShaking: false,
+    isAttemptsAnimating: false,
+    previousAttempts: 0,
   });
 
   // Parse the prompt to extract number and category
@@ -133,6 +134,39 @@ export const TopPage = ({ onBack }: { onBack?: () => void }) => {
     }
   }, [loading, gameData]);
 
+  // Reset shake animation after it completes and trigger attempts counter animation
+  useEffect(() => {
+    if (gameState.isShaking) {
+      const timer = setTimeout(() => {
+        setGameState((prev) => ({
+          ...prev,
+          isShaking: false,
+          isAttemptsAnimating: true,
+        }));
+      }, 500); // Match the animation duration (0.5s)
+      return () => clearTimeout(timer);
+    }
+  }, [gameState.isShaking]);
+
+  // Reset attempts counter animation after it completes
+  useEffect(() => {
+    if (gameState.isAttemptsAnimating) {
+      const timer = setTimeout(() => {
+        setGameState((prev) => ({
+          ...prev,
+          isAttemptsAnimating: false,
+          previousAttempts: prev.attempts,
+        }));
+      }, 600); // Match the animation duration (0.6s)
+      return () => clearTimeout(timer);
+    }
+  }, [gameState.isAttemptsAnimating]);
+
+  // Function to trigger shake animation
+  const triggerShake = () => {
+    setGameState((prev) => ({ ...prev, isShaking: true }));
+  };
+
   const handleSuggestionClick = async (suggestion: string) => {
     if (!gameData) return;
 
@@ -160,9 +194,11 @@ export const TopPage = ({ onBack }: { onBack?: () => void }) => {
         }));
       } else {
         const newIncorrectAnswers = [...gameState.incorrectAnswers, suggestion];
+        triggerShake(); // Trigger shake animation for wrong answer
         setGameState((prev) => ({
           ...prev,
           incorrectAnswers: newIncorrectAnswers,
+          previousAttempts: prev.attempts, // Store current attempts before incrementing
           attempts: prev.attempts + 1,
           currentInput: '',
           showSuggestions: false,
@@ -191,9 +227,11 @@ export const TopPage = ({ onBack }: { onBack?: () => void }) => {
         }));
       } else {
         const newIncorrectAnswers = [...gameState.incorrectAnswers, suggestion];
+        triggerShake(); // Trigger shake animation for wrong answer
         setGameState((prev) => ({
           ...prev,
           incorrectAnswers: newIncorrectAnswers,
+          previousAttempts: prev.attempts, // Store current attempts before incrementing
           attempts: newAttempts,
           currentInput: '',
           showSuggestions: false,
@@ -219,6 +257,9 @@ export const TopPage = ({ onBack }: { onBack?: () => void }) => {
         showSuggestions: false,
         gameComplete: false,
         gameWon: false,
+        isShaking: false,
+        isAttemptsAnimating: false,
+        previousAttempts: 0,
       });
 
       setError(null);
@@ -287,6 +328,8 @@ export const TopPage = ({ onBack }: { onBack?: () => void }) => {
       maxAttempts={gameState.maxAttempts}
       onBack={handleBackToMenu}
       onLeaderboard={() => console.log('Leaderboard clicked')}
+      isAttemptsAnimating={gameState.isAttemptsAnimating}
+      previousAttempts={gameState.previousAttempts}
     >
       {/* Game Content */}
       <div className="space-y-6">
@@ -311,6 +354,7 @@ export const TopPage = ({ onBack }: { onBack?: () => void }) => {
               }}
               placeholder="Type your answer..."
               disabled={gameState.gameComplete}
+              className={gameState.isShaking ? 'animate-shake' : ''}
               onKeyDown={(e) => {
                 if (e.key === 'Enter' && gameState.currentInput.trim()) {
                   void handleSuggestionClick(gameState.currentInput.trim());

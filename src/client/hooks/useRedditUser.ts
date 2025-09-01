@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
+import { apiFetch } from '../lib/utils';
 
 // Reddit user type - moved from shared types since client shouldn't depend on Supabase types
 export interface RedditUser {
@@ -28,11 +29,8 @@ export const useRedditUser = () => {
       try {
         setState((prev) => ({ ...prev, loading: true, error: null }));
 
-        const response = await fetch('/api/sync-user', {
+        const response = await apiFetch('/api/sync-user', {
           method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
         });
 
         if (!response.ok) {
@@ -68,11 +66,8 @@ export const useRedditUser = () => {
     try {
       setState((prev) => ({ ...prev, loading: true, error: null }));
 
-      const response = await fetch('/api/sync-user', {
+      const response = await apiFetch('/api/sync-user', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
       });
 
       if (!response.ok) {

@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import type { InitResponse, IncrementResponse, DecrementResponse } from '../../shared/types/api';
+import { apiFetch } from '../lib/utils';
 
 interface CounterState {
   count: number;
@@ -19,7 +20,7 @@ export const useCounter = () => {
   useEffect(() => {
     const init = async () => {
       try {
-        const res = await fetch('/api/init');
+        const res = await apiFetch('/api/init');
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
         const data: InitResponse = await res.json();
         if (data.type !== 'init') throw new Error('Unexpected response');
@@ -40,9 +41,8 @@ export const useCounter = () => {
         return;
       }
       try {
-        const res = await fetch(`/api/${action}`, {
+        const res = await apiFetch(`/api/${action}`, {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({}),
         });
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
