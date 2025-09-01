@@ -65,11 +65,16 @@ const validateAnswer = async (
   return await response.json();
 };
 
+interface GuessedAnswer {
+  answer: string;
+  position: number;
+}
+
 interface GameState {
   score: number;
   attempts: number;
   maxAttempts: number;
-  guessedAnswers: string[];
+  guessedAnswers: GuessedAnswer[];
   incorrectAnswers: string[];
   currentInput: string;
   showSuggestions: boolean;
@@ -109,7 +114,7 @@ export const TopPage = ({ onBack }: { onBack?: () => void }) => {
       ?.filter(
         (suggestion) =>
           suggestion.toLowerCase().includes(gameState.currentInput.toLowerCase()) &&
-          !gameState.guessedAnswers.includes(suggestion) &&
+          !gameState.guessedAnswers.some((ga) => ga.answer === suggestion) &&
           !gameState.incorrectAnswers.includes(suggestion)
       )
       .slice(0, 8) || []; // Limit to 8 suggestions for better UX
@@ -182,12 +187,16 @@ export const TopPage = ({ onBack }: { onBack?: () => void }) => {
       const result = await validateAnswer(
         gameData.id,
         suggestion,
-        gameState.guessedAnswers,
+        gameState.guessedAnswers.map((ga) => ga.answer),
         gameState.maxAttempts
       );
 
       if (result.isCorrect) {
-        const newGuessedAnswers = [...gameState.guessedAnswers, suggestion];
+        const newGuessedAnswer: GuessedAnswer = {
+          answer: suggestion,
+          position: result.position || 1, // fallback to 1 if position is undefined
+        };
+        const newGuessedAnswers = [...gameState.guessedAnswers, newGuessedAnswer];
         const newScore = gameState.score + 100; // 100 points per correct answer
 
         setGameState((prev) => ({
@@ -218,7 +227,13 @@ export const TopPage = ({ onBack }: { onBack?: () => void }) => {
       const isCorrect = gameData.correctAnswers.includes(suggestion);
 
       if (isCorrect) {
-        const newGuessedAnswers = [...gameState.guessedAnswers, suggestion];
+        // For fallback validation, we need to find the position from correctAnswers
+        const position = gameData.correctAnswers.indexOf(suggestion) + 1;
+        const newGuessedAnswer: GuessedAnswer = {
+          answer: suggestion,
+          position: position,
+        };
+        const newGuessedAnswers = [...gameState.guessedAnswers, newGuessedAnswer];
         const newScore = gameState.score + 100;
 
         setGameState((prev) => ({
@@ -392,7 +407,11 @@ export const TopPage = ({ onBack }: { onBack?: () => void }) => {
         {/* Correct Answers */}
         <div className="space-y-3">
           {Array.from({ length: number }, (_, index) => {
-            const guessedAnswer = gameState.guessedAnswers[index];
+            const position = index + 1;
+            // Find the guessed answer for this position
+            const guessedAnswer = gameState.guessedAnswers.find(
+              (answer) => answer.position === position
+            );
             return (
               <Card key={index}>
                 <CardContent className="p-3">
@@ -402,14 +421,14 @@ export const TopPage = ({ onBack }: { onBack?: () => void }) => {
                         guessedAnswer ? 'bg-green-600' : 'bg-gray-400'
                       }`}
                     >
-                      {index + 1}
+                      {position}
                     </div>
                     <div
                       className={`${
                         guessedAnswer ? 'text-card-foreground' : 'text-muted-foreground italic'
                       }`}
                     >
-                      {guessedAnswer ?? ''}
+                      {guessedAnswer?.answer ?? ''}
                     </div>
                   </div>
                 </CardContent>
@@ -495,14 +514,16 @@ export const TopPage = ({ onBack }: { onBack?: () => void }) => {
                   ✅ Correct Answers Found:
                 </h4>
                 <div className="space-y-1">
-                  {gameState.guessedAnswers.map((answer, index) => (
-                    <div
-                      key={answer}
-                      className="text-sm text-green-600 bg-green-50 px-2 py-1 rounded"
-                    >
-                      {index + 1}. {answer}
-                    </div>
-                  ))}
+                  {gameState.guessedAnswers
+                    .sort((a, b) => a.position - b.position)
+                    .map((guessedAnswer) => (
+                      <div
+                        key={guessedAnswer.answer}
+                        className="text-sm text-green-600 bg-green-50 px-2 py-1 rounded"
+                      >
+                        {guessedAnswer.position}. {guessedAnswer.answer}
+                      </div>
+                    ))}
                 </div>
               </div>
             )}
@@ -529,15 +550,20 @@ export const TopPage = ({ onBack }: { onBack?: () => void }) => {
                 </h4>
                 <div className="space-y-1">
                   {gameData.correctAnswers
-                    .filter((answer) => !gameState.guessedAnswers.includes(answer))
-                    .map((answer, index) => (
-                      <div
-                        key={answer}
-                        className="text-sm text-blue-600 bg-blue-50 px-2 py-1 rounded"
-                      >
-                        {gameState.guessedAnswers.length + index + 1}. {answer}
-                      </div>
-                    ))}
+                    .filter(
+                      (answer) => !gameState.guessedAnswers.some((ga) => ga.answer === answer)
+                    )
+                    .map((answer) => {
+                      const position = gameData.correctAnswers.indexOf(answer) + 1;
+                      return (
+                        <div
+                          key={answer}
+                          className="text-sm text-blue-600 bg-blue-50 px-2 py-1 rounded"
+                        >
+                          {position}. {answer}
+                        </div>
+                      );
+                    })}
                 </div>
               </div>
             )}
