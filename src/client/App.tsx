@@ -119,7 +119,7 @@ export const App = () => {
 
   if (currentRoute === '/leaderboard') {
     return (
-      <div className="min-h-screen bg-background p-4">
+      <div className="p-4 min-h-screen bg-background">
         {currentSeasonId && (
           <Leaderboard seasonId={currentSeasonId} onClose={handleBackFromLeaderboard} />
         )}
@@ -134,31 +134,31 @@ export const App = () => {
   return (
     <div className="flex relative flex-col min-h-screen bg-background">
       {/* Main Container */}
-      <div className="container mx-auto px-4 py-6 max-w-4xl">
+      <div className="container px-4 py-6 mx-auto max-w-4xl">
         {/* Content Container with max-width constraint */}
-        <div className="flex flex-col justify-center items-center flex-1 gap-8 my-6 w-full max-w-md mx-auto">
+        <div className="flex flex-col flex-1 gap-8 justify-center items-center mx-auto my-6 w-full max-w-md">
           {/* Bouncing Logo */}
           <div className="w-full">
             <BouncingLogo src="/top-x-logo.png" alt="Top X Logo" />
           </div>
 
           {/* Snoodle Logo */}
-          <div className="text-center w-full">
-            <div className="text-center space-y-4">
+          <div className="w-full text-center">
+            <div className="space-y-4 text-center">
               <div className="relative animate-bounce-shadow">
                 {/* Season Banner */}
-                <div className="absolute -top-2 -left-2 z-10 bg-black text-white px-3 py-1 border-2 border-black transform -rotate-12">
+                <div className="absolute -top-2 -left-2 z-10 px-3 py-1 text-white bg-black border-2 border-black transform -rotate-12">
                   <span className="text-sm font-bold tracking-wide">PRESEASON</span>
                 </div>
-                <div className="bg-primary py-4 border-4 border-border">
-                  <h1 className="text-6xl font-black text-black tracking-tight leading-none">
+                <div className="py-4 border-4 bg-primary border-border">
+                  <h1 className="text-6xl font-black tracking-tight leading-none text-black">
                     SNOODLE
                   </h1>
                 </div>
               </div>
               <div>
-                <Card className="py-3 bg-card border-4 border-border">
-                  <p className="text-xl font-bold text-card-foreground tracking-wide">
+                <Card className="py-3 border-4 bg-card border-border">
+                  <p className="text-xl font-bold tracking-wide text-card-foreground">
                     THE DAILY REDDIT GAMES
                   </p>
                 </Card>
@@ -168,25 +168,25 @@ export const App = () => {
 
           {/* User Welcome */}
           {showWelcome && (
-            <Card className="w-full max-w-md relative">
+            <Card className="relative w-full max-w-md">
               <CardHeader className="pb-2">
                 <div className="flex justify-between items-center">
-                  <CardTitle className="text-center flex-1">WELCOME!</CardTitle>
+                  <CardTitle className="flex-1 text-center">WELCOME!</CardTitle>
                   <Button
                     variant="ghost"
                     size="sm"
                     onClick={dismissWelcome}
-                    className="h-8 w-8 p-0 hover:bg-gray-100 rounded-full"
+                    className="p-0 w-8 h-8 rounded-full hover:bg-gray-100"
                     aria-label="Dismiss welcome message"
                   >
-                    <X className="h-4 w-4" />
+                    <X className="w-4 h-4" />
                   </Button>
                 </div>
               </CardHeader>
               <CardContent>
                 <div className="text-center">
-                  <p className="font-medium text-card-foreground text-lg">CHOOSE A GAME TO PLAY!</p>
-                  <p className="text-card-foreground text-sm mt-1">
+                  <p className="text-lg font-medium text-card-foreground">CHOOSE A GAME TO PLAY!</p>
+                  <p className="mt-1 text-sm text-card-foreground">
                     Each game can be played once per day!
                   </p>
                 </div>
@@ -209,13 +209,13 @@ export const App = () => {
                 }}
               >
                 <div className="bg-black/20 py-8 flex items-center justify-center min-h-[100px]">
-                  <h2 className="text-4xl font-black text-white tracking-wider drop-shadow-lg">
+                  <h2 className="text-4xl font-black tracking-wider text-white drop-shadow-lg">
                     TOP X
                   </h2>
                 </div>
               </button>
-              <h3 className="text-xl font-bold text-card-foreground mb-2 text-center mt-2">
-                A game where you guess the top answers to trivia questions
+              <h3 className="mt-2 mb-2 text-xl font-bold text-center text-card-foreground">
+                Guess the top answers to trivia questions
               </h3>
             </div>
 
@@ -231,20 +231,20 @@ export const App = () => {
                   backgroundRepeat: 'no-repeat',
                 }}
               >
-                <div className="bg-black/20 py-8 flex items-center justify-center min-h-[100px]">
-                  <h2 className="text-4xl font-black text-white tracking-wider drop-shadow-lg">
+                <div className="py-8 flex items-center justify-center min-h-[100px]">
+                  <h2 className="p-2 -m-2 text-4xl font-black tracking-wider text-white bg-black">
                     LETTERED
                   </h2>
                 </div>
               </button>
-              <h3 className="text-xl font-bold text-card-foreground mb-2 text-center mt-2">
-                A crossover between Wheel of Fortune and Tetris
+              <h3 className="mt-2 mb-2 text-xl font-bold text-center text-card-foreground">
+                Complete the phrase in pieces
               </h3>
             </div>
           </div>
 
           {/* Footer - Inside constrained container */}
-          <footer className="flex flex-wrap gap-2 mt-8 w-full justify-center">
+          <footer className="flex flex-wrap gap-2 justify-center mt-8 w-full">
             {[
               {
                 href: 'https://developers.reddit.com/docs',
@@ -272,7 +272,7 @@ export const App = () => {
             {/* Dev Mode Button - only shows in development */}
             {isDevelopment() && (
               <Button variant="outline" onClick={handleDevModeClick}>
-                <Settings className="h-4 w-4 mr-2" />
+                <Settings className="mr-2 w-4 h-4" />
                 DEV TOOLS
               </Button>
             )}

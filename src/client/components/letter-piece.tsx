@@ -57,7 +57,7 @@ export const LetterPiece: React.FC<LetterPieceProps> = ({
   // Memoize class names to prevent unnecessary recalculations
   const baseClasses = useMemo(
     () => `
-    inline-block p-1 select-none touch-manipulation
+    inline-block p-1 select-none touch-manipulation aspect-square
     ${isPlaced ? 'opacity-90' : 'opacity-100'}
     ${gameComplete ? 'cursor-not-allowed' : 'cursor-grab active:cursor-grabbing'}
     ${isDragging ? 'z-50 scale-105' : isPlaced ? 'z-10' : gameComplete ? '' : 'hover:scale-105'}
@@ -105,14 +105,16 @@ export const LetterPiece: React.FC<LetterPieceProps> = ({
           row.map((letter, colIndex) => (
             <div
               key={`${rowIndex}-${colIndex}`}
-              className="w-11 h-11 sm:w-14 sm:h-14 md:w-16 md:h-16 lg:w-20 lg:h-20 p-0.5"
+              className="p-0 w-8 h-8 sm:w-10 sm:h-10 md:w-12 md:h-12 lg:w-14 lg:h-14 aspect-square"
             >
               <div
                 className={`
-                  w-full h-full flex items-center justify-center text-lg font-bold border-2
-                  ${letter ? 'text-white border-gray-600 dark:border-gray-400' : 'border-transparent'}`}
+                  w-full h-full aspect-square flex items-center justify-center text-xl font-black border
+                  ${letter ? 'text-black bg-white border-black dark:border-white dark:bg-black' : 'border-transparent'}`}
                 style={{
-                  backgroundColor: letter ? piece.color : 'transparent',
+                  backgroundColor: letter
+                    ? `var(--chart-${(piece.id.charCodeAt(piece.id.length - 1) % 5) + 1})`
+                    : 'transparent',
                 }}
               >
                 {letter || ''}

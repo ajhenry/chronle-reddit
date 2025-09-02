@@ -1309,6 +1309,7 @@ export const generateMockGame = (category: string, phrase: string): LetteredGame
     grid = placePhraseOnGrid(grid, phrase);
     grid = addPreFilledLetters(grid, phrase);
     const pieces = generateLetterPieces(grid, phrase);
+    const solution = generateSolutionPositions(pieces, grid);
 
     return {
       id: 'mock-game-1',
@@ -1316,7 +1317,7 @@ export const generateMockGame = (category: string, phrase: string): LetteredGame
       phrase,
       grid,
       pieces,
-      solution: [], // Would be calculated based on piece placement
+      solution,
       created_at: new Date().toISOString(),
       updated_at: new Date().toISOString(),
     };
@@ -1325,6 +1326,68 @@ export const generateMockGame = (category: string, phrase: string): LetteredGame
     // Return a simpler fallback game
     return generateFallbackGame(category, phrase);
   }
+};
+
+// Generate solution positions for each piece
+const generateSolutionPositions = (pieces: LetterPiece[], grid: GridCell[][]): GridPosition[][] => {
+  const solutions: GridPosition[][] = [];
+
+  for (const piece of pieces) {
+    const pieceSolutions: GridPosition[] = [];
+
+    // Try every possible position on the grid
+    for (let row = 0; row < 8; row++) {
+      for (let col = 0; col < 8; col++) {
+        if (isValidPiecePlacement(piece, { row, col }, grid)) {
+          pieceSolutions.push({ row, col });
+        }
+      }
+    }
+
+    solutions.push(pieceSolutions);
+  }
+
+  return solutions;
+};
+
+// Check if a piece can be placed at a specific position and matches the grid letters
+const isValidPiecePlacement = (
+  piece: LetterPiece,
+  position: GridPosition,
+  grid: GridCell[][]
+): boolean => {
+  // Check bounds
+  for (const shapePos of piece.shape) {
+    const gridRow = position.row + shapePos.row;
+    const gridCol = position.col + shapePos.col;
+
+    if (gridRow < 0 || gridRow >= 8 || gridCol < 0 || gridCol >= 8) {
+      return false;
+    }
+
+    const cell = grid[gridRow]?.[gridCol];
+    if (!cell || cell.isUnused || cell.isSpace) {
+      return false;
+    }
+  }
+
+  // Check if all piece letters match the grid letters
+  for (let i = 0; i < piece.shape.length; i++) {
+    const shapePos = piece.shape[i];
+    if (!shapePos) continue;
+
+    const gridRow = position.row + shapePos.row;
+    const gridCol = position.col + shapePos.col;
+    const cell = grid[gridRow]?.[gridCol];
+
+    // The piece letter should match the grid letter
+    const pieceLetter = piece.letters[i];
+    if (pieceLetter && cell?.letter && pieceLetter !== cell.letter) {
+      return false;
+    }
+  }
+
+  return true;
 };
 
 // Fallback game with a simpler layout
@@ -1361,6 +1424,7 @@ const generateFallbackGame = (category: string, phrase: string): LetteredGameDat
   }
 
   const pieces = generateLetterPieces(grid, phrase);
+  const solution = generateSolutionPositions(pieces, grid);
 
   return {
     id: 'fallback-game-1',
@@ -1368,7 +1432,7 @@ const generateFallbackGame = (category: string, phrase: string): LetteredGameDat
     phrase,
     grid,
     pieces,
-    solution: [],
+    solution,
     created_at: new Date().toISOString(),
     updated_at: new Date().toISOString(),
   };
