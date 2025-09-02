@@ -6,16 +6,18 @@ interface LetterPieceProps {
   piece: LetterPieceType;
   isPlaced?: boolean;
   className?: string;
+  gameComplete?: boolean;
 }
 
 export const LetterPiece: React.FC<LetterPieceProps> = ({
   piece,
   isPlaced = false,
   className = '',
+  gameComplete = false,
 }) => {
   const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({
     id: piece.id,
-    disabled: false, // Allow dragging even when placed
+    disabled: gameComplete, // Disable dragging when game is complete
   });
 
   // Memoize expensive grid calculations
@@ -55,12 +57,14 @@ export const LetterPiece: React.FC<LetterPieceProps> = ({
   // Memoize class names to prevent unnecessary recalculations
   const baseClasses = useMemo(
     () => `
-    inline-block p-1 select-none
-    ${isPlaced ? 'opacity-90' : 'opacity-100'} cursor-grab active:cursor-grabbing
-    ${isDragging ? 'z-50' : isPlaced ? 'z-10' : ''}
+    inline-block p-1 select-none touch-manipulation
+    ${isPlaced ? 'opacity-90' : 'opacity-100'}
+    ${gameComplete ? 'cursor-not-allowed' : 'cursor-grab active:cursor-grabbing'}
+    ${isDragging ? 'z-50 scale-105' : isPlaced ? 'z-10' : gameComplete ? '' : 'hover:scale-105'}
+    ${gameComplete ? '' : 'active:scale-95 active:transition-transform active:duration-75'}
     ${className}
   `,
-    [isDragging, isPlaced, className]
+    [isDragging, isPlaced, className, gameComplete]
   );
 
   // Use transform3d for better performance and disable transitions during drag
@@ -83,13 +87,25 @@ export const LetterPiece: React.FC<LetterPieceProps> = ({
   );
 
   return (
-    <div ref={setNodeRef} className={baseClasses} style={style} {...listeners} {...attributes}>
+    <div
+      ref={setNodeRef}
+      className={baseClasses}
+      style={style}
+      {...listeners}
+      {...attributes}
+      onTouchStart={(e) => {
+        // Ensure single touch for better drag handling
+        if (e.touches.length === 1) {
+          e.preventDefault();
+        }
+      }}
+    >
       <div className="grid gap-1" style={gridStyle}>
         {pieceGrid.map((row, rowIndex) =>
           row.map((letter, colIndex) => (
             <div
               key={`${rowIndex}-${colIndex}`}
-              className="w-10 h-10 sm:w-12 sm:h-12 md:w-14 md:h-14 lg:w-16 lg:h-16 p-0.5"
+              className="w-11 h-11 sm:w-14 sm:h-14 md:w-16 md:h-16 lg:w-20 lg:h-20 p-0.5"
             >
               <div
                 className={`

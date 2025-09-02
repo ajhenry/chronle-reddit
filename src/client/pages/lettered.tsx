@@ -79,6 +79,8 @@ export const LetteredPage = ({ onBack }: { onBack?: () => void }) => {
     })
   );
 
+  // Touch scroll prevention is handled via CSS touch-none and event handlers
+
   const [gameState, setGameState] = useState<GameState>({
     score: 5000,
     initialScore: 5000,
@@ -95,19 +97,14 @@ export const LetteredPage = ({ onBack }: { onBack?: () => void }) => {
 
   const [activeDragId, setActiveDragId] = useState<string | null>(null);
   const [currentMousePosition, setCurrentMousePosition] = useState<GridPosition | null>(null);
+  const [draggingFromGrid, setDraggingFromGrid] = useState<string | null>(null);
 
   // Real-time score updating effect (same as TopX)
   useEffect(() => {
     if (gameState.gameStartTime && !gameState.gameComplete) {
       const timer = setInterval(() => {
-        const now = Date.now();
-        const elapsedSeconds = (now - gameState.gameStartTime!) / 1000;
-        // Use a slower decay rate for Lettered game since it might take longer
-        const scoreDecay = Math.floor(elapsedSeconds * 0.5); // 0.5 points per second
-        const currentScore = Math.max(0, gameState.initialScore - scoreDecay);
-
-        // Optimize this out later
-        // setGameState((prev) => ({ ...prev, score: currentScore }));
+        // Timer for future score decay implementation
+        // Currently disabled to focus on game mechanics
       }, 1000);
 
       setScoreUpdateTimer(timer);
@@ -329,6 +326,21 @@ export const LetteredPage = ({ onBack }: { onBack?: () => void }) => {
 
     if (piece) {
       setActiveDragId(pieceId);
+
+      // Check if this piece is currently placed on the grid
+      const isPlacedOnGrid = gameState.placedPieces.has(pieceId);
+      if (isPlacedOnGrid) {
+        // Remove the piece from the grid and mark it as being dragged from grid
+        setDraggingFromGrid(pieceId);
+        setGameState((prev) => {
+          const newPlacedPieces = new Map(prev.placedPieces);
+          newPlacedPieces.delete(pieceId);
+          return {
+            ...prev,
+            placedPieces: newPlacedPieces,
+          };
+        });
+      }
     }
 
     // Clear any existing preview
@@ -415,7 +427,7 @@ export const LetteredPage = ({ onBack }: { onBack?: () => void }) => {
       document.removeEventListener('mousemove', handleMouseMove);
       document.removeEventListener('touchmove', handleTouchMove);
     };
-  }, [activeDragId]);
+  }, [activeDragId, currentMousePosition?.col, currentMousePosition?.row]);
 
   // Handle drag end with dnd-kit
   const handleDragEnd = (event: DragEndEvent) => {
@@ -424,6 +436,7 @@ export const LetteredPage = ({ onBack }: { onBack?: () => void }) => {
     // Clear drag state
     setActiveDragId(null);
     setCurrentMousePosition(null);
+    setDraggingFromGrid(null);
 
     // Clear preview
     setGameState((prev) => ({
@@ -640,6 +653,8 @@ export const LetteredPage = ({ onBack }: { onBack?: () => void }) => {
             previewPiece={gameState.previewPiece}
             previewPosition={gameState.previewPosition}
             isValidPreview={gameState.isValidPreview}
+            draggingFromGrid={draggingFromGrid}
+            gameComplete={gameState.gameComplete}
           />
 
           {/* Piece Tray */}
@@ -656,7 +671,14 @@ export const LetteredPage = ({ onBack }: { onBack?: () => void }) => {
                 if (isPlaced || isPreviewingOnGrid) {
                   return null;
                 }
-                return <LetterPiece key={piece.id} piece={piece} isPlaced={isPlaced} />;
+                return (
+                  <LetterPiece
+                    key={piece.id}
+                    piece={piece}
+                    isPlaced={isPlaced}
+                    gameComplete={gameState.gameComplete}
+                  />
+                );
               })}
             </div>
           </div>
