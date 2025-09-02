@@ -64,26 +64,26 @@ export const App = () => {
 
   const handleGameSelect = (gameId: string) => {
     if (gameId === 'topx') {
-      navigate('/top');
+      void navigate('/top');
     } else if (gameId === 'lettered') {
-      navigate('/lettered');
+      void navigate('/lettered');
     }
   };
 
   const handleBackToMenu = () => {
-    navigate('/');
+    void navigate('/');
   };
 
   const handleBackFromLeaderboard = () => {
-    navigate('/');
+    void navigate('/');
   };
 
   const handleDevModeClick = () => {
-    navigate('/dev');
+    void navigate('/dev');
   };
 
   const handleBackFromDev = () => {
-    navigate('/');
+    void navigate('/');
   };
 
   return (
