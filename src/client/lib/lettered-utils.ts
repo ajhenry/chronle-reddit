@@ -1,4 +1,4 @@
-import { GridCell, GridPosition, TetrisPiece, LetteredGameData } from '../../shared/types/api';
+import { GridCell, GridPosition, LetterPiece, LetteredGameData } from '../../shared/types/api';
 
 // Available colors for tetris pieces
 const PIECE_COLORS = [
@@ -581,7 +581,7 @@ const selectOptimalAnchorsWithConnectivityCheck = (
 };
 
 // Generate tetris pieces using backtracking algorithm
-export const generateTetrisPieces = (grid: GridCell[][], phrase: string): TetrisPiece[] => {
+export const generateLetterPieces = (grid: GridCell[][], phrase: string): LetterPiece[] => {
   // Get all available letters (non-pre-filled) with their grid positions
   const availableLetters: Array<{ letter: string; position: GridPosition }> = [];
   const preFilledLetters: string[] = [];
@@ -620,7 +620,7 @@ export const generateTetrisPieces = (grid: GridCell[][], phrase: string): Tetris
 const generatePiecesWithBacktracking = (
   availableLetters: Array<{ letter: string; position: GridPosition }>,
   phrase: string
-): TetrisPiece[] => {
+): LetterPiece[] => {
   const totalLetters = availableLetters.length;
 
   // Determine number of pieces based on algorithm from lettered.md with max 6 pieces
@@ -666,7 +666,7 @@ const generatePiecesWithBacktracking = (
 };
 
 // Check if any piece contains a complete word from the phrase
-const containsCompleteWords = (pieces: TetrisPiece[], phrase: string): boolean => {
+const containsCompleteWords = (pieces: LetterPiece[], phrase: string): boolean => {
   const words = phrase
     .toUpperCase()
     .split(' ')
@@ -709,7 +709,7 @@ const containsCompleteWords = (pieces: TetrisPiece[], phrase: string): boolean =
 };
 
 // Check if majority of pieces are only 2 characters (too small)
-const hasTooManySmallPieces = (pieces: TetrisPiece[]): boolean => {
+const hasTooManySmallPieces = (pieces: LetterPiece[]): boolean => {
   if (pieces.length === 0) return false;
 
   const twoCharacterPieces = pieces.filter((piece) => piece.letters.length === 2).length;
@@ -742,7 +742,7 @@ const tryGeneratePiecesWithNewAlgorithm = (
   targetPieceCount: number,
   phrase: string,
   retryIndex: number = 0
-): TetrisPiece[] | null => {
+): LetterPiece[] | null => {
   // Create a grid representation for the algorithm
   const gridMap = new Map<string, { letter: string; position: GridPosition }>();
   for (const item of availableLetters) {
@@ -836,7 +836,7 @@ const tryGeneratePiecesWithNewAlgorithm = (
     return null; // Failed to generate valid solution
   }
 
-  // Convert to TetrisPiece format
+  // Convert to LetterPiece format
   return pieces.map((piece, index) => ({
     id: `piece-${index + 1}`,
     letters: piece.letters,
@@ -1214,8 +1214,8 @@ const validatePieceConnectivity = (shape: GridPosition[]): boolean => {
 // Create fallback pieces when backtracking fails
 const createFallbackPieces = (
   availableLetters: Array<{ letter: string; position: GridPosition }>
-): TetrisPiece[] => {
-  const pieces: TetrisPiece[] = [];
+): LetterPiece[] => {
+  const pieces: LetterPiece[] = [];
   const used = new Set<string>();
 
   // Group letters into simple linear pieces
@@ -1308,7 +1308,7 @@ export const generateMockGame = (category: string, phrase: string): LetteredGame
   try {
     grid = placePhraseOnGrid(grid, phrase);
     grid = addPreFilledLetters(grid, phrase);
-    const pieces = generateTetrisPieces(grid, phrase);
+    const pieces = generateLetterPieces(grid, phrase);
 
     return {
       id: 'mock-game-1',
@@ -1360,7 +1360,7 @@ const generateFallbackGame = (category: string, phrase: string): LetteredGameDat
     }
   }
 
-  const pieces = generateTetrisPieces(grid, phrase);
+  const pieces = generateLetterPieces(grid, phrase);
 
   return {
     id: 'fallback-game-1',

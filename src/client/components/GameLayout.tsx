@@ -6,8 +6,8 @@ import { Card, CardContent } from './ui/card';
 interface GameLayoutProps {
   gameTitle: string;
   score: number;
-  attempts: number;
-  maxAttempts: number;
+  attempts?: number;
+  maxAttempts?: number;
   children: ReactNode;
   onBack: () => void;
   onLeaderboard?: () => void;
@@ -149,13 +149,15 @@ export const GameLayout = ({
       </div>
 
       {/* Attempts Counter */}
-      <div className="text-center mb-6">
-        <Card className="px-4 py-2 inline-block">
-          <span className="font-medium text-card-foreground flex flex-row items-center gap-2">
-            ATTEMPTS LEFT <AnimatedNumber value={maxAttempts - attempts} />
-          </span>
-        </Card>
-      </div>
+      {attempts !== undefined && maxAttempts !== undefined && (
+        <div className="text-center mb-6">
+          <Card className="px-4 py-2 inline-block">
+            <span className="font-medium text-card-foreground flex flex-row items-center gap-2">
+              ATTEMPTS LEFT <AnimatedNumber value={maxAttempts - attempts} />
+            </span>
+          </Card>
+        </div>
+      )}
 
       {/* Game Content */}
       <div className="max-w-2xl mx-auto">{children}</div>
@@ -181,7 +183,7 @@ export const GameLayout = ({
                 <p>2. Type your answer in the input field</p>
                 <p>3. Press Enter to submit your answer</p>
                 <p>4. Get all correct answers to win!</p>
-                <p>5. You have {maxAttempts} attempts total</p>
+                {maxAttempts && <p>5. You have {maxAttempts} attempts total</p>}
               </div>
               <Button onClick={() => setShowHelpModal(false)} className="w-full mt-6">
                 GOT IT

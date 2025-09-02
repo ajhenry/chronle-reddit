@@ -171,7 +171,7 @@ export type GridCell = {
   isUnused: boolean; // true for cells not part of the phrase (gray squares)
 };
 
-export type TetrisPiece = {
+export type LetterPiece = {
   id: string;
   letters: string[];
   shape: GridPosition[]; // relative positions of each letter in the piece
@@ -183,7 +183,7 @@ export type LetteredGameData = {
   category: string;
   phrase: string;
   grid: GridCell[][]; // 8x8 grid
-  pieces: TetrisPiece[];
+  pieces: LetterPiece[];
   solution: GridPosition[][]; // where each piece should be placed
   created_at: string;
   updated_at: string;

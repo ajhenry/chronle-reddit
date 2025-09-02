@@ -4,6 +4,7 @@ import {
   DndContext,
   DragEndEvent,
   DragOverEvent,
+  DragStartEvent,
   useSensor,
   useSensors,
   PointerSensor,
@@ -11,7 +12,7 @@ import {
 } from '@dnd-kit/core';
 import { GameLayout } from '../components/GameLayout';
 import { toast } from 'sonner';
-import { Card, CardContent } from '../components/ui/card';
+import { CardContent } from '../components/ui/card';
 import { Button } from '../components/ui/button';
 import {
   Dialog,
@@ -23,7 +24,7 @@ import {
 import {
   LetteredGameData,
   GridPosition,
-  TetrisPiece as TetrisPieceType,
+  LetterPiece as LetterPieceType,
 } from '../../shared/types/api';
 import { isDevelopment } from '../lib/dev-utils';
 import { MOCK_GAMES } from '../lib/lettered-utils';
@@ -34,8 +35,8 @@ import {
   SelectTrigger,
   SelectValue,
 } from '../components/ui/select';
-import LetteredGrid from '../components/LetteredGrid';
-import TetrisPiece from '../components/TetrisPiece';
+import LetteredGrid from '../components/lettered-grid';
+import LetterPiece from '../components/letter-piece';
 
 interface GameState {
   score: number;
@@ -46,11 +47,14 @@ interface GameState {
   gameStartTime: number | null;
   placedPieces: Map<string, GridPosition>; // piece ID -> grid position
   lastValidPositions: Map<string, GridPosition>; // piece ID -> last valid position
+  previewPiece: LetterPieceType | null; // Currently dragged piece for preview
+  previewPosition: GridPosition | null; // Position where preview should be shown
+  isValidPreview: boolean; // Whether the current preview position is valid
 }
 
 export const LetteredPage = ({ onBack }: { onBack?: () => void }) => {
   const [showDevButtons, setShowDevButtons] = useState(false);
-  const [showGoldShimmer, setShowGoldShimmer] = useState(false);
+  const [, setShowGoldShimmer] = useState(false);
   const [gameData, setGameData] = useState<LetteredGameData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -60,17 +64,17 @@ export const LetteredPage = ({ onBack }: { onBack?: () => void }) => {
   );
   const [currentGameIndex, setCurrentGameIndex] = useState<number>(0);
 
-  // Configure sensors for better touch and mouse support
+  // Configure sensors for better touch and mouse support with optimized settings
   const sensors = useSensors(
     useSensor(PointerSensor, {
       activationConstraint: {
-        distance: 8,
+        distance: 3, // Reduced from 8 for more responsive dragging
       },
     }),
     useSensor(TouchSensor, {
       activationConstraint: {
-        delay: 200,
-        tolerance: 5,
+        delay: 100, // Reduced from 200 for better responsiveness
+        tolerance: 3, // Reduced from 5 for more precise touch
       },
     })
   );
@@ -84,7 +88,13 @@ export const LetteredPage = ({ onBack }: { onBack?: () => void }) => {
     gameStartTime: null,
     placedPieces: new Map(),
     lastValidPositions: new Map(),
+    previewPiece: null,
+    previewPosition: null,
+    isValidPreview: false,
   });
+
+  const [activeDragId, setActiveDragId] = useState<string | null>(null);
+  const [currentMousePosition, setCurrentMousePosition] = useState<GridPosition | null>(null);
 
   // Real-time score updating effect (same as TopX)
   useEffect(() => {
@@ -96,8 +106,9 @@ export const LetteredPage = ({ onBack }: { onBack?: () => void }) => {
         const scoreDecay = Math.floor(elapsedSeconds * 0.5); // 0.5 points per second
         const currentScore = Math.max(0, gameState.initialScore - scoreDecay);
 
-        setGameState((prev) => ({ ...prev, score: currentScore }));
-      }, 100);
+        // Optimize this out later
+        // setGameState((prev) => ({ ...prev, score: currentScore }));
+      }, 1000);
 
       setScoreUpdateTimer(timer);
       return () => {
@@ -130,6 +141,9 @@ export const LetteredPage = ({ onBack }: { onBack?: () => void }) => {
         gameStartTime: Date.now(),
         placedPieces: new Map(),
         lastValidPositions: new Map(),
+        previewPiece: null,
+        previewPosition: null,
+        isValidPreview: false,
       });
 
       setError(null);
@@ -216,106 +230,230 @@ export const LetteredPage = ({ onBack }: { onBack?: () => void }) => {
   }, [gameState.gameComplete, gameState.gameWon]);
 
   // Validate piece placement
-  const validatePlacement = (piece: TetrisPieceType, position: GridPosition): boolean => {
-    if (!gameData) return false;
+  const validatePlacement = useCallback(
+    (piece: LetterPieceType, position: GridPosition): boolean => {
+      if (!gameData) return false;
 
-    // Check if all positions are within bounds and valid
-    for (let i = 0; i < piece.shape.length; i++) {
-      const shapePos = piece.shape[i];
-      const gridRow = position.row + shapePos.row;
-      const gridCol = position.col + shapePos.col;
+      // Check if all positions are within bounds and valid
+      for (let i = 0; i < piece.shape.length; i++) {
+        const shapePos = piece.shape[i];
+        if (!shapePos) continue;
 
-      // Check bounds
-      if (gridRow < 0 || gridRow >= 8 || gridCol < 0 || gridCol >= 8) {
-        return false;
-      }
+        const gridRow = position.row + shapePos.row;
+        const gridCol = position.col + shapePos.col;
 
-      const cell = gameData.grid[gridRow][gridCol];
-      const expectedLetter = piece.letters[i];
+        // Check bounds
+        if (gridRow < 0 || gridRow >= 8 || gridCol < 0 || gridCol >= 8) {
+          return false;
+        }
 
-      // Check if cell is available and letter matches
-      if (cell.isUnused || cell.isSpace) {
-        return false; // Can't place on unused or space cells
-      }
+        const cell = gameData.grid[gridRow]?.[gridCol];
+        const expectedLetter = piece.letters[i];
 
-      if (cell.letter && cell.letter !== expectedLetter) {
-        return false; // Letter mismatch
-      }
+        if (!cell || typeof expectedLetter === 'undefined') {
+          return false;
+        }
 
-      // Check if another piece is already placed here
-      for (const [placedPieceId, placedPos] of gameState.placedPieces) {
-        if (placedPieceId === piece.id) continue; // Skip same piece
+        // Check if cell is available and letter matches
+        if (cell.isUnused || cell.isSpace) {
+          return false; // Can't place on unused or space cells
+        }
 
-        const placedPiece = gameData.pieces.find((p) => p.id === placedPieceId);
-        if (!placedPiece) continue;
+        if (cell.letter && cell.letter !== expectedLetter) {
+          return false; // Letter mismatch
+        }
 
-        for (const placedShapePos of placedPiece.shape) {
-          const placedGridRow = placedPos.row + placedShapePos.row;
-          const placedGridCol = placedPos.col + placedShapePos.col;
+        // Check if another piece is already placed here
+        for (const [placedPieceId, placedPos] of gameState.placedPieces) {
+          if (placedPieceId === piece.id) continue; // Skip same piece
 
-          if (placedGridRow === gridRow && placedGridCol === gridCol) {
-            return false; // Position occupied
+          const placedPiece = gameData.pieces.find((p) => p.id === placedPieceId);
+          if (!placedPiece) continue;
+
+          for (const placedShapePos of placedPiece.shape) {
+            const placedGridRow = placedPos.row + placedShapePos.row;
+            const placedGridCol = placedPos.col + placedShapePos.col;
+
+            if (placedGridRow === gridRow && placedGridCol === gridCol) {
+              return false; // Position occupied
+            }
           }
         }
       }
+
+      return true;
+    },
+    [gameData, gameState.placedPieces]
+  );
+
+  // Convert mouse position to grid coordinates
+  const getGridPositionFromMouseEvent = (event: MouseEvent | Touch): GridPosition | null => {
+    // Find the grid element
+    const gridElement = document.querySelector('[data-grid="lettered-grid"]');
+    if (!gridElement) return null;
+
+    const rect = gridElement.getBoundingClientRect();
+    const x = (event.clientX || 0) - rect.left;
+    const y = (event.clientY || 0) - rect.top;
+
+    // Account for padding (16px on each side in Tailwind p-4)
+    const padding = 16;
+    const adjustedX = x - padding;
+    const adjustedY = y - padding;
+
+    // Grid has gaps between cells, accounted for in grid layout
+    const availableWidth = rect.width - 2 * padding;
+    const availableHeight = rect.height - 2 * padding;
+
+    // Each cell + gap takes up availableWidth / 8
+    const cellWithGapWidth = availableWidth / 8;
+    const cellWithGapHeight = availableHeight / 8;
+
+    const col = Math.floor(adjustedX / cellWithGapWidth);
+    const row = Math.floor(adjustedY / cellWithGapHeight);
+
+    // Clamp to valid grid bounds
+    if (row >= 0 && row < 8 && col >= 0 && col < 8) {
+      return { row, col };
     }
 
-    return true;
+    return null;
   };
+
+  // Handle drag start
+  const handleDragStart = (event: DragStartEvent) => {
+    console.log('handleDragStart', event);
+    const { active } = event;
+    const pieceId = active.id as string;
+    const piece = gameData?.pieces.find((p) => p.id === pieceId);
+
+    if (piece) {
+      setActiveDragId(pieceId);
+    }
+
+    // Clear any existing preview
+    setGameState((prev) => ({
+      ...prev,
+      previewPiece: null,
+      previewPosition: null,
+      isValidPreview: false,
+    }));
+  };
+
+  // Handle drag over - calculate grid position for preview
+  const handleDragOver = (event: DragOverEvent) => {
+    const { active } = event;
+
+    if (!gameData || !active) {
+      // Clear preview if no active drag or game data
+      setGameState((prev) => ({
+        ...prev,
+        previewPiece: null,
+        previewPosition: null,
+      }));
+      return;
+    }
+
+    const pieceId = active.id as string;
+    const piece = gameData.pieces.find((p) => p.id === pieceId);
+    if (piece) {
+      setGameState((prev) => ({
+        ...prev,
+        previewPiece: piece,
+      }));
+    }
+  };
+
+  // Listen for current mouse position change
+  useEffect(() => {
+    if (!currentMousePosition) return;
+    console.log('currentMousePosition', currentMousePosition);
+    setGameState((prev) => ({
+      ...prev,
+      previewPosition: currentMousePosition,
+    }));
+  }, [currentMousePosition]);
+
+  // Track mouse position during drag
+  useEffect(() => {
+    const handleMouseMove = (event: MouseEvent) => {
+      if (activeDragId) {
+        const gridPosition = getGridPositionFromMouseEvent(event);
+        if (
+          currentMousePosition?.col === gridPosition?.col &&
+          currentMousePosition?.row === gridPosition?.row
+        ) {
+          return;
+        }
+        setCurrentMousePosition(gridPosition);
+      }
+    };
+
+    const handleTouchMove = (event: TouchEvent) => {
+      if (activeDragId && event.touches.length > 0) {
+        const touch = event.touches[0];
+        if (touch) {
+          const gridPosition = getGridPositionFromMouseEvent(touch);
+          // TODO: Optimize this to not set the current mouse position if it is the same as the previous one
+          if (
+            currentMousePosition?.col === gridPosition?.col &&
+            currentMousePosition?.row === gridPosition?.row
+          ) {
+            return;
+          }
+          setCurrentMousePosition(gridPosition);
+        }
+      }
+    };
+
+    if (activeDragId) {
+      document.addEventListener('mousemove', handleMouseMove);
+      document.addEventListener('touchmove', handleTouchMove);
+    }
+
+    return () => {
+      document.removeEventListener('mousemove', handleMouseMove);
+      document.removeEventListener('touchmove', handleTouchMove);
+    };
+  }, [activeDragId]);
 
   // Handle drag end with dnd-kit
   const handleDragEnd = (event: DragEndEvent) => {
     const { active, over } = event;
 
-    if (!over || !gameData) return;
+    // Clear drag state
+    setActiveDragId(null);
+    setCurrentMousePosition(null);
+
+    // Clear preview
+    setGameState((prev) => ({
+      ...prev,
+      previewPiece: null,
+      previewPosition: null,
+      isValidPreview: false,
+    }));
+
+    if (!gameData) return;
 
     const pieceId = active.id as string;
     const piece = gameData.pieces.find((p) => p.id === pieceId);
     if (!piece) return;
 
-    // If dropped on grid, try to place intelligently
-    if (over.id === 'game-grid') {
-      // Try to place piece where it makes sense based on the letters
-      let bestPosition: GridPosition | null = null;
-      let bestMatchCount = 0;
+    // If dropped on grid, place at current mouse position
+    if (over && over.id === 'game-grid' && currentMousePosition) {
+      const position = currentMousePosition;
 
-      for (let row = 0; row < 8; row++) {
-        for (let col = 0; col < 8; col++) {
-          const position = { row, col };
+      // Always place the piece at this position (allow invalid placements)
+      const newPlacedPieces = new Map(gameState.placedPieces);
+      newPlacedPieces.set(piece.id, position);
 
-          // Check if this position is valid
-          if (validatePlacement(piece, position)) {
-            // Count how many letters match what should be there
-            let matchCount = 0;
+      // Check if placement is valid for tracking purposes
+      const isValid = validatePlacement(piece, position);
 
-            for (let i = 0; i < piece.shape.length; i++) {
-              const shapePos = piece.shape[i];
-              const gridRow = position.row + shapePos.row;
-              const gridCol = position.col + shapePos.col;
-
-              if (gridRow >= 0 && gridRow < 8 && gridCol >= 0 && gridCol < 8) {
-                const cell = gameData.grid[gridRow][gridCol];
-                if (cell.letter === piece.letters[i]) {
-                  matchCount++;
-                }
-              }
-            }
-
-            // Prefer positions with more letter matches
-            if (matchCount > bestMatchCount) {
-              bestMatchCount = matchCount;
-              bestPosition = position;
-            }
-          }
-        }
-      }
-
-      if (bestPosition) {
-        const newPlacedPieces = new Map(gameState.placedPieces);
-        newPlacedPieces.set(piece.id, bestPosition);
-
+      if (isValid) {
+        // Valid placement - update last valid position
         const newLastValidPositions = new Map(gameState.lastValidPositions);
-        newLastValidPositions.set(piece.id, bestPosition);
+        newLastValidPositions.set(piece.id, position);
 
         setGameState((prev) => ({
           ...prev,
@@ -325,7 +463,13 @@ export const LetteredPage = ({ onBack }: { onBack?: () => void }) => {
 
         toast.success('Piece placed!', { duration: 1000 });
       } else {
-        toast.error('No valid placement found!', { duration: 1000 });
+        // Invalid placement - still place it but don't update last valid position
+        setGameState((prev) => ({
+          ...prev,
+          placedPieces: newPlacedPieces,
+        }));
+
+        toast('Piece placed (invalid position)', { duration: 1000 });
       }
     }
   };
@@ -374,13 +518,7 @@ export const LetteredPage = ({ onBack }: { onBack?: () => void }) => {
   // Show loading state
   if (loading) {
     return (
-      <GameLayout
-        gameTitle="Lettered Daily"
-        score={0}
-        attempts={1}
-        maxAttempts={999} // Unlimited moves
-        onBack={handleBackToMenu}
-      >
+      <GameLayout gameTitle="Lettered Daily" score={0} onBack={handleBackToMenu}>
         <CardContent className="flex justify-center items-center p-8">
           <div className="text-lg font-medium text-card-foreground">Loading today's puzzle...</div>
         </CardContent>
@@ -391,13 +529,7 @@ export const LetteredPage = ({ onBack }: { onBack?: () => void }) => {
   // Show error state
   if (error || !gameData) {
     return (
-      <GameLayout
-        gameTitle="Lettered Daily"
-        score={0}
-        attempts={1}
-        maxAttempts={999}
-        onBack={handleBackToMenu}
-      >
+      <GameLayout gameTitle="Lettered Daily" score={0} onBack={handleBackToMenu}>
         <CardContent className="flex flex-col justify-center items-center p-8 space-y-4">
           <div className="text-lg font-medium text-center text-destructive">
             {error || "Failed to load today's puzzle"}
@@ -412,8 +544,6 @@ export const LetteredPage = ({ onBack }: { onBack?: () => void }) => {
     <GameLayout
       gameTitle="Lettered Daily"
       score={gameState.score}
-      attempts={1}
-      maxAttempts={999} // Unlimited moves
       onBack={handleBackToMenu}
       onLeaderboard={() => console.log('Leaderboard clicked')}
     >
@@ -485,7 +615,12 @@ export const LetteredPage = ({ onBack }: { onBack?: () => void }) => {
       )}
 
       {/* Game Content */}
-      <DndContext sensors={sensors} onDragEnd={handleDragEnd}>
+      <DndContext
+        sensors={sensors}
+        onDragStart={handleDragStart}
+        onDragOver={handleDragOver}
+        onDragEnd={handleDragEnd}
+      >
         <div className="space-y-6">
           {/* Category */}
           <h2 className="text-2xl font-black tracking-tight text-center text-foreground">
@@ -502,6 +637,9 @@ export const LetteredPage = ({ onBack }: { onBack?: () => void }) => {
             grid={gameData.grid}
             placedPieces={gameState.placedPieces}
             pieces={gameData.pieces}
+            previewPiece={gameState.previewPiece}
+            previewPosition={gameState.previewPosition}
+            isValidPreview={gameState.isValidPreview}
           />
 
           {/* Piece Tray */}
@@ -509,19 +647,21 @@ export const LetteredPage = ({ onBack }: { onBack?: () => void }) => {
             <h4 className="mb-3 text-base font-semibold text-center text-foreground">
               Lettered Pieces
             </h4>
-            <div className="flex flex-wrap gap-3 justify-center p-4 bg-gray-50 rounded-lg border-2 border-gray-300">
-              {gameData.pieces.map((piece) => (
-                <TetrisPiece
-                  key={piece.id}
-                  piece={piece}
-                  isPlaced={gameState.placedPieces.has(piece.id)}
-                />
-              ))}
+            <div className="flex flex-wrap gap-3 justify-center p-4 bg-gray-50 rounded-lg border-2 border-gray-300 dark:bg-gray-800 dark:border-gray-600">
+              {gameData.pieces.map((piece) => {
+                const isPlaced = gameState.placedPieces.has(piece.id);
+                const isDragging = activeDragId === piece.id;
+                const isPreviewingOnGrid = isDragging && gameState.previewPiece?.id === piece.id;
+                // Only render pieces that aren't placed on the board and aren't currently showing preview on grid
+                if (isPlaced || isPreviewingOnGrid) {
+                  return null;
+                }
+                return <LetterPiece key={piece.id} piece={piece} isPlaced={isPlaced} />;
+              })}
             </div>
           </div>
         </div>
       </DndContext>
-
       {/* Confetti Animation */}
       {gameState.showConfetti && (
         <Confetti
@@ -540,7 +680,6 @@ export const LetteredPage = ({ onBack }: { onBack?: () => void }) => {
           }}
         />
       )}
-
       {/* Game Over Modal */}
       <Dialog
         open={showGameOverModal}

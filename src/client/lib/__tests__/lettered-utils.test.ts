@@ -3,11 +3,11 @@ import {
   createEmptyGrid,
   placePhraseOnGrid,
   addPreFilledLetters,
-  generateTetrisPieces,
+  generateLetterPieces,
   generateMockGame,
   MOCK_GAMES,
 } from '../lettered-utils';
-import { GridCell, GridPosition, TetrisPiece } from '../../../shared/types/api';
+import { GridCell, GridPosition, LetterPiece } from '../../../shared/types/api';
 
 describe('Lettered Game Utils', () => {
   describe('createEmptyGrid', () => {
@@ -124,7 +124,7 @@ describe('Lettered Game Utils', () => {
     });
   });
 
-  describe('generateTetrisPieces', () => {
+  describe('generateLetterPieces', () => {
     let grid: GridCell[][];
     let phrase: string;
 
@@ -136,7 +136,7 @@ describe('Lettered Game Utils', () => {
     });
 
     it('should generate pieces with all non-pre-filled letters', () => {
-      const pieces = generateTetrisPieces(grid, phrase);
+      const pieces = generateLetterPieces(grid, phrase);
 
       // Count available letters (non-pre-filled, non-space, non-unused)
       let availableLetters = 0;
@@ -220,7 +220,7 @@ describe('Lettered Game Utils', () => {
       console.log('Anchored letters for "PEANUT BUTTER IS GOOD":', anchoredLetters.join(''));
 
       // Generate pieces
-      const pieces = generateTetrisPieces(testGrid, phrase);
+      const pieces = generateLetterPieces(testGrid, phrase);
       const pieceLetters = pieces.flatMap((piece) => piece.letters);
 
       console.log('Piece letters:', pieceLetters.join(''));
@@ -259,7 +259,7 @@ describe('Lettered Game Utils', () => {
     });
 
     it('should generate pieces with minimum 1 letter each (will be merged to 2+)', () => {
-      const pieces = generateTetrisPieces(grid, phrase);
+      const pieces = generateLetterPieces(grid, phrase);
 
       if (pieces.length > 0) {
         pieces.forEach((piece, index) => {
@@ -277,7 +277,7 @@ describe('Lettered Game Utils', () => {
     });
 
     it('should generate pieces with valid shapes', () => {
-      const pieces = generateTetrisPieces(grid, phrase);
+      const pieces = generateLetterPieces(grid, phrase);
 
       pieces.forEach((piece) => {
         // Shape should have same length as letters
@@ -298,7 +298,7 @@ describe('Lettered Game Utils', () => {
     });
 
     it('should generate connected pieces (side adjacency only)', () => {
-      const pieces = generateTetrisPieces(grid, phrase);
+      const pieces = generateLetterPieces(grid, phrase);
 
       pieces.forEach((piece) => {
         if (piece.shape.length > 1) {
@@ -338,7 +338,7 @@ describe('Lettered Game Utils', () => {
     });
 
     it('should assign unique IDs and colors to pieces', () => {
-      const pieces = generateTetrisPieces(grid, phrase);
+      const pieces = generateLetterPieces(grid, phrase);
 
       const ids = pieces.map((piece) => piece.id);
       const uniqueIds = [...new Set(ids)];
