@@ -11,6 +11,7 @@ import { Leaderboard } from './components/Leaderboard';
 import { Toaster } from 'sonner';
 import { X, Settings } from 'lucide-react';
 import { isDevelopment } from './lib/dev-utils';
+import { ModeToggle } from './components/mode-toggle';
 
 export const App = () => {
   const navigate = useNavigate();
@@ -96,6 +97,11 @@ export const App = () => {
         path="/leaderboard"
         element={
           <div className="p-4 min-h-screen bg-background">
+            {/* Theme Toggle - Fixed in top right */}
+            <div className="fixed top-4 right-4 z-50">
+              <ModeToggle />
+            </div>
+
             {currentSeasonId && (
               <Leaderboard seasonId={currentSeasonId} onClose={handleBackFromLeaderboard} />
             )}
@@ -107,6 +113,11 @@ export const App = () => {
         path="/"
         element={
           <div className="flex relative flex-col min-h-screen bg-background">
+            {/* Theme Toggle - Fixed in top right */}
+            <div className="fixed top-4 right-4 z-50">
+              <ModeToggle />
+            </div>
+
             {/* Main Container */}
             <div className="container px-4 py-6 mx-auto max-w-4xl">
               {/* Content Container with max-width constraint */}

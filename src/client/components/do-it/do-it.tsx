@@ -134,13 +134,14 @@ const getItemBoundingBox = (item: DraggableItem): { width: number; height: numbe
 const createEmptyTileGrid = (gridSize: GridSize): GridCellData[][] => {
   const grid: GridCellData[][] = [];
   for (let y = 0; y < gridSize.height; y++) {
-    grid[y] = [];
+    const row: GridCellData[] = [];
     for (let x = 0; x < gridSize.width; x++) {
-      grid[y][x] = {
+      row[x] = {
         position: { x, y },
         isOccupied: false,
       };
     }
+    grid[y] = row;
   }
   return grid;
 };
@@ -165,11 +166,11 @@ const updateTileOccupancy = (
     const occupiedPositions = getItemOccupiedPositions(item);
 
     occupiedPositions.forEach((pos, shapeIndex) => {
-      if (pos.y >= 0 && pos.y < newGrid.length && pos.x >= 0 && pos.x < newGrid[pos.y]?.length) {
+      if (pos.y >= 0 && pos.y < newGrid.length) {
         const row = newGrid[pos.y];
-        if (row && row[pos.x]) {
+        if (row && pos.x >= 0 && pos.x < row.length) {
           row[pos.x] = {
-            position: row[pos.x].position,
+            position: row[pos.x]?.position || { x: pos.x, y: pos.y },
             isOccupied: true,
             occupyingItemId: item.id,
             occupyingItemShapeIndex: shapeIndex,
@@ -190,11 +191,15 @@ type GridContextType = {
   gridSize: GridSize;
   cellSize: GridSize;
   dragPreview: { item: DraggableItem; position: GridPosition } | null;
+  draggedItemId: string | null;
+  grabOffset: GridPosition | null;
   setItems: (items: DraggableItem[]) => void;
   addItem: (item: Omit<DraggableItem, 'id'>) => void;
   removeItem: (itemId: string) => void;
   moveItem: (itemId: string, newPosition: GridPosition) => void;
   setDragPreview: (preview: { item: DraggableItem; position: GridPosition } | null) => void;
+  setDraggedItemId: (itemId: string | null) => void;
+  setGrabOffset: (offset: GridPosition | null) => void;
   isPositionValid: (
     item: DraggableItem,
     newPosition: GridPosition,
@@ -233,6 +238,8 @@ function GridProvider({ children, gridSize, cellSize, initialItems = [] }: GridP
     item: DraggableItem;
     position: GridPosition;
   } | null>(null);
+  const [draggedItemId, setDraggedItemId] = useState<string | null>(null);
+  const [grabOffset, setGrabOffset] = useState<GridPosition | null>(null);
 
   // Create and update tile grid
   const tileGrid = useMemo(() => {
@@ -290,9 +297,9 @@ function GridProvider({ children, gridSize, cellSize, initialItems = [] }: GridP
 
   const getCellData = useCallback(
     (x: number, y: number): GridCellData | null => {
-      if (y >= 0 && y < tileGrid.length && x >= 0 && x < tileGrid[0]?.length) {
+      if (y >= 0 && y < tileGrid.length) {
         const row = tileGrid[y];
-        if (row) {
+        if (row && x >= 0 && x < row.length) {
           return row[x] || null;
         }
       }
@@ -309,11 +316,15 @@ function GridProvider({ children, gridSize, cellSize, initialItems = [] }: GridP
       gridSize,
       cellSize,
       dragPreview,
+      draggedItemId,
+      grabOffset,
       setItems,
       addItem,
       removeItem,
       moveItem,
       setDragPreview,
+      setDraggedItemId,
+      setGrabOffset,
       isPositionValid,
       getCellData,
     }),
@@ -324,10 +335,14 @@ function GridProvider({ children, gridSize, cellSize, initialItems = [] }: GridP
       gridSize,
       cellSize,
       dragPreview,
+      draggedItemId,
+      grabOffset,
       addItem,
       removeItem,
       moveItem,
       setDragPreview,
+      setDraggedItemId,
+      setGrabOffset,
       isPositionValid,
       getCellData,
     ]
@@ -355,7 +370,7 @@ const GridCell = React.memo(
     draggedItemId,
     className = '',
   }: GridCellProps) => {
-    const { gridId, cellSize, isPositionValid, items, getCellData, setDragPreview, dragPreview } =
+    const { gridId, cellSize, isPositionValid, items, getCellData, setDragPreview, grabOffset } =
       useGrid();
     const cellId = generateCellId(gridId, x, y);
     const [isHovered, setIsHovered] = useState(false);
@@ -365,13 +380,26 @@ const GridCell = React.memo(
 
     // Check if this cell is a valid drop zone based on dragged item
     const isValidDrop = useMemo(() => {
-      if (!draggedItemId) return !isOccupied;
+      if (!draggedItemId || !grabOffset) return !isOccupied;
 
       const draggedItem = items.find((item) => item.id === draggedItemId);
       if (!draggedItem) return !isOccupied;
 
-      return isPositionValid(draggedItem, { x, y }, draggedItem.id);
-    }, [draggedItemId, items, isPositionValid, x, y, isOccupied]);
+      // Validate grab offset bounds
+      if (grabOffset.x < 0 || grabOffset.y < 0 ||
+          grabOffset.x >= draggedItem.shape.width ||
+          grabOffset.y >= draggedItem.shape.height) {
+        return !isOccupied;
+      }
+
+      // Calculate where the piece would actually be placed accounting for grab offset
+      const actualPosition = {
+        x: x - grabOffset.x,
+        y: y - grabOffset.y,
+      };
+
+      return isPositionValid(draggedItem, actualPosition, draggedItem.id);
+    }, [draggedItemId, items, isPositionValid, x, y, isOccupied, grabOffset]);
 
     const handleDragOver = useCallback(
       (e: React.DragEvent) => {
@@ -379,10 +407,16 @@ const GridCell = React.memo(
         setIsHovered(true);
 
         // Set drag preview if we have a dragged item and valid drop
-        if (draggedItemId && isValidDrop) {
+        if (draggedItemId && isValidDrop && grabOffset) {
           const draggedItem = items.find((item) => item.id === draggedItemId);
           if (draggedItem) {
-            setDragPreview({ item: draggedItem, position: { x, y } });
+            // Calculate the position where the piece should be placed
+            // so that the grabbed point aligns with the current cell
+            const previewPosition = {
+              x: x - grabOffset.x,
+              y: y - grabOffset.y,
+            };
+            setDragPreview({ item: draggedItem, position: previewPosition });
           }
           e.dataTransfer.dropEffect = 'move';
         } else {
@@ -390,7 +424,7 @@ const GridCell = React.memo(
           e.dataTransfer.dropEffect = 'none';
         }
       },
-      [isValidDrop, draggedItemId, items, setDragPreview, x, y]
+      [isValidDrop, draggedItemId, items, setDragPreview, x, y, grabOffset]
     );
 
     const handleDragLeave = useCallback(() => {
@@ -405,14 +439,30 @@ const GridCell = React.memo(
         setIsHovered(false);
         setDragPreview(null);
 
-        if (!isValidDrop) return;
+        if (!isValidDrop || !grabOffset || !draggedItemId) return;
+
+        const draggedItem = items.find((item) => item.id === draggedItemId);
+        if (!draggedItem) return;
+
+        // Validate grab offset bounds
+        if (grabOffset.x < 0 || grabOffset.y < 0 ||
+            grabOffset.x >= draggedItem.shape.width ||
+            grabOffset.y >= draggedItem.shape.height) {
+          return;
+        }
 
         const itemId = e.dataTransfer.getData('text/plain');
         if (itemId && onDrop) {
-          onDrop(itemId, { x, y });
+          // Calculate the position where the piece should be placed
+          // so that the grabbed point aligns with the current cell
+          const dropPosition = {
+            x: x - grabOffset.x,
+            y: y - grabOffset.y,
+          };
+          onDrop(itemId, dropPosition);
         }
       },
-      [isValidDrop, onDrop, x, y, setDragPreview]
+      [isValidDrop, onDrop, x, y, setDragPreview, grabOffset, draggedItemId, items]
     );
 
     const cellStyle = useMemo(
@@ -457,7 +507,7 @@ GridCell.displayName = 'GridCell';
 // Draggable Item component
 type DraggableItemProps = {
   item: DraggableItem;
-  onDragStart?: (item: DraggableItem) => void;
+  onDragStart?: (item: DraggableItem, grabOffset?: GridPosition) => void;
   onDragEnd?: (item: DraggableItem) => void;
   className?: string;
 };
@@ -466,6 +516,7 @@ const DraggableItemComponent = React.memo(
   ({ item, onDragStart, onDragEnd, className = '' }: DraggableItemProps) => {
     const { cellSize } = useGrid();
     const [isDragging, setIsDragging] = useState(false);
+    const itemRef = React.useRef<HTMLDivElement>(null);
 
     const boundingBox = useMemo(() => getItemBoundingBox(item), [item]);
 
@@ -474,9 +525,28 @@ const DraggableItemComponent = React.memo(
         setIsDragging(true);
         e.dataTransfer.setData('text/plain', item.id);
         e.dataTransfer.effectAllowed = 'move';
-        onDragStart?.(item);
+
+        // Calculate grab offset - where on the piece the user clicked
+        let grabOffset: GridPosition = { x: 0, y: 0 };
+        if (itemRef.current) {
+          const rect = itemRef.current.getBoundingClientRect();
+          const mouseX = e.clientX - rect.left;
+          const mouseY = e.clientY - rect.top;
+
+          // Convert pixel coordinates to grid coordinates
+          const gridX = Math.floor(mouseX / cellSize.width);
+          const gridY = Math.floor(mouseY / cellSize.height);
+
+          // Clamp to shape bounds
+          grabOffset = {
+            x: Math.max(0, Math.min(gridX, item.shape.width - 1)),
+            y: Math.max(0, Math.min(gridY, item.shape.height - 1)),
+          };
+        }
+
+        onDragStart?.(item, grabOffset);
       },
-      [item, onDragStart]
+      [item, onDragStart, cellSize]
     );
 
     const handleDragEnd = useCallback(() => {
@@ -526,6 +596,7 @@ const DraggableItemComponent = React.memo(
 
     return (
       <div
+        ref={itemRef}
         id={item.id}
         draggable
         className={`cursor-move select-none transition-all ${isDragging ? 'shadow-lg scale-105' : ''} ${className}`}
@@ -653,9 +724,18 @@ function GridContent({
   className: string;
   children: ReactNode;
 }) {
-  const { items, moveItem, isPositionValid, gridSize, cellSize, dragPreview, setDragPreview } =
-    useGrid();
-  const [draggedItemId, setDraggedItemId] = useState<string | null>(null);
+  const {
+    items,
+    moveItem,
+    isPositionValid,
+    gridSize,
+    cellSize,
+    dragPreview,
+    setDragPreview,
+    draggedItemId,
+    setDraggedItemId,
+    setGrabOffset,
+  } = useGrid();
 
   const handleItemMove = useCallback(
     (itemId: string, newPosition: GridPosition) => {
@@ -670,17 +750,19 @@ function GridContent({
   );
 
   const handleDragStart = useCallback(
-    (item: DraggableItem) => {
+    (item: DraggableItem, initialGrabOffset?: GridPosition) => {
       setDraggedItemId(item.id);
+      setGrabOffset(initialGrabOffset || { x: 0, y: 0 });
       setDragPreview(null);
     },
-    [setDragPreview]
+    [setDraggedItemId, setDragPreview, setGrabOffset]
   );
 
   const handleDragEnd = useCallback(() => {
     setDraggedItemId(null);
+    setGrabOffset(null);
     setDragPreview(null);
-  }, [setDragPreview]);
+  }, [setDraggedItemId, setDragPreview, setGrabOffset]);
 
   // Generate grid cells
   const gridCells = useMemo(() => {
@@ -822,7 +904,7 @@ const GridDemo = () => {
 
         <div className="grid grid-cols-1 gap-8 mb-8 lg:grid-cols-2">
           {/* First Grid */}
-          <div className="p-6 bg-white rounded-lg shadow-lg">
+          <div className="p-6 rounded-lg shadow-lg bg-background">
             <h2 className="mb-4 text-2xl font-semibold text-gray-800">Grid Instance 1</h2>
             <div className="mb-4">
               <p className="text-sm text-gray-600">Grid Size: 8x6 | Cell Size: 50x50px</p>
@@ -837,7 +919,7 @@ const GridDemo = () => {
           </div>
 
           {/* Second Grid */}
-          <div className="p-6 bg-white rounded-lg shadow-lg">
+          <div className="p-6 rounded-lg shadow-lg bg-background">
             <h2 className="mb-4 text-2xl font-semibold text-gray-800">Grid Instance 2</h2>
             <div className="mb-4">
               <p className="text-sm text-gray-600">Grid Size: 6x5 | Cell Size: 55x55px</p>
@@ -853,7 +935,7 @@ const GridDemo = () => {
         </div>
 
         {/* Features Section */}
-        <div className="p-6 bg-white rounded-lg shadow-lg">
+        <div className="p-6 rounded-lg shadow-lg bg-background">
           <h3 className="mb-6 text-2xl font-semibold text-gray-800">Features</h3>
           <div className="grid grid-cols-1 gap-6 md:grid-cols-2 lg:grid-cols-3">
             <div className="flex items-start space-x-3">

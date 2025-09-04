@@ -2,6 +2,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card'
 import { Button } from '../components/ui/button';
 import { ArrowLeft, Settings } from 'lucide-react';
 import { Grid } from '../components/do-it/do-it';
+import { ModeToggle } from '../components/mode-toggle';
 
 interface DevPageProps {
   onBack?: () => void;
@@ -10,6 +11,11 @@ interface DevPageProps {
 export const DevPage = ({ onBack }: DevPageProps) => {
   return (
     <div className="p-4 min-h-screen bg-background">
+      {/* Theme Toggle - Fixed in top right */}
+      <div className="fixed top-4 right-4 z-50">
+        <ModeToggle />
+      </div>
+
       <div className="mx-auto space-y-6 max-w-4xl">
         {/* Header */}
         <div className="flex justify-between items-center">
@@ -34,7 +40,7 @@ export const DevPage = ({ onBack }: DevPageProps) => {
 
         {/* DND Kit Grid Layout Example */}
         <div className="w-full h-full">
-          <Grid gridSize={{ width: 8, height: 8 }} cellSize={{ width: 80, height: 80 }} />
+          <Grid />
         </div>
 
         {/* Main Content */}

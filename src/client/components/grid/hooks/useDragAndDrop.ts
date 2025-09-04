@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect, useCallback } from 'react';
+import React, { useState, useRef, useEffect, useCallback } from 'react';
 import type { Game } from '../game/logic';
 import type { Piece } from '../types/game';
 
@@ -13,9 +13,7 @@ export function useDragAndDrop({
   updateGameState: () => void;
   isCompleted: boolean;
 }) {
-  const [draggedPieceIndex, setDraggedPieceIndex] = useState<number | null>(
-    null
-  );
+  const [draggedPieceIndex, setDraggedPieceIndex] = useState<number | null>(null);
   const [dragPosition, setDragPosition] = useState<{
     x: number;
     y: number;
@@ -25,9 +23,8 @@ export function useDragAndDrop({
     y: number;
   } | null>(null);
   const [isValidDrop, setIsValidDrop] = useState<boolean>(true);
-  const [draggedBlockIndex, setDraggedBlockIndex] = useState<number | null>(
-    null
-  );
+  const [draggedBlockIndex, setDraggedBlockIndex] = useState<number | null>(null);
+  const [grabOffset, setGrabOffset] = useState<{ x: number; y: number } | null>(null);
   const gridRef = useRef<HTMLDivElement | null>(null);
 
   const handlePointerDown = useCallback(
@@ -50,19 +47,22 @@ export function useDragAndDrop({
 
       setDraggedPieceIndex(null); // Reset before checking
       setDraggedBlockIndex(null);
+      setGrabOffset(null);
+      const piece = gameState.pieces[pieceIndex];
+      if (!piece) {
+        return;
+      }
+
       setOriginalPosition({
-        x: gameState.pieces[pieceIndex].x,
-        y: gameState.pieces[pieceIndex].y,
+        x: piece.x,
+        y: piece.y,
       });
 
       // Find which block in the piece is being dragged
-      const piece = gameState.pieces[pieceIndex];
       let foundBlockIndex = -1;
       for (let i = 0; i < piece.blocks.length; i++) {
-        if (
-          piece.blocks[i].x + piece.x === x &&
-          piece.blocks[i].y + piece.y === y
-        ) {
+        const block = piece.blocks[i];
+        if (block && block.x + piece.x === x && block.y + piece.y === y) {
           foundBlockIndex = i;
           break;
         }
@@ -75,10 +75,22 @@ export function useDragAndDrop({
       setDraggedPieceIndex(pieceIndex);
       game.selectPiece(pieceIndex);
       setDraggedBlockIndex(foundBlockIndex);
-      // Set initial drag position to current piece position so ghost appears immediately
+
+      // Store the offset of where the user grabbed relative to the piece origin
+      const draggedBlock = piece.blocks[foundBlockIndex];
+      if (!draggedBlock) {
+        return;
+      }
+      setGrabOffset({
+        x: draggedBlock.x,
+        y: draggedBlock.y,
+      });
+
+      // Set initial drag position to current piece position
+      // The drag position represents where the piece's origin (0,0) should be
       setDragPosition({
-        x: gameState.pieces[pieceIndex].x,
-        y: gameState.pieces[pieceIndex].y,
+        x: piece.x,
+        y: piece.y,
       });
       setIsValidDrop(true); // Initial position is always valid
       document.body.style.cursor = 'grabbing';
@@ -90,7 +102,7 @@ export function useDragAndDrop({
   // Helper function to find closest valid position within grace region
   const findClosestValidPosition = useCallback(
     (event: PointerEvent, pieceIndex: number) => {
-      if (!gridRef.current || draggedBlockIndex === null) return null;
+      if (!gridRef.current || draggedBlockIndex === null || !grabOffset) return null;
 
       const rect = gridRef.current.getBoundingClientRect();
       const tileSize = rect.width / game.getGridSize();
@@ -99,7 +111,7 @@ export function useDragAndDrop({
       const graceRadius = tileSize * 1.5;
 
       const piece = gameState.pieces[pieceIndex];
-      const draggedBlock = piece.blocks[draggedBlockIndex];
+      if (!piece) return null;
 
       let closestPosition = null;
       let closestDistance = Infinity;
@@ -113,12 +125,7 @@ export function useDragAndDrop({
           for (const block of piece.blocks) {
             const blockX = x + block.x;
             const blockY = y + block.y;
-            if (
-              blockX < 0 ||
-              blockX >= gridSize ||
-              blockY < 0 ||
-              blockY >= gridSize
-            ) {
+            if (blockX < 0 || blockX >= gridSize || blockY < 0 || blockY >= gridSize) {
               inBounds = false;
               break;
             }
@@ -126,9 +133,9 @@ export function useDragAndDrop({
 
           // Only proceed if bounds are valid and move is valid
           if (inBounds && game.isValidMove(pieceIndex, x, y)) {
-            // Calculate where the dragged block would be positioned
-            const draggedBlockX = x + draggedBlock.x;
-            const draggedBlockY = y + draggedBlock.y;
+            // Calculate where the grabbed block would be positioned using stored offset
+            const draggedBlockX = x + grabOffset.x;
+            const draggedBlockY = y + grabOffset.y;
 
             // Calculate pixel distance to dragged block center
             const draggedBlockCenterX = (draggedBlockX + 0.5) * tileSize;
@@ -149,7 +156,7 @@ export function useDragAndDrop({
 
       return closestPosition;
     },
-    [game, gameState.pieces, draggedBlockIndex]
+    [game, gameState.pieces, draggedBlockIndex, grabOffset]
   );
 
   const handlePointerMove = useCallback(
@@ -157,7 +164,8 @@ export function useDragAndDrop({
       if (
         draggedPieceIndex === null ||
         !gridRef.current ||
-        draggedBlockIndex === null
+        draggedBlockIndex === null ||
+        !grabOffset
       ) {
         return;
       }
@@ -165,22 +173,18 @@ export function useDragAndDrop({
       const rect = gridRef.current.getBoundingClientRect();
       const tileSize = rect.width / game.getGridSize();
       const cursorTileX = Math.floor(
-        Math.min(
-          Math.max(0, event.clientX - rect.left) / tileSize,
-          game.getGridSize() - 1
-        )
+        Math.min(Math.max(0, event.clientX - rect.left) / tileSize, game.getGridSize() - 1)
       );
       const cursorTileY = Math.floor(
-        Math.min(
-          Math.max(0, event.clientY - rect.top) / tileSize,
-          game.getGridSize() - 1
-        )
+        Math.min(Math.max(0, event.clientY - rect.top) / tileSize, game.getGridSize() - 1)
       );
 
       const piece = gameState.pieces[draggedPieceIndex];
-      const block = piece.blocks[draggedBlockIndex];
-      const rawX = cursorTileX - block.x;
-      const rawY = cursorTileY - block.y;
+      if (!piece) return;
+
+      // Calculate where the piece origin should be based on cursor position and grab offset
+      const rawX = cursorTileX - grabOffset.x;
+      const rawY = cursorTileY - grabOffset.y;
 
       // Check if the raw position would be fully within bounds
       let inBounds = true;
@@ -204,10 +208,7 @@ export function useDragAndDrop({
 
       // If raw position is invalid, try grace region
       if (!isValid) {
-        const gracePosition = findClosestValidPosition(
-          event,
-          draggedPieceIndex
-        );
+        const gracePosition = findClosestValidPosition(event, draggedPieceIndex);
         if (gracePosition) {
           finalPosition = gracePosition;
           isValid = true;
@@ -220,6 +221,7 @@ export function useDragAndDrop({
     [
       draggedPieceIndex,
       draggedBlockIndex,
+      grabOffset,
       game,
       gameState.pieces,
       findClosestValidPosition,
@@ -231,6 +233,8 @@ export function useDragAndDrop({
       if (draggedPieceIndex !== null && dragPosition && gridRef.current) {
         // Always check collision and bounds on drop
         const piece = gameState.pieces[draggedPieceIndex];
+        if (!piece) return;
+
         let inBounds = true;
         for (const block of piece.blocks) {
           const blockX = dragPosition.x + block.x;
@@ -246,11 +250,7 @@ export function useDragAndDrop({
           }
         }
 
-        const isValidMove = game.isValidMove(
-          draggedPieceIndex,
-          dragPosition.x,
-          dragPosition.y
-        );
+        const isValidMove = game.isValidMove(draggedPieceIndex, dragPosition.x, dragPosition.y);
 
         let finalPosition = null;
 
@@ -264,18 +264,10 @@ export function useDragAndDrop({
         }
 
         if (finalPosition) {
-          game.setPiecePosition(
-            draggedPieceIndex,
-            finalPosition.x,
-            finalPosition.y
-          );
+          game.setPiecePosition(draggedPieceIndex, finalPosition.x, finalPosition.y);
           updateGameState();
         } else if (originalPosition) {
-          game.setPiecePosition(
-            draggedPieceIndex,
-            originalPosition.x,
-            originalPosition.y
-          );
+          game.setPiecePosition(draggedPieceIndex, originalPosition.x, originalPosition.y);
           updateGameState();
         }
       }
@@ -285,6 +277,7 @@ export function useDragAndDrop({
       setOriginalPosition(null);
       setIsValidDrop(true);
       setDraggedBlockIndex(null);
+      setGrabOffset(null);
       document.body.style.cursor = '';
       document.body.classList.remove('overflow-hidden', 'touch-none');
     },
@@ -319,13 +312,7 @@ export function useDragAndDrop({
         window.removeEventListener('pointerup', up);
       };
     }
-  }, [
-    draggedPieceIndex,
-    dragPosition,
-    isValidDrop,
-    handlePointerMove,
-    handlePointerUp,
-  ]);
+  }, [draggedPieceIndex, dragPosition, isValidDrop, handlePointerMove, handlePointerUp]);
 
   // Cleanup effect to remove dragging classes when component unmounts
   useEffect(() => {
@@ -346,6 +333,8 @@ export function useDragAndDrop({
     setIsValidDrop,
     draggedBlockIndex,
     setDraggedBlockIndex,
+    grabOffset,
+    setGrabOffset,
     gridRef,
     handlePointerDown,
     handlePointerMove,

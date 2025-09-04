@@ -2,6 +2,7 @@ import { ReactNode, useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Button } from './ui/button';
 import { Card, CardContent } from './ui/card';
+import { ModeToggle } from './mode-toggle';
 
 interface GameLayoutProps {
   gameTitle: string;
@@ -111,6 +112,8 @@ export const GameLayout = ({
 
         {/* Action Buttons */}
         <div className="flex items-center gap-2">
+          {/* Theme Toggle */}
+          <ModeToggle />
           {/* Leaderboard Button */}
           <Button variant="outline" size="icon" onClick={onLeaderboard}>
             <svg
