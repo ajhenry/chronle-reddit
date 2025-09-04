@@ -5,6 +5,7 @@
 @import '@fontsource/dm-sans/700.css';
 @import '@fontsource/dm-sans/800.css';
 @import '@fontsource/dm-sans/900.css';
+@import 'react-grid-layout/css/styles.css';
 
 * {
   font-family: var(--font-sans);

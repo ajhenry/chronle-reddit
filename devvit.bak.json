@@ -18,7 +18,7 @@
     "items": [
       {
         "label": "Create a new post",
-        "description": "snoodle-game",
+        "description": "snoodle-dev",
         "location": "subreddit",
         "forUserType": "moderator",
         "endpoint": "/internal/menu/post-create"
@@ -28,20 +28,18 @@
   "triggers": {
     "onAppInstall": "/internal/on-app-install"
   },
+  "dev": {
+    "subreddit": "snoodle_dev_dev"
+  },
   "permissions": {
     "http": {
       "enable": true,
-      "domains": [
-        "gwnwsqtfvkgcihmwgrsj.supabase.co"
-      ]
+      "domains": ["gwnwsqtfvkgcihmwgrsj.supabase.co"]
     },
     "reddit": {
       "enable": true,
       "scope": "user"
     },
     "redis": true
-  },
-  "dev": {
-    "subreddit": "snoodle_game_dev"
   }
 }

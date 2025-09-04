@@ -10,6 +10,7 @@ import {
   PointerSensor,
   TouchSensor,
 } from '@dnd-kit/core';
+import { Responsive as ResponsiveGridLayout } from 'react-grid-layout';
 import { GameLayout } from '../components/GameLayout';
 import { toast } from 'sonner';
 import { CardContent } from '../components/ui/card';
@@ -775,55 +776,124 @@ export const LetteredPage = ({ onBack }: { onBack?: () => void }) => {
         onDragOver={handleDragOver}
         onDragEnd={handleDragEnd}
       >
-        <div className="space-y-6">
-          {/* Category */}
-          <h2 className="text-2xl font-black tracking-tight text-center text-foreground">
-            {gameData.category}
-          </h2>
-
-          {/* Phrase */}
-          <h3 className="text-lg font-bold text-center opacity-75 text-foreground">
-            "{gameData.phrase}"
-          </h3>
-
-          {/* Game Grid */}
-          <LetteredGrid
-            grid={gameData.grid}
-            placedPieces={gameState.placedPieces}
-            pieces={gameData.pieces}
-            previewPiece={gameState.previewPiece}
-            previewPosition={gameState.previewPosition}
-            isValidPreview={gameState.isValidPreview}
-            draggingFromGrid={draggingFromGrid}
-            gameComplete={gameState.gameComplete}
-            gameState={gameState}
-          />
-
-          {/* Piece Tray */}
-          <div>
-            <h4 className="mb-3 text-base font-semibold text-center text-foreground">
-              Lettered Pieces
-            </h4>
-            <div className="flex flex-wrap gap-3 justify-center p-4 bg-gray-50 rounded-lg border-2 border-gray-300 dark:bg-gray-800 dark:border-gray-600">
-              {gameData.pieces.map((piece) => {
-                const isPlaced = gameState.placedPieces.has(piece.id);
-                const isDragging = activeDragId === piece.id;
-                const isPreviewingOnGrid = isDragging && gameState.previewPiece?.id === piece.id;
-                // Only render pieces that aren't placed on the board and aren't currently showing preview on grid
-                if (isPlaced || isPreviewingOnGrid) {
-                  return null;
-                }
-                return (
-                  <LetterPiece
-                    key={piece.id}
-                    piece={piece}
-                    isPlaced={isPlaced}
-                    gameComplete={gameState.gameComplete}
-                  />
-                );
-              })}
+        <div
+          className="touch-none"
+          onTouchStart={(e) => {
+            // Prevent default touch behaviors at the top level
+            if (!gameState.gameComplete) {
+              e.preventDefault();
+            }
+          }}
+          onTouchMove={(e) => {
+            // Prevent scrolling during drag operations
+            if (activeDragId && !gameState.gameComplete) {
+              e.preventDefault();
+            }
+          }}
+        >
+          <ResponsiveGridLayout
+            className="layout"
+            layouts={{
+              lg: [
+                { i: 'category', x: 0, y: 0, w: 12, h: 1, static: true },
+                { i: 'phrase', x: 0, y: 1, w: 12, h: 1, static: true },
+                { i: 'puzzle', x: 0, y: 2, w: 12, h: 10, static: true },
+                { i: 'pieces', x: 0, y: 12, w: 12, h: 8, static: true },
+              ],
+              md: [
+                { i: 'category', x: 0, y: 0, w: 10, h: 1, static: true },
+                { i: 'phrase', x: 0, y: 1, w: 10, h: 1, static: true },
+                { i: 'puzzle', x: 0, y: 2, w: 10, h: 10, static: true },
+                { i: 'pieces', x: 0, y: 12, w: 10, h: 8, static: true },
+              ],
+              sm: [
+                { i: 'category', x: 0, y: 0, w: 6, h: 1, static: true },
+                { i: 'phrase', x: 0, y: 1, w: 6, h: 1, static: true },
+                { i: 'puzzle', x: 0, y: 2, w: 6, h: 12, static: true },
+                { i: 'pieces', x: 0, y: 14, w: 6, h: 10, static: true },
+              ],
+              xs: [
+                { i: 'category', x: 0, y: 0, w: 4, h: 1, static: true },
+                { i: 'phrase', x: 0, y: 1, w: 4, h: 1, static: true },
+                { i: 'puzzle', x: 0, y: 2, w: 4, h: 14, static: true },
+                { i: 'pieces', x: 0, y: 16, w: 4, h: 12, static: true },
+              ],
+            }}
+            breakpoints={{ lg: 1200, md: 996, sm: 768, xs: 480 }}
+            cols={{ lg: 12, md: 10, sm: 6, xs: 4 }}
+            rowHeight={30}
+            isDraggable={false}
+            isResizable={false}
+          >
+            {/* Category */}
+            <div key="category" className="flex items-center justify-center">
+              <h2 className="text-2xl font-black tracking-tight text-center text-foreground">
+                {gameData.category}
+              </h2>
             </div>
-          </div>
+
+            {/* Phrase */}
+            <div key="phrase" className="flex items-center justify-center">
+              <h3 className="text-lg font-bold text-center opacity-75 text-foreground">
+                "{gameData.phrase}"
+              </h3>
+            </div>
+
+            {/* Game Grid */}
+            <div key="puzzle" className="flex items-center justify-center h-full">
+              <LetteredGrid
+                grid={gameData.grid}
+                placedPieces={gameState.placedPieces}
+                pieces={gameData.pieces}
+                previewPiece={gameState.previewPiece}
+                previewPosition={gameState.previewPosition}
+                isValidPreview={gameState.isValidPreview}
+                draggingFromGrid={draggingFromGrid}
+                gameComplete={gameState.gameComplete}
+                gameState={gameState}
+              />
+            </div>
+
+            {/* Piece Tray */}
+            <div key="pieces" className="flex flex-col h-full">
+              <h4 className="mb-3 text-base font-semibold text-center text-foreground flex-shrink-0">
+                Lettered Pieces
+              </h4>
+              <div
+                className="flex flex-wrap gap-3 justify-center p-4 bg-gray-50 rounded-lg border-2 border-gray-300 dark:bg-gray-800 dark:border-gray-600 touch-none overflow-auto flex-grow min-h-0"
+                onTouchStart={(e) => {
+                  // Prevent default touch behaviors in piece tray
+                  if (!gameState.gameComplete) {
+                    e.preventDefault();
+                  }
+                }}
+                onTouchMove={(e) => {
+                  // Prevent scrolling during drag operations
+                  if (activeDragId && !gameState.gameComplete) {
+                    e.preventDefault();
+                  }
+                }}
+              >
+                {gameData.pieces.map((piece) => {
+                  const isPlaced = gameState.placedPieces.has(piece.id);
+                  const isDragging = activeDragId === piece.id;
+                  const isPreviewingOnGrid = isDragging && gameState.previewPiece?.id === piece.id;
+                  // Only render pieces that aren't placed on the board and aren't currently showing preview on grid
+                  if (isPlaced || isPreviewingOnGrid) {
+                    return null;
+                  }
+                  return (
+                    <LetterPiece
+                      key={piece.id}
+                      piece={piece}
+                      isPlaced={isPlaced}
+                      gameComplete={gameState.gameComplete}
+                    />
+                  );
+                })}
+              </div>
+            </div>
+          </ResponsiveGridLayout>
         </div>
       </DndContext>
       {/* Confetti Animation */}

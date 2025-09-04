@@ -67,6 +67,8 @@ export const App = () => {
       void navigate('/top');
     } else if (gameId === 'lettered') {
       void navigate('/lettered');
+    } else if (gameId === 'dev') {
+      void navigate('/dev');
     }
   };
 
@@ -208,6 +210,23 @@ export const App = () => {
                       <div className="py-8 flex items-center justify-center min-h-[100px]">
                         <h2 className="p-2 -m-2 text-4xl font-black tracking-wider text-white bg-black">
                           LETTERED
+                        </h2>
+                      </div>
+                    </button>
+                    <h3 className="mt-2 mb-2 text-xl font-bold text-center text-card-foreground">
+                      Complete the phrase in pieces
+                    </h3>
+                  </div>
+
+                  {/* Dev Game */}
+                  <div className="flex flex-col items-center space-y-2 w-full">
+                    <button
+                      onClick={() => handleGameSelect('dev')}
+                      className="relative overflow-hidden border-4 border-border shadow-lg hover:shadow-xl transition-all duration-200 hover:translate-x-[-2px] hover:translate-y-[-2px] w-full"
+                    >
+                      <div className="py-8 flex items-center justify-center min-h-[100px]">
+                        <h2 className="p-2 -m-2 text-4xl font-black tracking-wider text-white bg-black">
+                          DEV MODE
                         </h2>
                       </div>
                     </button>
