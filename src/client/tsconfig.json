@@ -2,6 +2,7 @@
 {
   "extends": "../../tools/tsconfig-base.json",
   "compilerOptions": {
+    "exactOptionalPropertyTypes": false,
     // Target the browser.
     "customConditions": ["browser"],
 

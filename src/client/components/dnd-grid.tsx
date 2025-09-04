@@ -1,4 +1,4 @@
-import { useState, useCallback, useRef } from 'react';
+import { useState, useCallback, useRef, useMemo, memo } from 'react';
 import { Responsive, WidthProvider, Layout } from 'react-grid-layout';
 import 'react-resizable/css/styles.css';
 
@@ -73,19 +73,26 @@ const itemColors = [
   'bg-pink-500',
 ];
 
-// Grid item component
-function GridItem({ itemKey, parentKey: _parentKey }: { itemKey: string; parentKey: string }) {
-  const colorIndex = itemKey.charCodeAt(0) % itemColors.length;
-  const color = itemColors[colorIndex];
+// Grid item component - memoized for performance
+const GridItem = memo(
+  ({ itemKey, parentKey: _parentKey }: { itemKey: string; parentKey: string }) => {
+    // Memoize color calculation
+    const color = useMemo(() => {
+      const colorIndex = itemKey.charCodeAt(0) % itemColors.length;
+      return itemColors[colorIndex];
+    }, [itemKey]);
 
-  return (
-    <div
-      className={`flex justify-center items-center p-4 font-semibold text-white rounded-lg cursor-move ${color}`}
-    >
-      <span className="text-xl">{itemKey.toUpperCase()}</span>
-    </div>
-  );
-}
+    return (
+      <div
+        className={`flex justify-center items-center p-4 font-semibold text-white rounded-lg cursor-move ${color}`}
+      >
+        <span className="text-xl">{itemKey.toUpperCase()}</span>
+      </div>
+    );
+  }
+);
+
+GridItem.displayName = 'GridItem';
 
 export function Grid({
   cols = { lg: 12, md: 10, sm: 6, xs: 4, xxs: 2 },
@@ -143,6 +150,41 @@ export function Grid({
     []
   );
 
+  // Helper function to validate if entire group fits within bounds
+  const isGroupPositionValid = useCallback(
+    (
+      groupPieces: string[],
+      deltaX: number,
+      deltaY: number,
+      layout: Layout[],
+      breakpoint: string = 'lg'
+    ) => {
+      const maxCols = cols[breakpoint as keyof typeof cols] || cols.lg || 12;
+
+      for (const pieceId of groupPieces) {
+        const startPos = dragStartPositions.current[pieceId];
+        if (!startPos) continue;
+
+        const newX = startPos.x + deltaX;
+        const newY = startPos.y + deltaY;
+
+        // Check if new position is out of bounds
+        if (newX < 0 || newX >= maxCols || newY < 0) {
+          return false;
+        }
+
+        // Check if piece extends beyond grid width
+        const piece = layout.find((item) => item.i === pieceId);
+        if (piece && newX + piece.w > maxCols) {
+          return false;
+        }
+      }
+
+      return true;
+    },
+    [cols]
+  );
+
   const handleLayoutChange = useCallback(
     (layout: Layout[], allLayouts: { [key: string]: Layout[] }) => {
       let updatedLayout = layout;
@@ -170,35 +212,81 @@ export function Grid({
           }
         }
 
-        // If we found the dragged piece, update all other pieces in the group
+        // Validate bounds before applying group movement
         if (draggedPiece) {
-          updatedLayout = layout.map((item) => {
-            if (groupPieces.includes(item.i) && item.i !== draggedPiece!.i) {
-              const startPos = dragStartPositions.current[item.i];
-              if (startPos) {
-                return {
-                  ...item,
-                  x: startPos.x + deltaX,
-                  y: startPos.y + deltaY,
-                };
+          const currentBreakpoint = 'lg'; // You might want to track actual breakpoint
+          const isValidMove = isGroupPositionValid(
+            groupPieces,
+            deltaX,
+            deltaY,
+            layout,
+            currentBreakpoint
+          );
+
+          if (!isValidMove) {
+            // Restore original positions if move is invalid
+            updatedLayout = layout.map((item) => {
+              if (groupPieces.includes(item.i)) {
+                const startPos = dragStartPositions.current[item.i];
+                if (startPos) {
+                  return {
+                    ...item,
+                    x: startPos.x,
+                    y: startPos.y,
+                  };
+                }
               }
-            }
-            return item;
-          });
+              return item;
+            });
+
+            console.warn('Drop position is out of bounds. Restoring original positions.');
+          } else {
+            // Apply valid group movement
+            updatedLayout = layout.map((item) => {
+              if (groupPieces.includes(item.i) && item.i !== draggedPiece!.i) {
+                const startPos = dragStartPositions.current[item.i];
+                if (startPos) {
+                  return {
+                    ...item,
+                    x: startPos.x + deltaX,
+                    y: startPos.y + deltaY,
+                  };
+                }
+              }
+              return item;
+            });
+          }
 
           // Update all layouts for all breakpoints
           updatedAllLayouts = { ...allLayouts };
           Object.keys(updatedAllLayouts).forEach((breakpoint) => {
             if (updatedAllLayouts[breakpoint]) {
+              const isBreakpointValid = isGroupPositionValid(
+                groupPieces,
+                deltaX,
+                deltaY,
+                updatedAllLayouts[breakpoint],
+                breakpoint
+              );
+
               updatedAllLayouts[breakpoint] = updatedAllLayouts[breakpoint].map((item) => {
                 if (groupPieces.includes(item.i) && draggedPiece && item.i !== draggedPiece.i) {
                   const startPos = dragStartPositions.current[item.i];
                   if (startPos) {
-                    return {
-                      ...item,
-                      x: startPos.x + deltaX,
-                      y: startPos.y + deltaY,
-                    };
+                    if (isBreakpointValid) {
+                      return {
+                        ...item,
+                        x: startPos.x + deltaX,
+                        y: startPos.y + deltaY,
+                      };
+                    } else {
+                      // Restore original position for this breakpoint
+                      return {
+                        ...item,
+                        x: startPos.x,
+                        y: startPos.y,
+                      };
+                    }
                   }
                 }
                 return item;
@@ -211,46 +299,60 @@ export function Grid({
       setLayouts(updatedAllLayouts as GridLayouts);
       onLayoutChange?.(updatedLayout, updatedAllLayouts);
     },
-    [onLayoutChange]
+    [onLayoutChange, isGroupPositionValid]
   );
 
   const handleBreakpointChange = useCallback((_breakpoint: string) => {
     // Breakpoint change handler - currently not used but required by react-grid-layout
   }, []);
 
-  // Create grid background styles that align with actual grid boundaries
-  const currentCols = cols.lg || 12;
-  const gridBackgroundStyle = {
-    backgroundSize: `${100 / currentCols}% ${rowHeight}px`,
-    backgroundPosition: '10px 10px', // Match container padding and margin
-  };
+  // Memoize grid background styles for better performance
+  const gridBackgroundStyle = useMemo(() => {
+    const currentCols = cols.lg || 12;
+    return {
+      backgroundSize: `${100 / currentCols}% ${rowHeight}px`,
+      backgroundPosition: '10px 10px', // Match container padding and margin
+    };
+  }, [cols.lg, rowHeight]);
+
+  // Memoize responsive grid layout props for better performance
+  const gridLayoutProps = useMemo(
+    () => ({
+      layouts,
+      cols,
+      rowHeight,
+      isDraggable,
+      isResizable,
+      compactType,
+      preventCollision: true,
+      margin: [10, 10] as [number, number],
+      containerPadding: [10, 10] as [number, number],
+      breakpoints: { lg: 1200, md: 996, sm: 768, xs: 480, xxs: 0 },
+      useCSSTransforms: true,
+      autoSize: true,
+    }),
+    [layouts, cols, rowHeight, isDraggable, isResizable, compactType]
+  );
 
   return (
     <div className="p-4 w-full min-h-screen bg-background" style={gridBackgroundStyle}>
       <ResponsiveGridLayout
         className="layout"
-        layouts={layouts}
         onLayoutChange={handleLayoutChange}
         onBreakpointChange={handleBreakpointChange}
         onDragStart={handleDragStart}
         onDragStop={handleDragStop}
-        cols={cols}
-        rowHeight={rowHeight}
-        isDraggable={isDraggable}
-        isResizable={isResizable}
-        compactType={compactType}
-        preventCollision={true}
-        margin={[10, 10]}
-        containerPadding={[10, 10]}
-        breakpoints={{ lg: 1200, md: 996, sm: 768, xs: 480, xxs: 0 }}
-        useCSSTransforms={true}
-        autoSize={true}
+        {...gridLayoutProps}
       >
-        {['a', 'b'].map((key) => (
-          <div key={key}>
-            <GridItem itemKey={key} parentKey={pieceToParent[key] || key} />
-          </div>
-        ))}
+        {useMemo(
+          () =>
+            ['a', 'b'].map((key) => (
+              <div key={key}>
+                <GridItem itemKey={key} parentKey={pieceToParent[key] || key} />
+              </div>
+            )),
+          []
+        )}
       </ResponsiveGridLayout>
     </div>
   );
@@ -294,6 +396,10 @@ export function GridExample() {
             <li>• Responsive breakpoints (lg, md, sm, xs, xxs)</li>
             <li>• Collision prevention enabled</li>
             <li>• Visible grid lines for alignment</li>
+            <li>• Out-of-bounds validation - prevents drops outside grid boundaries</li>
+            <li>• Automatic position restoration for invalid drops</li>
+            <li>• Performance optimized with React.memo and memoization</li>
+            <li>• Efficient re-rendering with minimal DOM updates</li>
           </ul>
         </div>
       </div>

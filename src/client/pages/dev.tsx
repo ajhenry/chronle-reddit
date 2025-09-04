@@ -1,7 +1,7 @@
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card';
 import { Button } from '../components/ui/button';
 import { ArrowLeft, Settings } from 'lucide-react';
-import { DndKitGridExample } from '../components/dnd-kit-grid';
+import { Grid } from '../components/do-it/do-it';
 
 interface DevPageProps {
   onBack?: () => void;
@@ -33,7 +33,9 @@ export const DevPage = ({ onBack }: DevPageProps) => {
         </div>
 
         {/* DND Kit Grid Layout Example */}
-        <DndKitGridExample />
+        <div className="w-full h-full">
+          <Grid gridSize={{ width: 8, height: 8 }} cellSize={{ width: 80, height: 80 }} />
+        </div>
 
         {/* Main Content */}
         <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
