@@ -1,7 +1,7 @@
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card';
 import { Button } from '../components/ui/button';
 import { ArrowLeft, Settings } from 'lucide-react';
-import { Grid } from '../components/do-it/do-it';
+import { Grid } from '../components/tile-grid/tile-grid';
 import { ModeToggle } from '../components/mode-toggle';
 
 interface DevPageProps {
