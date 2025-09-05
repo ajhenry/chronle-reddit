@@ -105,6 +105,7 @@ type DraggableItem = {
   shape: ItemShape;
   content: ReactNode;
   color?: string;
+  disabled?: boolean; // Whether the piece is locked in place and cannot be dragged
 };
 
 // Unique ID generation for grid instances
@@ -621,8 +622,9 @@ type DraggableItemProps = {
 const DraggableItemComponent = React.memo(
   ({ item, onDragStart, onDragEnd, className = '' }: DraggableItemProps) => {
     const { cellSize } = useGrid();
+    const isDisabled = item.disabled ?? false;
     const [isDragging, setIsDragging] = useState(false);
-    const [cursorType, setCursorType] = useState<'default' | 'move'>('default');
+    const [cursorType, setCursorType] = useState<'default' | 'move' | 'not-allowed'>('default');
     const itemRef = React.useRef<HTMLDivElement>(null);
 
     const boundingBox = useMemo(() => getItemBoundingBox(item), [item]);
@@ -672,14 +674,31 @@ const DraggableItemComponent = React.memo(
           `Piece ${item.id} at (${item.position.x}, ${item.position.y}): mouse at (${mouseGridX}, ${mouseGridY}), isOverOccupied: ${isOverOccupiedCell}`
         );
 
-        // Update cursor based on whether we're over an occupied cell
-        setCursorType(isOverOccupiedCell ? 'move' : 'default');
+        // Update cursor based on whether we're over an occupied cell and if piece is disabled
+        if (isDisabled) {
+          setCursorType('not-allowed');
+        } else {
+          setCursorType(isOverOccupiedCell ? 'move' : 'default');
+        }
       },
-      [isDragging, item.shape.cells, item.position, item.id, cellSize, getEventCoordinates]
+      [
+        isDragging,
+        item.shape.cells,
+        item.position,
+        item.id,
+        cellSize,
+        getEventCoordinates,
+        isDisabled,
+      ]
     );
 
     const handlePointerDown = useCallback(
       (e: React.MouseEvent | React.TouchEvent) => {
+        // Prevent dragging if the piece is disabled
+        if (isDisabled) {
+          return;
+        }
+
         const coords = getEventCoordinates(e);
 
         // Calculate which cell within the bounding box was clicked
@@ -702,26 +721,56 @@ const DraggableItemComponent = React.memo(
 
         // Only allow dragging if clicking on an occupied cell
         if (!isOccupiedCell) {
-          // For empty spaces, temporarily disable pointer events to let the click pass through
+          // For empty spaces, temporarily hide this element to allow events to reach underlying pieces
+          // This handles both mouse and touch events by removing the element from the DOM temporarily
           if (itemRef.current) {
             const originalPointerEvents = itemRef.current.style.pointerEvents;
             itemRef.current.style.pointerEvents = 'none';
 
-            // Create a new mouse event at the same position to pass through to underlying pieces
-            const passThroughEvent = new MouseEvent(e.type, {
-              clientX: coords.clientX,
-              clientY: coords.clientY,
-              button: 'touches' in e ? 0 : e.button,
-              buttons: 'touches' in e ? 1 : e.buttons,
-              bubbles: true,
-              cancelable: true,
-            });
-
-            // Dispatch the event after a tiny delay to allow pointer-events to take effect
+            // Forward the touch event to underlying pieces without hiding the element
             setTimeout(() => {
-              document
-                .elementFromPoint(coords.clientX, coords.clientY)
-                ?.dispatchEvent(passThroughEvent);
+              const targetElement = document.elementFromPoint(coords.clientX, coords.clientY);
+              if (targetElement && targetElement !== itemRef.current) {
+                // Create a proper TouchEvent to forward
+                try {
+                  if ('touches' in e) {
+                    const forwardedTouchEvent = new TouchEvent(e.type, {
+                      touches: e.touches as unknown as Touch[],
+                      changedTouches: e.changedTouches as unknown as Touch[],
+                      bubbles: true,
+                      cancelable: true,
+                    });
+                    targetElement.dispatchEvent(forwardedTouchEvent);
+                  } else {
+                    // Fallback for mouse events
+                    const fallbackEvent = new MouseEvent(e.type, {
+                      clientX: coords.clientX,
+                      clientY: coords.clientY,
+                      button: e.button,
+                      buttons: e.buttons,
+                      bubbles: true,
+                      cancelable: true,
+                    });
+                    targetElement.dispatchEvent(fallbackEvent);
+                  }
+                } catch (error) {
+                  // Fallback: create a simple mouse event if event creation fails
+                  console.warn('Event forwarding failed, using mouse fallback:', error);
+                  const fallbackEvent = new MouseEvent(
+                    e.type === 'touchstart' ? 'mousedown' : e.type,
+                    {
+                      clientX: coords.clientX,
+                      clientY: coords.clientY,
+                      button: 'touches' in e ? 0 : e.button,
+                      buttons: 'touches' in e ? 1 : e.buttons,
+                      bubbles: true,
+                      cancelable: true,
+                    }
+                  );
+                  targetElement.dispatchEvent(fallbackEvent);
+                }
+              }
+
               // Restore original pointer events
               if (itemRef.current) {
                 itemRef.current.style.pointerEvents = originalPointerEvents;
@@ -742,7 +791,7 @@ const DraggableItemComponent = React.memo(
 
         onDragStart?.(item, grabOffset);
       },
-      [item, onDragStart, cellSize, getEventCoordinates]
+      [item, onDragStart, cellSize, getEventCoordinates, isDisabled]
     );
 
     const handlePointerUp = useCallback(
@@ -771,9 +820,9 @@ const DraggableItemComponent = React.memo(
 
     const handleMouseLeave = useCallback(() => {
       if (!isDragging) {
-        setCursorType('default');
+        setCursorType(isDisabled ? 'not-allowed' : 'default');
       }
-    }, [isDragging]);
+    }, [isDragging, isDisabled]);
 
     const itemStyle = useMemo(
       () => ({
@@ -783,8 +832,9 @@ const DraggableItemComponent = React.memo(
         width: boundingBox.width * cellSize.width,
         height: boundingBox.height * cellSize.height,
         zIndex: isDragging ? 1000 : 1,
+        opacity: isDisabled ? 0.7 : 1, // Make disabled pieces slightly transparent
       }),
-      [item.position, boundingBox, cellSize, isDragging]
+      [item.position, boundingBox, cellSize, isDragging, isDisabled]
     );
 
     // Render individual cells for the shape
@@ -1082,6 +1132,13 @@ const GridDemo = () => {
       content: 'T',
       color: 'bg-yellow-500',
     },
+    {
+      position: { x: 6, y: 0 },
+      shape: PREDEFINED_SHAPES.single!,
+      content: '🔒',
+      color: 'bg-gray-500',
+      disabled: true, // This piece is locked and cannot be moved
+    },
   ]);
 
   const [grid2Items, setGrid2Items] = useState<Omit<DraggableItem, 'id'>[]>([
@@ -1102,6 +1159,13 @@ const GridDemo = () => {
       shape: PREDEFINED_SHAPES.vertical2!,
       content: 'I',
       color: 'bg-indigo-500',
+    },
+    {
+      position: { x: 4, y: 0 },
+      shape: PREDEFINED_SHAPES.L!,
+      content: '🔒',
+      color: 'bg-red-400',
+      disabled: true, // This piece is locked and cannot be moved
     },
   ]);
 
@@ -1145,7 +1209,7 @@ const GridDemo = () => {
               <p className="text-sm text-gray-600">Grid Size: 8x6 | Cell Size: 50x50px</p>
             </div>
             <Grid
-              gridSize={{ width: 8, height: 6 }}
+              gridSize={{ width: 10, height: 8 }}
               cellSize={{ width: 50, height: 50 }}
               initialItems={grid1Items}
               onItemMove={handleGrid1ItemMove}
