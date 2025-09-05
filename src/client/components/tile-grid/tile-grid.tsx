@@ -702,7 +702,33 @@ const DraggableItemComponent = React.memo(
 
         // Only allow dragging if clicking on an occupied cell
         if (!isOccupiedCell) {
-          return; // Ignore clicks on empty spaces within bounding box
+          // For empty spaces, temporarily disable pointer events to let the click pass through
+          if (itemRef.current) {
+            const originalPointerEvents = itemRef.current.style.pointerEvents;
+            itemRef.current.style.pointerEvents = 'none';
+
+            // Create a new mouse event at the same position to pass through to underlying pieces
+            const passThroughEvent = new MouseEvent(e.type, {
+              clientX: coords.clientX,
+              clientY: coords.clientY,
+              button: 'touches' in e ? 0 : e.button,
+              buttons: 'touches' in e ? 1 : e.buttons,
+              bubbles: true,
+              cancelable: true,
+            });
+
+            // Dispatch the event after a tiny delay to allow pointer-events to take effect
+            setTimeout(() => {
+              document
+                .elementFromPoint(coords.clientX, coords.clientY)
+                ?.dispatchEvent(passThroughEvent);
+              // Restore original pointer events
+              if (itemRef.current) {
+                itemRef.current.style.pointerEvents = originalPointerEvents;
+              }
+            }, 0);
+          }
+          return; // Don't process this click in the current piece
         }
 
         e.preventDefault();
