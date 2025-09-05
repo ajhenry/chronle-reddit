@@ -1,4 +1,5 @@
 import { GridCell, GridPosition, LetterPiece, LetteredGameData } from '../../shared/types/api';
+import { Breakpoint } from '../hooks/useViewport';
 
 // Available colors for tetris pieces
 const PIECE_COLORS = [
@@ -12,63 +13,6 @@ const PIECE_COLORS = [
   '#8B5CF6', // violet
   '#EC4899', // pink
 ];
-
-// Generate random piece shapes that connect via sides (not just corners) - DEPRECATED
-export const generateRandomPieceShape = (letterCount: number): GridPosition[] => {
-  if (letterCount < 2 || letterCount > 5) {
-    throw new Error('Piece must have 2-5 letters');
-  }
-
-  const shape: GridPosition[] = [{ row: 0, col: 0 }]; // Start with first position
-
-  for (let i = 1; i < letterCount; i++) {
-    // Find all possible adjacent positions to existing shape
-    const possiblePositions: GridPosition[] = [];
-
-    for (const existingPos of shape) {
-      // Check all 4 directions (up, down, left, right)
-      const adjacentPositions = [
-        { row: existingPos.row - 1, col: existingPos.col }, // up
-        { row: existingPos.row + 1, col: existingPos.col }, // down
-        { row: existingPos.row, col: existingPos.col - 1 }, // left
-        { row: existingPos.row, col: existingPos.col + 1 }, // right
-      ];
-
-      for (const adjPos of adjacentPositions) {
-        // Check if this position is not already in the shape
-        if (!shape.some((pos) => pos.row === adjPos.row && pos.col === adjPos.col)) {
-          possiblePositions.push(adjPos);
-        }
-      }
-    }
-
-    // Remove duplicates
-    const uniquePositions = possiblePositions.filter(
-      (pos, index, arr) => arr.findIndex((p) => p.row === pos.row && p.col === pos.col) === index
-    );
-
-    if (uniquePositions.length === 0) {
-      throw new Error('Cannot generate valid piece shape');
-    }
-
-    // Pick a random adjacent position
-    const randomPos = uniquePositions[Math.floor(Math.random() * uniquePositions.length)];
-    if (randomPos) {
-      shape.push(randomPos);
-    } else {
-      break; // No more positions available
-    }
-  }
-
-  // Normalize shape to start from (0,0)
-  const minRow = Math.min(...shape.map((pos) => pos.row));
-  const minCol = Math.min(...shape.map((pos) => pos.col));
-
-  return shape.map((pos) => ({
-    row: pos.row - minRow,
-    col: pos.col - minCol,
-  }));
-};
 
 // Create an empty 8x8 grid
 export const createEmptyGrid = (): GridCell[][] => {
@@ -1436,6 +1380,35 @@ const generateFallbackGame = (category: string, phrase: string): LetteredGameDat
     created_at: new Date().toISOString(),
     updated_at: new Date().toISOString(),
   };
+};
+
+// Responsive cell size map for different breakpoints
+export const RESPONSIVE_CELL_SIZES: Record<Breakpoint, { width: number; height: number }> = {
+  xs: { width: 40, height: 40 },
+  sm: { width: 40, height: 40 },
+  md: { width: 48, height: 48 },
+  lg: { width: 50, height: 50 },
+  xl: { width: 56, height: 56 },
+};
+
+export const RESPONSIVE_CELL_SPACING: Record<Breakpoint, number> = {
+  xs: 4,
+  sm: 4,
+  md: 6,
+  lg: 8,
+  xl: 8,
+};
+
+// Get responsive cell size based on current breakpoint
+export const getResponsiveCellSize = (
+  breakpoint: Breakpoint
+): { width: number; height: number } => {
+  return RESPONSIVE_CELL_SIZES[breakpoint];
+};
+
+// Get responsive cell spacing based on current breakpoint
+export const getResponsiveCellSpacing = (breakpoint: Breakpoint): number => {
+  return RESPONSIVE_CELL_SPACING[breakpoint];
 };
 
 // Sample mock games

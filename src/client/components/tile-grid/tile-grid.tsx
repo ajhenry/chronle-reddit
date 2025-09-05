@@ -1,17 +1,19 @@
 import React, { createContext, useContext, useState, useCallback, useMemo, ReactNode } from 'react';
+import { cn } from '../../lib/utils';
 
 // Core types for the grid system
-type GridPosition = {
+export type GridPosition = {
   x: number;
   y: number;
 };
 
-type GridSize = {
+export type GridSize = {
   width: number;
   height: number;
+  spacing?: number; // Spacing between cells in pixels
 };
 
-type GridCellData = {
+export type GridCellData = {
   position: GridPosition;
   isOccupied: boolean;
   occupyingItemId?: string | undefined;
@@ -19,93 +21,22 @@ type GridCellData = {
 };
 
 // Shape definition - relative positions from origin
-type ItemShape = {
+export type ItemShape = {
   name: string;
   cells: GridPosition[]; // Relative positions from item origin
   width: number; // Bounding box width
   height: number; // Bounding box height
 };
 
-// Predefined shapes
-const PREDEFINED_SHAPES: Record<string, ItemShape> = {
-  single: {
-    name: 'single',
-    cells: [{ x: 0, y: 0 }],
-    width: 1,
-    height: 1,
-  },
-  horizontal2: {
-    name: 'horizontal2',
-    cells: [
-      { x: 0, y: 0 },
-      { x: 1, y: 0 },
-    ],
-    width: 2,
-    height: 1,
-  },
-  vertical2: {
-    name: 'vertical2',
-    cells: [
-      { x: 0, y: 0 },
-      { x: 0, y: 1 },
-    ],
-    width: 1,
-    height: 2,
-  },
-  L: {
-    name: 'L',
-    cells: [
-      { x: 0, y: 0 },
-      { x: 1, y: 0 },
-      { x: 0, y: 1 },
-    ],
-    width: 2,
-    height: 2,
-  },
-  U: {
-    name: 'U',
-    cells: [
-      { x: 0, y: 0 },
-      { x: 2, y: 0 },
-      { x: 0, y: 1 },
-      { x: 1, y: 1 },
-      { x: 2, y: 1 },
-    ],
-    width: 3,
-    height: 2,
-  },
-  T: {
-    name: 'T',
-    cells: [
-      { x: 0, y: 0 },
-      { x: 1, y: 0 },
-      { x: 2, y: 0 },
-      { x: 1, y: 1 },
-    ],
-    width: 3,
-    height: 2,
-  },
-  plus: {
-    name: 'plus',
-    cells: [
-      { x: 1, y: 0 },
-      { x: 0, y: 1 },
-      { x: 1, y: 1 },
-      { x: 2, y: 1 },
-      { x: 1, y: 2 },
-    ],
-    width: 3,
-    height: 3,
-  },
-};
-
-type DraggableItem = {
+export type DraggableItem = {
   id: string;
   position: GridPosition; // Origin position
   shape: ItemShape;
   content: ReactNode;
   color?: string;
   disabled?: boolean; // Whether the piece is locked in place and cannot be dragged
+  style?: React.CSSProperties; // Custom styles to apply to the tile
+  className?: string; // Custom CSS classes to apply to the tile
 };
 
 // Unique ID generation for grid instances
@@ -191,7 +122,8 @@ type GridContextType = {
   tileGrid: GridCellData[][];
   gridSize: GridSize;
   cellSize: GridSize;
-  dragPreview: { item: DraggableItem; position: GridPosition } | null;
+  spacing: number;
+  dragPreview: { item: DraggableItem; position: GridPosition; isValid: boolean } | null;
   draggedItemId: string | null;
   grabOffset: GridPosition | null;
   currentHoveredCell: GridPosition | null;
@@ -199,7 +131,9 @@ type GridContextType = {
   addItem: (item: Omit<DraggableItem, 'id'>) => void;
   removeItem: (itemId: string) => void;
   moveItem: (itemId: string, newPosition: GridPosition) => void;
-  setDragPreview: (preview: { item: DraggableItem; position: GridPosition } | null) => void;
+  setDragPreview: (
+    preview: { item: DraggableItem; position: GridPosition; isValid: boolean } | null
+  ) => void;
   setDraggedItemId: (itemId: string | null) => void;
   setGrabOffset: (offset: GridPosition | null) => void;
   setGridBounds: (bounds: DOMRect | null) => void;
@@ -227,9 +161,17 @@ type GridProviderProps = {
   gridSize: GridSize;
   cellSize: GridSize;
   initialItems?: Omit<DraggableItem, 'id'>[];
+  onLayoutChange?: (layout: (string | null)[][]) => void;
 };
 
-function GridProvider({ children, gridSize, cellSize, initialItems = [] }: GridProviderProps) {
+function GridProvider({
+  children,
+  gridSize,
+  cellSize,
+  initialItems = [],
+  onLayoutChange,
+}: GridProviderProps) {
+  const spacing = gridSize.spacing ?? 0;
   const gridId = useMemo(() => generateGridId(), []);
   const [items, setItems] = useState<DraggableItem[]>(() =>
     initialItems.map((item, index) => ({
@@ -240,6 +182,7 @@ function GridProvider({ children, gridSize, cellSize, initialItems = [] }: GridP
   const [dragPreview, setDragPreview] = useState<{
     item: DraggableItem;
     position: GridPosition;
+    isValid: boolean;
   } | null>(null);
   const [draggedItemId, setDraggedItemId] = useState<string | null>(null);
   const [grabOffset, setGrabOffset] = useState<GridPosition | null>(null);
@@ -251,6 +194,14 @@ function GridProvider({ children, gridSize, cellSize, initialItems = [] }: GridP
     const emptyGrid = createEmptyTileGrid(gridSize);
     return updateTileOccupancy(emptyGrid, items);
   }, [gridSize, items]);
+
+  // Call onLayoutChange whenever tileGrid changes
+  React.useEffect(() => {
+    if (onLayoutChange) {
+      const layout = tileGrid.map((row) => row.map((cell) => cell.occupyingItemId || null));
+      onLayoutChange(layout);
+    }
+  }, [tileGrid, onLayoutChange]);
 
   const addItem = useCallback(
     (item: Omit<DraggableItem, 'id'>) => {
@@ -335,8 +286,8 @@ function GridProvider({ children, gridSize, cellSize, initialItems = [] }: GridP
       const pointerY = coords.clientY - gridBounds.top;
 
       // Convert to grid coordinates
-      const cellX = Math.floor(pointerX / cellSize.width);
-      const cellY = Math.floor(pointerY / cellSize.height);
+      const cellX = Math.floor(pointerX / (cellSize.width + spacing));
+      const cellY = Math.floor(pointerY / (cellSize.height + spacing));
 
       // Check if pointer is within grid bounds
       if (cellX >= 0 && cellX < gridSize.width && cellY >= 0 && cellY < gridSize.height) {
@@ -358,12 +309,13 @@ function GridProvider({ children, gridSize, cellSize, initialItems = [] }: GridP
               y: cellY - grabOffset.y,
             };
 
-            // Check if position is valid
-            if (isPositionValid(draggedItem, previewPosition, draggedItem.id)) {
-              setDragPreview({ item: draggedItem, position: previewPosition });
-            } else {
-              setDragPreview(null);
-            }
+            // Always show drag preview, but mark it as invalid if position is not valid
+            const isValid = isPositionValid(draggedItem, previewPosition, draggedItem.id);
+            setDragPreview({
+              item: draggedItem,
+              position: previewPosition,
+              isValid,
+            });
           }
         }
       } else {
@@ -376,6 +328,7 @@ function GridProvider({ children, gridSize, cellSize, initialItems = [] }: GridP
       gridBounds,
       grabOffset,
       cellSize,
+      spacing,
       gridSize,
       currentHoveredCell,
       items,
@@ -387,13 +340,7 @@ function GridProvider({ children, gridSize, cellSize, initialItems = [] }: GridP
   // Global pointer up handler for drop
   const handleGlobalPointerUp = useCallback(
     (e: MouseEvent | TouchEvent) => {
-      console.log('=== POINTER UP DEBUG ===');
-      console.log('draggedItemId:', draggedItemId);
-      console.log('gridBounds:', gridBounds);
-      console.log('grabOffset:', grabOffset);
-
       if (!draggedItemId || !gridBounds || !grabOffset) {
-        console.log('Early return - missing required data');
         return;
       }
 
@@ -402,35 +349,19 @@ function GridProvider({ children, gridSize, cellSize, initialItems = [] }: GridP
       // Calculate pointer position relative to grid
       const pointerX = coords.clientX - gridBounds.left;
       const pointerY = coords.clientY - gridBounds.top;
-      console.log('Pointer position:', { clientX: coords.clientX, clientY: coords.clientY });
-      console.log('Grid bounds:', { left: gridBounds.left, top: gridBounds.top });
-      console.log('Relative pointer position:', { pointerX, pointerY });
 
       // Convert to grid coordinates
-      const cellX = Math.floor(pointerX / cellSize.width);
-      const cellY = Math.floor(pointerY / cellSize.height);
-      console.log('Cell size:', cellSize);
-      console.log('Grid size:', gridSize);
-      console.log('Calculated cell coordinates:', { cellX, cellY });
+      const cellX = Math.floor(pointerX / (cellSize.width + spacing));
+      const cellY = Math.floor(pointerY / (cellSize.height + spacing));
 
       // Check if pointer is within grid bounds
       const isWithinBounds =
         cellX >= 0 && cellX < gridSize.width && cellY >= 0 && cellY < gridSize.height;
-      console.log('Is within bounds:', isWithinBounds);
 
       if (isWithinBounds) {
         const draggedItem = items.find((item) => item.id === draggedItemId);
-        console.log('Dragged item found:', !!draggedItem);
-        if (draggedItem) {
-          console.log('Dragged item:', {
-            id: draggedItem.id,
-            position: draggedItem.position,
-            shape: draggedItem.shape.name,
-          });
-        }
 
         if (!draggedItem) {
-          console.log('No dragged item found, returning');
           return;
         }
 
@@ -438,35 +369,27 @@ function GridProvider({ children, gridSize, cellSize, initialItems = [] }: GridP
           x: cellX - grabOffset.x,
           y: cellY - grabOffset.y,
         };
-        console.log('Drop position:', dropPosition);
 
         // Validate drop position
         const isValid = isPositionValid(draggedItem, dropPosition, draggedItem.id);
-        console.log('Is position valid:', isValid);
 
         if (isValid) {
-          console.log('Moving item to position:', dropPosition);
           moveItem(draggedItemId, dropPosition);
-        } else {
-          console.log('Position not valid, not moving item');
         }
-      } else {
-        console.log('Mouse outside grid bounds, not dropping');
       }
 
       // Clean up drag state
-      console.log('Cleaning up drag state');
       setDraggedItemId(null);
       setGrabOffset(null);
       setDragPreview(null);
       setCurrentHoveredCell(null);
-      console.log('=== END POINTER UP DEBUG ===');
     },
     [
       draggedItemId,
       gridBounds,
       grabOffset,
       cellSize,
+      spacing,
       gridSize,
       items,
       isPositionValid,
@@ -521,6 +444,7 @@ function GridProvider({ children, gridSize, cellSize, initialItems = [] }: GridP
       tileGrid,
       gridSize,
       cellSize,
+      spacing,
       dragPreview,
       draggedItemId,
       grabOffset,
@@ -542,6 +466,7 @@ function GridProvider({ children, gridSize, cellSize, initialItems = [] }: GridP
       tileGrid,
       gridSize,
       cellSize,
+      spacing,
       dragPreview,
       draggedItemId,
       grabOffset,
@@ -566,10 +491,11 @@ type GridCellProps = {
   x: number;
   y: number;
   className?: string;
+  style?: React.CSSProperties;
 };
 
-const GridCell = React.memo(({ x, y, className = '' }: GridCellProps) => {
-  const { gridId, cellSize, getCellData, currentHoveredCell, draggedItemId } = useGrid();
+const GridCell = React.memo(({ x, y, className = '', style }: GridCellProps) => {
+  const { gridId, cellSize, spacing, getCellData, currentHoveredCell, draggedItemId } = useGrid();
   const cellId = generateCellId(gridId, x, y);
 
   const cellData = getCellData(x, y);
@@ -579,12 +505,13 @@ const GridCell = React.memo(({ x, y, className = '' }: GridCellProps) => {
   const cellStyle = useMemo(
     () => ({
       position: 'absolute' as const,
-      left: x * cellSize.width,
-      top: y * cellSize.height,
+      left: x * (cellSize.width + spacing),
+      top: y * (cellSize.height + spacing),
       width: cellSize.width,
       height: cellSize.height,
+      ...style, // Apply custom styles
     }),
-    [x, y, cellSize]
+    [x, y, cellSize, spacing, style]
   );
 
   const getBackgroundClass = useCallback(() => {
@@ -594,13 +521,43 @@ const GridCell = React.memo(({ x, y, className = '' }: GridCellProps) => {
     if (isHovered) {
       return 'bg-green-200';
     }
-    return 'bg-gray-50 hover:bg-gray-100';
+    // Base background - hover is handled in combinedClassName logic
+    return 'bg-gray-50';
   }, [isOccupied, isHovered]);
+
+  // Combine default classes with custom classes
+  const combinedClassName = useMemo(() => {
+    const defaultClasses = getBackgroundClass();
+    const customClasses = className || '';
+
+    // Handle hover behavior based on drag state and custom classes
+    if (draggedItemId) {
+      // When dragging, remove all hover classes (both custom and default)
+      if (customClasses.includes('hover:')) {
+        // Remove hover classes from custom classes when dragging
+        const classesWithoutHover = customClasses
+          .split(' ')
+          .filter((cls) => !cls.startsWith('hover:'))
+          .join(' ');
+        return cn(defaultClasses, classesWithoutHover);
+      }
+      // No custom hover classes, just use default classes (no hover)
+      return cn(defaultClasses, customClasses);
+    }
+
+    // Not dragging - add default hover if no custom hover classes
+    if (!customClasses.includes('hover:')) {
+      return cn(defaultClasses, 'hover:bg-gray-100', customClasses);
+    }
+
+    // Custom hover classes present - use them as-is
+    return cn(defaultClasses, customClasses);
+  }, [getBackgroundClass, className, draggedItemId]);
 
   return (
     <div
       id={cellId}
-      className={`border transition-colors ${getBackgroundClass()} ${className}`}
+      className={cn('border transition-colors', combinedClassName)}
       style={cellStyle}
       data-testid={`grid-cell-${x}-${y}`}
       data-occupied={isOccupied}
@@ -617,11 +574,12 @@ type DraggableItemProps = {
   onDragStart?: (item: DraggableItem, grabOffset?: GridPosition) => void;
   onDragEnd?: (item: DraggableItem) => void;
   className?: string;
+  defaultClassName?: string;
 };
 
 const DraggableItemComponent = React.memo(
-  ({ item, onDragStart, onDragEnd, className = '' }: DraggableItemProps) => {
-    const { cellSize } = useGrid();
+  ({ item, onDragStart, onDragEnd, className = '', defaultClassName }: DraggableItemProps) => {
+    const { cellSize, spacing } = useGrid();
     const isDisabled = item.disabled ?? false;
     const [isDragging, setIsDragging] = useState(false);
     const [cursorType, setCursorType] = useState<'default' | 'move' | 'not-allowed'>('default');
@@ -660,18 +618,13 @@ const DraggableItemComponent = React.memo(
           const relativeY = coords.clientY - rect.top;
 
           // Convert pixel coordinates to grid coordinates within the bounding box
-          mouseGridX = Math.floor(relativeX / cellSize.width);
-          mouseGridY = Math.floor(relativeY / cellSize.height);
+          mouseGridX = Math.floor(relativeX / (cellSize.width + spacing));
+          mouseGridY = Math.floor(relativeY / (cellSize.height + spacing));
         }
 
         // Check if the mouse position corresponds to an occupied cell in the shape
         const isOverOccupiedCell = item.shape.cells.some(
           (cell) => cell.x === mouseGridX && cell.y === mouseGridY
-        );
-
-        // Debug logging to help troubleshoot
-        console.log(
-          `Piece ${item.id} at (${item.position.x}, ${item.position.y}): mouse at (${mouseGridX}, ${mouseGridY}), isOverOccupied: ${isOverOccupiedCell}`
         );
 
         // Update cursor based on whether we're over an occupied cell and if piece is disabled
@@ -681,15 +634,7 @@ const DraggableItemComponent = React.memo(
           setCursorType(isOverOccupiedCell ? 'move' : 'default');
         }
       },
-      [
-        isDragging,
-        item.shape.cells,
-        item.position,
-        item.id,
-        cellSize,
-        getEventCoordinates,
-        isDisabled,
-      ]
+      [isDragging, item.shape.cells, cellSize, spacing, getEventCoordinates, isDisabled]
     );
 
     const handlePointerDown = useCallback(
@@ -710,8 +655,8 @@ const DraggableItemComponent = React.memo(
           const relativeY = coords.clientY - rect.top;
 
           // Convert pixel coordinates to grid coordinates within the bounding box
-          clickedGridX = Math.floor(relativeX / cellSize.width);
-          clickedGridY = Math.floor(relativeY / cellSize.height);
+          clickedGridX = Math.floor(relativeX / (cellSize.width + spacing));
+          clickedGridY = Math.floor(relativeY / (cellSize.height + spacing));
         }
 
         // Check if the clicked position corresponds to an occupied cell in the shape
@@ -791,7 +736,7 @@ const DraggableItemComponent = React.memo(
 
         onDragStart?.(item, grabOffset);
       },
-      [item, onDragStart, cellSize, getEventCoordinates, isDisabled]
+      [item, onDragStart, cellSize, spacing, getEventCoordinates, isDisabled]
     );
 
     const handlePointerUp = useCallback(
@@ -827,49 +772,75 @@ const DraggableItemComponent = React.memo(
     const itemStyle = useMemo(
       () => ({
         position: 'absolute' as const,
-        left: item.position.x * cellSize.width,
-        top: item.position.y * cellSize.height,
-        width: boundingBox.width * cellSize.width,
-        height: boundingBox.height * cellSize.height,
+        left: item.position.x * (cellSize.width + spacing),
+        top: item.position.y * (cellSize.height + spacing),
+        width: boundingBox.width * cellSize.width + (boundingBox.width - 1) * spacing,
+        height: boundingBox.height * cellSize.height + (boundingBox.height - 1) * spacing,
         zIndex: isDragging ? 1000 : 1,
-        opacity: isDisabled ? 0.7 : 1, // Make disabled pieces slightly transparent
       }),
-      [item.position, boundingBox, cellSize, isDragging, isDisabled]
+      [item.position, boundingBox, cellSize, spacing, isDragging]
     );
 
     // Render individual cells for the shape
     const shapeCells = useMemo(() => {
+      // Check if content is a string with multiple letters to distribute
+      const contentString = typeof item.content === 'string' ? item.content : '';
+      const shouldDistributeLetters =
+        contentString.length > 1 && item.shape.cells.length === contentString.length;
+
       return item.shape.cells.map((cell, index) => {
         const cellStyle = {
           position: 'absolute' as const,
-          left: cell.x * cellSize.width,
-          top: cell.y * cellSize.height,
+          left: cell.x * (cellSize.width + spacing),
+          top: cell.y * (cellSize.height + spacing),
           width: cellSize.width,
           height: cellSize.height,
           zIndex: isDragging ? 1001 : 2,
+          ...item.style, // Apply custom styles
         };
+
+        // Get the letter for this cell
+        let cellContent = '';
+        if (shouldDistributeLetters && contentString[index]) {
+          cellContent = contentString[index];
+        } else if (index === 0) {
+          cellContent = contentString || item.content?.toString() || '';
+        }
 
         return (
           <div
             key={`cell-${index}`}
-            className={`border border-white/30 flex justify-center items-center ${
-              item.color || 'bg-blue-500'
-            } ${isDragging ? 'opacity-70' : 'opacity-100'}`}
+            className={cn(
+              'border border-white/30 flex justify-center items-center',
+              item.color || 'bg-blue-500',
+              isDragging ? 'opacity-70' : 'opacity-100',
+              item.className || defaultClassName || ''
+            )}
             style={cellStyle}
           >
-            {index === 0 && (
-              <div className="p-1 text-xs font-semibold text-center text-white">{item.content}</div>
+            {cellContent && (
+              <div className="p-1 text-xs font-semibold text-center text-white">{cellContent}</div>
             )}
           </div>
         );
       });
-    }, [item.shape.cells, item.color, item.content, cellSize, isDragging]);
+    }, [
+      item.shape.cells,
+      item.color,
+      item.content,
+      item.style,
+      item.className,
+      cellSize,
+      spacing,
+      isDragging,
+      defaultClassName,
+    ]);
 
     return (
       <div
         ref={itemRef}
         id={item.id}
-        className={`transition-all select-none ${className}`}
+        className={cn('transition-all select-none', className)}
         style={{
           ...itemStyle,
           cursor: cursorType,
@@ -896,60 +867,101 @@ const DragPreviewComponent = React.memo(
   ({
     item,
     position,
+    isValid,
     cellSize,
+    spacing,
+    defaultClassName,
   }: {
     item: DraggableItem;
     position: GridPosition;
+    isValid: boolean;
     cellSize: GridSize;
+    spacing: number;
+    defaultClassName?: string;
   }) => {
     const boundingBox = useMemo(() => getItemBoundingBox(item), [item]);
 
     const previewStyle = useMemo(
       () => ({
         position: 'absolute' as const,
-        left: position.x * cellSize.width,
-        top: position.y * cellSize.height,
-        width: boundingBox.width * cellSize.width,
-        height: boundingBox.height * cellSize.height,
+        left: position.x * (cellSize.width + spacing),
+        top: position.y * (cellSize.height + spacing),
+        width: boundingBox.width * cellSize.width + (boundingBox.width - 1) * spacing,
+        height: boundingBox.height * cellSize.height + (boundingBox.height - 1) * spacing,
         zIndex: 999, // Above everything else
         pointerEvents: 'none' as const, // Don't interfere with interactions
       }),
-      [position, boundingBox, cellSize]
+      [position, boundingBox, cellSize, spacing]
     );
 
     // Render individual cells for the shape preview
     const previewCells = useMemo(() => {
+      // Check if content is a string with multiple letters to distribute
+      const contentString = typeof item.content === 'string' ? item.content : '';
+      const shouldDistributeLetters =
+        contentString.length > 1 && item.shape.cells.length === contentString.length;
+
       return item.shape.cells.map((cell, index) => {
         const cellStyle = {
           position: 'absolute' as const,
-          left: cell.x * cellSize.width,
-          top: cell.y * cellSize.height,
+          left: cell.x * (cellSize.width + spacing),
+          top: cell.y * (cellSize.height + spacing),
           width: cellSize.width,
           height: cellSize.height,
           zIndex: 1000,
+          ...item.style, // Apply custom styles
         };
+
+        // Get the letter for this cell
+        let cellContent = '';
+        if (shouldDistributeLetters && contentString[index]) {
+          cellContent = contentString[index];
+        } else if (index === 0) {
+          cellContent = contentString || item.content?.toString() || '';
+        }
 
         return (
           <div
             key={`preview-cell-${index}`}
-            className={`border-2 border-dashed border-gray-400 flex justify-center items-center ${
-              item.color || 'bg-blue-500'
-            }`}
+            className={cn(
+              'border-2 border-dashed flex justify-center items-center',
+              item.color || 'bg-blue-500',
+              item.className || defaultClassName || ''
+            )}
             style={{
               ...cellStyle,
-              backgroundColor: 'rgba(59, 130, 246, 0.3)', // Semi-transparent blue
-              borderColor: 'rgba(59, 130, 246, 0.6)',
+              backgroundColor: isValid
+                ? 'rgba(59, 130, 246, 0.3)' // Semi-transparent blue for valid
+                : 'rgba(239, 68, 68, 0.3)', // Semi-transparent red for invalid
+              borderColor: isValid
+                ? 'rgba(59, 130, 246, 0.6)' // Blue border for valid
+                : 'rgba(239, 68, 68, 0.6)', // Red border for invalid
             }}
           >
-            {index === 0 && (
-              <div className="p-1 text-xs font-semibold text-center text-blue-800">
-                {item.content}
+            {cellContent && (
+              <div
+                className={cn(
+                  'p-1 text-xs font-semibold text-center',
+                  isValid ? 'text-blue-800' : 'text-red-800'
+                )}
+              >
+                {cellContent}
               </div>
             )}
           </div>
         );
       });
-    }, [item.shape.cells, item.color, item.content, cellSize]);
+    }, [
+      item.shape.cells,
+      item.color,
+      item.content,
+      item.style,
+      item.className,
+      cellSize,
+      spacing,
+      defaultClassName,
+      isValid,
+    ]);
 
     return <div style={previewStyle}>{previewCells}</div>;
   }
@@ -965,9 +977,14 @@ type GridProps = {
   onItemMove?: (item: DraggableItem, newPosition: GridPosition) => void;
   onItemAdd?: (item: DraggableItem) => void;
   onItemRemove?: (itemId: string) => void;
-  showGridLines?: boolean;
+  onLayoutChange?: (layout: (string | null)[][]) => void;
   className?: string;
   children?: ReactNode;
+  getBoardTileStyle?: (x: number, y: number) => React.CSSProperties | undefined;
+  getBoardTileClassName?: (x: number, y: number) => string | undefined;
+  // Default classes that can be completely overridden
+  defaultBoardTileClassName?: string;
+  defaultItemClassName?: string;
 };
 
 function Grid({
@@ -977,13 +994,28 @@ function Grid({
   onItemMove: _onItemMove,
   onItemAdd: _onItemAdd,
   onItemRemove: _onItemRemove,
-  showGridLines = true,
+  onLayoutChange,
   className = '',
   children,
+  getBoardTileStyle,
+  getBoardTileClassName,
+  defaultBoardTileClassName,
+  defaultItemClassName,
 }: GridProps) {
   return (
-    <GridProvider gridSize={gridSize} cellSize={cellSize} initialItems={initialItems}>
-      <GridContent showGridLines={showGridLines} className={className}>
+    <GridProvider
+      gridSize={gridSize}
+      cellSize={cellSize}
+      initialItems={initialItems}
+      onLayoutChange={onLayoutChange}
+    >
+      <GridContent
+        className={className}
+        getBoardTileStyle={getBoardTileStyle}
+        getBoardTileClassName={getBoardTileClassName}
+        defaultBoardTileClassName={defaultBoardTileClassName}
+        defaultItemClassName={defaultItemClassName}
+      >
         {children}
       </GridContent>
     </GridProvider>
@@ -992,18 +1024,25 @@ function Grid({
 
 // Internal Grid component that has access to context
 function GridContent({
-  showGridLines,
   className,
   children,
+  getBoardTileStyle,
+  getBoardTileClassName,
+  defaultBoardTileClassName,
+  defaultItemClassName,
 }: {
-  showGridLines: boolean;
   className: string;
   children: ReactNode;
+  getBoardTileStyle?: (x: number, y: number) => React.CSSProperties | undefined;
+  getBoardTileClassName?: (x: number, y: number) => string | undefined;
+  defaultBoardTileClassName?: string;
+  defaultItemClassName?: string;
 }) {
   const {
     items,
     gridSize,
     cellSize,
+    spacing,
     dragPreview,
     setDragPreview,
     setDraggedItemId,
@@ -1062,25 +1101,33 @@ function GridContent({
     const cells = [];
     for (let y = 0; y < gridSize.height; y++) {
       for (let x = 0; x < gridSize.width; x++) {
-        cells.push(<GridCell key={`${x}-${y}`} x={x} y={y} />);
+        cells.push(
+          <GridCell
+            key={`${x}-${y}`}
+            x={x}
+            y={y}
+            style={getBoardTileStyle ? getBoardTileStyle(x, y) : undefined}
+            className={
+              getBoardTileClassName ? getBoardTileClassName(x, y) : defaultBoardTileClassName
+            }
+          />
+        );
       }
     }
     return cells;
-  }, [gridSize]);
+  }, [gridSize, getBoardTileStyle, getBoardTileClassName, defaultBoardTileClassName]);
 
   const gridStyle = useMemo(
     () => ({
       position: 'relative' as const,
-      width: gridSize.width * cellSize.width,
-      height: gridSize.height * cellSize.height,
-      border: showGridLines ? '2px solid #e5e7eb' : 'none',
-      backgroundColor: '#f9fafb',
+      width: gridSize.width * cellSize.width + (gridSize.width - 1) * spacing,
+      height: gridSize.height * cellSize.height + (gridSize.height - 1) * spacing,
     }),
-    [gridSize, cellSize, showGridLines]
+    [gridSize, cellSize, spacing]
   );
 
   return (
-    <div className={`inline-block ${className}`}>
+    <div className={cn('inline-block', className)}>
       <div ref={gridRef} style={gridStyle}>
         {/* Grid cells as drop zones */}
         {gridCells}
@@ -1092,6 +1139,7 @@ function GridContent({
             item={item}
             onDragStart={handleDragStart}
             onDragEnd={handleDragEnd}
+            defaultClassName={defaultItemClassName}
           />
         ))}
 
@@ -1100,7 +1148,10 @@ function GridContent({
           <DragPreviewComponent
             item={dragPreview.item}
             position={dragPreview.position}
+            isValid={dragPreview.isValid}
             cellSize={cellSize}
+            spacing={spacing}
+            defaultClassName={defaultItemClassName}
           />
         )}
 
@@ -1111,223 +1162,4 @@ function GridContent({
   );
 }
 
-// Demo component showcasing multiple grid instances with unique IDs
-const GridDemo = () => {
-  const [grid1Items, setGrid1Items] = useState<Omit<DraggableItem, 'id'>[]>([
-    {
-      position: { x: 1, y: 1 },
-      shape: PREDEFINED_SHAPES.L!,
-      content: 'L',
-      color: 'bg-blue-500',
-    },
-    {
-      position: { x: 4, y: 2 },
-      shape: PREDEFINED_SHAPES.U!,
-      content: 'U',
-      color: 'bg-green-500',
-    },
-    {
-      position: { x: 0, y: 4 },
-      shape: PREDEFINED_SHAPES.T!,
-      content: 'T',
-      color: 'bg-yellow-500',
-    },
-    {
-      position: { x: 6, y: 0 },
-      shape: PREDEFINED_SHAPES.single!,
-      content: '🔒',
-      color: 'bg-gray-500',
-      disabled: true, // This piece is locked and cannot be moved
-    },
-  ]);
-
-  const [grid2Items, setGrid2Items] = useState<Omit<DraggableItem, 'id'>[]>([
-    {
-      position: { x: 0, y: 0 },
-      shape: PREDEFINED_SHAPES.single!,
-      content: '1',
-      color: 'bg-purple-500',
-    },
-    {
-      position: { x: 2, y: 1 },
-      shape: PREDEFINED_SHAPES.plus!,
-      content: '+',
-      color: 'bg-red-500',
-    },
-    {
-      position: { x: 1, y: 3 },
-      shape: PREDEFINED_SHAPES.vertical2!,
-      content: 'I',
-      color: 'bg-indigo-500',
-    },
-    {
-      position: { x: 4, y: 0 },
-      shape: PREDEFINED_SHAPES.L!,
-      content: '🔒',
-      color: 'bg-red-400',
-      disabled: true, // This piece is locked and cannot be moved
-    },
-  ]);
-
-  const handleGrid1ItemMove = useCallback((item: DraggableItem, newPosition: GridPosition) => {
-    setGrid1Items((prev) =>
-      prev.map((prevItem) =>
-        prevItem.content === item.content ? { ...prevItem, position: newPosition } : prevItem
-      )
-    );
-  }, []);
-
-  const handleGrid2ItemMove = useCallback((item: DraggableItem, newPosition: GridPosition) => {
-    setGrid2Items((prev) =>
-      prev.map((prevItem) =>
-        prevItem.content === item.content ? { ...prevItem, position: newPosition } : prevItem
-      )
-    );
-  }, []);
-
-  return (
-    <div className="p-8 min-h-screen bg-gray-100">
-      <div className="mx-auto max-w-7xl">
-        <h1 className="mb-8 text-4xl font-bold text-center text-gray-800">
-          Dragging Grid System Demo
-        </h1>
-
-        <div className="mb-8">
-          <p className="mx-auto max-w-3xl text-center text-gray-600">
-            This demo showcases a custom grid system with unique IDs for each grid instance. Each
-            grid generates predictable IDs for its cells and items. Try dragging the L, U, T, and
-            Plus shapes around to see the drag preview, boundary validation, and collision detection
-            in action.
-          </p>
-        </div>
-
-        <div className="grid grid-cols-1 gap-8 mb-8 lg:grid-cols-2">
-          {/* First Grid */}
-          <div className="p-6 rounded-lg shadow-lg bg-background">
-            <h2 className="mb-4 text-2xl font-semibold text-gray-800">Grid Instance 1</h2>
-            <div className="mb-4">
-              <p className="text-sm text-gray-600">Grid Size: 8x6 | Cell Size: 50x50px</p>
-            </div>
-            <Grid
-              gridSize={{ width: 10, height: 8 }}
-              cellSize={{ width: 50, height: 50 }}
-              initialItems={grid1Items}
-              onItemMove={handleGrid1ItemMove}
-              showGridLines={true}
-            />
-          </div>
-
-          {/* Second Grid */}
-          <div className="p-6 rounded-lg shadow-lg bg-background">
-            <h2 className="mb-4 text-2xl font-semibold text-gray-800">Grid Instance 2</h2>
-            <div className="mb-4">
-              <p className="text-sm text-gray-600">Grid Size: 6x5 | Cell Size: 55x55px</p>
-            </div>
-            <Grid
-              gridSize={{ width: 6, height: 5 }}
-              cellSize={{ width: 55, height: 55 }}
-              initialItems={grid2Items}
-              onItemMove={handleGrid2ItemMove}
-              showGridLines={true}
-            />
-          </div>
-        </div>
-
-        {/* Features Section */}
-        <div className="p-6 rounded-lg shadow-lg bg-background">
-          <h3 className="mb-6 text-2xl font-semibold text-gray-800">Features</h3>
-          <div className="grid grid-cols-1 gap-6 md:grid-cols-2 lg:grid-cols-3">
-            <div className="flex items-start space-x-3">
-              <div className="flex flex-shrink-0 justify-center items-center w-8 h-8 bg-blue-500 rounded-full">
-                <span className="text-sm font-semibold text-white">1</span>
-              </div>
-              <div>
-                <h4 className="mb-2 font-semibold text-gray-800">Arbitrary Shapes</h4>
-                <p className="text-sm text-gray-600">
-                  Support for L, U, T, Plus, and custom shapes with individual cell occupancy
-                  tracking.
-                </p>
-              </div>
-            </div>
-
-            <div className="flex items-start space-x-3">
-              <div className="flex flex-shrink-0 justify-center items-center w-8 h-8 bg-green-500 rounded-full">
-                <span className="text-sm font-semibold text-white">2</span>
-              </div>
-              <div>
-                <h4 className="mb-2 font-semibold text-gray-800">Tile-Level Tracking</h4>
-                <p className="text-sm text-gray-600">
-                  Each grid cell tracks which item occupies it and which part of the shape it
-                  represents.
-                </p>
-              </div>
-            </div>
-
-            <div className="flex items-start space-x-3">
-              <div className="flex flex-shrink-0 justify-center items-center w-8 h-8 bg-purple-500 rounded-full">
-                <span className="text-sm font-semibold text-white">3</span>
-              </div>
-              <div>
-                <h4 className="mb-2 font-semibold text-gray-800">Drag Preview</h4>
-                <p className="text-sm text-gray-600">
-                  See a semi-transparent preview of where your shape will be placed before dropping.
-                </p>
-              </div>
-            </div>
-
-            <div className="flex items-start space-x-3">
-              <div className="flex flex-shrink-0 justify-center items-center w-8 h-8 bg-red-500 rounded-full">
-                <span className="text-sm font-semibold text-white">4</span>
-              </div>
-              <div>
-                <h4 className="mb-2 font-semibold text-gray-800">Visual Shape Rendering</h4>
-                <p className="text-sm text-gray-600">
-                  Each shape is rendered as individual cells showing its exact geometric form.
-                </p>
-              </div>
-            </div>
-
-            <div className="flex items-start space-x-3">
-              <div className="flex flex-shrink-0 justify-center items-center w-8 h-8 bg-yellow-500 rounded-full">
-                <span className="text-sm font-semibold text-white">5</span>
-              </div>
-              <div>
-                <h4 className="mb-2 font-semibold text-gray-800">Unique Grid IDs</h4>
-                <p className="text-sm text-gray-600">
-                  Each grid instance gets a unique ID (e.g., grid-1, grid-2) for identification.
-                </p>
-              </div>
-            </div>
-
-            <div className="flex items-start space-x-3">
-              <div className="flex flex-shrink-0 justify-center items-center w-8 h-8 bg-indigo-500 rounded-full">
-                <span className="text-sm font-semibold text-white">6</span>
-              </div>
-              <div>
-                <h4 className="mb-2 font-semibold text-gray-800">Advanced Collision Detection</h4>
-                <p className="text-sm text-gray-600">
-                  Shape-based collision detection prevents overlaps and out-of-bounds placement.
-                </p>
-              </div>
-            </div>
-
-            <div className="flex items-start space-x-3">
-              <div className="flex flex-shrink-0 justify-center items-center w-8 h-8 bg-pink-500 rounded-full">
-                <span className="text-sm font-semibold text-white">7</span>
-              </div>
-              <div>
-                <h4 className="mb-2 font-semibold text-gray-800">Predictable Cell IDs</h4>
-                <p className="text-sm text-gray-600">
-                  Grid cells have predictable IDs like "grid-1-cell-2-3" for easy targeting and
-                  debugging.
-                </p>
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-};
-
-export { GridDemo as Grid };
+export { Grid };
