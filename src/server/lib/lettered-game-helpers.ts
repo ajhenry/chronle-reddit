@@ -1,12 +1,14 @@
 import { supabase } from '../../shared/supabase-server';
-import type { LetteredGameData } from '../../shared/types/api';
+import type { LetteredGameData, LetterPiece } from '../../shared/types/api';
+import type { DailyGame } from '../../shared/types/supabase';
+import { generateMockGame } from './lettered-game-generator';
 
 /**
  * Gets or creates today's daily lettered game
  */
 export async function getOrCreateTodaysLetteredGame(): Promise<{
   success: boolean;
-  data?: { dailyGame: any; gameData: LetteredGameData };
+  data?: { dailyGame: DailyGame; gameData: LetteredGameData };
   error?: string;
   statusCode?: number;
 }> {
@@ -21,30 +23,48 @@ export async function getOrCreateTodaysLetteredGame(): Promise<{
       return { success: false, error: "Failed to fetch today's game", statusCode: 500 };
     }
 
-    if (existingGame && existingGame.length > 0) {
-      // Game already exists for today
-      const dailyGame = existingGame[0];
-      const gameData = dailyGame.game_data as LetteredGameData;
+    // if (existingGame && existingGame.length > 0) {
+    //   console.log('Lettered game found for today:', { existingGame: existingGame[0] });
+    //   // Game already exists for today
+    //   const dailyGame = existingGame[0];
+    //   const gameData = dailyGame.game_data as LetteredGameData;
 
-      return {
-        success: true,
-        data: { dailyGame, gameData },
-      };
-    }
+    //   return {
+    //     success: true,
+    //     data: { dailyGame, gameData },
+    //   };
+    // }
 
     // No game exists for today, create one
     console.log('No lettered game found for today, creating one...');
 
-    // Get a random lettered game from the database
-    const { data: randomGame, error: randomError } = await supabase
+    // Generate a new game using the server-side generator
+    // For now, we'll use a fixed phrase and category - in production this could be randomized
+    const gameData = generateMockGame('movies', 'A CHRISTMAS STORY', 123);
+
+    // Remove all sessions for the game if they exist
+    await supabase.from('game_sessions').delete();
+    await supabase.from('lettered_sessions').delete();
+    await supabase.from('lettered_games').delete();
+
+    // Insert the generated game into the database
+    const { data: insertedGame, error: insertError } = await supabase
       .from('lettered_games')
-      .select('*')
-      .limit(1)
+      .insert({
+        category: gameData.category,
+        phrase: gameData.phrase,
+        grid: gameData.grid,
+        rows: gameData.rows,
+        cols: gameData.cols,
+        pieces: gameData.pieces,
+        solution: gameData.solution,
+      })
+      .select()
       .single();
 
-    if (randomError || !randomGame) {
-      console.error('Error fetching random lettered game:', randomError);
-      return { success: false, error: 'No lettered games available', statusCode: 404 };
+    if (insertError) {
+      console.error('Error inserting generated lettered game:', insertError);
+      return { success: false, error: 'Failed to create lettered game', statusCode: 500 };
     }
 
     // Calculate today's date in EST
@@ -57,7 +77,7 @@ export async function getOrCreateTodaysLetteredGame(): Promise<{
       .from('daily_games')
       .insert({
         day: dayString,
-        lettered_game_id: randomGame.id,
+        lettered_game_id: insertedGame.id,
       })
       .select()
       .single();
@@ -66,18 +86,6 @@ export async function getOrCreateTodaysLetteredGame(): Promise<{
       console.error('Error creating daily lettered game:', createError);
       return { success: false, error: 'Failed to create daily game', statusCode: 500 };
     }
-
-    // Return the created game data
-    const gameData: LetteredGameData = {
-      id: randomGame.id,
-      category: randomGame.category,
-      phrase: randomGame.phrase,
-      grid: randomGame.grid,
-      pieces: randomGame.pieces,
-      solution: randomGame.solution,
-      created_at: randomGame.created_at,
-      updated_at: randomGame.updated_at,
-    };
 
     return {
       success: true,
@@ -110,21 +118,20 @@ export async function validateLetteredPlacement(
     }
 
     // Find the piece
-    const piece = game.pieces.find((p: any) => p.id === pieceId);
+    const piece: LetterPiece | undefined = game.pieces.find((p: LetterPiece) => p.id === pieceId);
     if (!piece) {
       return { valid: false, error: 'Piece not found' };
     }
 
     // Basic validation logic (simplified - you might want to implement more complex validation)
     const grid = game.grid;
-    const solution = game.solution;
 
     // Check if position is valid on the grid
     for (const shapePos of piece.shape) {
       const gridRow = position.row + shapePos.row;
       const gridCol = position.col + shapePos.col;
 
-      if (gridRow < 0 || gridRow >= 8 || gridCol < 0 || gridCol >= 8) {
+      if (gridRow < 0 || gridRow >= game.rows || gridCol < 0 || gridCol >= game.cols) {
         return { valid: false, error: 'Piece placement is out of bounds' };
       }
 

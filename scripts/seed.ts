@@ -1,6 +1,6 @@
 #!/usr/bin/env tsx
 
-import { generateMockGame } from '../src/client/lib/lettered-utils';
+import { generateMockGame } from '../src/server/lib/lettered-game-generator';
 import { createClient } from '@supabase/supabase-js';
 
 // Game categories and phrases for seeding
@@ -8,12 +8,12 @@ const GAME_DATA = [
   {
     category: 'movies',
     phrases: [
-      'THE MATRIX',
-      'STAR WARS',
-      'HARRY POTTER',
-      'LORD OF THE RINGS',
+      'KEANU REEVS IN THE MATRIX ',
+      'STAR WARS THE CLONE WARS',
+      'HARRY POTTER AND THE DEATHLY HALLOWS',
+      'LORD OF THE RINGS THE RETURN OF THE KING',
       'PIRATES OF THE CARIBBEAN',
-      'THE DARK KNIGHT',
+      'JOKER AND THE DARK KNIGHT RISES',
       'AVENGERS ENDGAME',
       'JURASSIC PARK',
       'BACK TO THE FUTURE',
@@ -123,6 +123,8 @@ async function seedLetteredGames() {
             category: gameData.category,
             phrase: gameData.phrase,
             grid: gameData.grid,
+            rows: gameData.rows,
+            cols: gameData.cols,
             pieces: gameData.pieces,
             solution: gameData.solution,
           })

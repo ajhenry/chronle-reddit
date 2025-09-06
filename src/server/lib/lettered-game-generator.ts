@@ -1,0 +1,2239 @@
+import type { GridCell, GridPosition, LetterPiece, LetteredGameData } from '../../shared/types/api';
+
+// Intermediate GridCell type for piece generation with skipped tracking
+type GenerationGridCell = GridCell & {
+  isSkipped: boolean; // true for letters that failed piece generation but should be handled by stranded cleanup
+};
+
+// Available colors for tetris pieces
+const PIECE_COLORS = [
+  '#EF4444', // red
+  '#F97316', // orange
+  '#F59E0B', // amber
+  '#84CC16', // lime
+  '#10B981', // emerald
+  '#06B6D4', // cyan
+  '#3B82F6', // blue
+  '#8B5CF6', // violet
+  '#EC4899', // pink
+];
+
+// Create an empty 8x8 grid
+export const createEmptyGrid = (): GridCell[][] => {
+  return Array(8)
+    .fill(null)
+    .map(() =>
+      Array(8)
+        .fill(null)
+        .map(() => ({
+          letter: null,
+          isPreFilled: false,
+          isSpace: false,
+          isUnused: true, // Start with all unused, will be updated when placing phrase
+        }))
+    );
+};
+
+// Pretty print the board for debugging
+export const printBoard = (grid: GridCell[][], title: string = 'Board'): void => {
+  console.log(`\n=== ${title} ===`);
+  console.log(`Dimensions: ${grid.length} x ${grid[0]?.length || 0}`);
+
+  // Print column headers
+  const colHeader =
+    '  ' + Array.from({ length: grid[0]?.length || 0 }, (_, i) => i.toString()).join(' ');
+  console.log(colHeader);
+
+  // Print top border
+  console.log('  ' + '─'.repeat((grid[0]?.length || 0) * 2));
+
+  for (let row = 0; row < grid.length; row++) {
+    let rowStr = row.toString().padStart(2) + '│';
+
+    for (let col = 0; col < (grid[row]?.length || 0); col++) {
+      const cell = grid[row]?.[col];
+      if (!cell) {
+        rowStr += '░░';
+        continue;
+      }
+
+      if (cell.isUnused) {
+        rowStr += '░░';
+      } else if (cell.isSpace) {
+        rowStr += '  ';
+      } else if (cell.letter) {
+        if (cell.isPreFilled) {
+          rowStr += `\x1b[32m${cell.letter}\x1b[0m`; // Green for pre-filled
+        } else {
+          rowStr += `\x1b[36m${cell.letter}\x1b[0m`; // Cyan for regular letters
+        }
+      } else {
+        rowStr += '░░';
+      }
+    }
+
+    console.log(rowStr);
+  }
+
+  console.log('  ' + '─'.repeat((grid[0]?.length || 0) * 2));
+
+  // Print legend
+  console.log(
+    "Legend: \x1b[32mGreen\x1b[0m=Pre-filled, \x1b[36mCyan\x1b[0m=Letters, ░░=Unused, ' '=Space\n"
+  );
+};
+
+// Create an empty 9x9 grid for initial phrase placement
+export const create9x9Grid = (): GridCell[][] => {
+  return Array(9)
+    .fill(null)
+    .map(() =>
+      Array(9)
+        .fill(null)
+        .map(() => ({
+          letter: null,
+          isPreFilled: false,
+          isSpace: false,
+          isUnused: true, // Start with all unused, will be updated when placing phrase
+        }))
+    );
+};
+
+// Place a phrase on a 9x9 grid for initial layout following lettered.md algorithm
+export const placePhraseOn9x9Grid = (grid: GridCell[][], phrase: string): GridCell[][] => {
+  const words = phrase
+    .toUpperCase()
+    .split(' ')
+    .filter((word) => word.length > 0);
+  const totalLetters = words.join('').length;
+
+  if (totalLetters > 45) {
+    throw new Error('Phrase has too many letters for 9x9 grid (max 45)');
+  }
+
+  // Use the algorithm from lettered.md for 9x9 grid
+  const result = generatePhraseLayoutOn9x9Grid(grid, words);
+  if (!result) {
+    throw new Error('Could not generate valid layout for phrase on 9x9 grid');
+  }
+
+  return result;
+};
+
+// Generate phrase layout on 9x9 grid following lettered.md algorithm exactly
+const generatePhraseLayoutOn9x9Grid = (
+  grid: GridCell[][],
+  words: string[]
+): GridCell[][] | null => {
+  const newGrid = grid.map((row) => row.map((cell) => ({ ...cell })));
+
+  // Create a more balanced layout by intelligently grouping words
+  const balancedLayout = createBalancedPhraseLayout(newGrid, words);
+
+  return balancedLayout;
+};
+
+// Create a balanced phrase layout that groups words more intelligently
+const createBalancedPhraseLayout = (grid: GridCell[][], words: string[]): GridCell[][] | null => {
+  const newGrid = grid.map((row) => row.map((cell) => ({ ...cell })));
+
+  // Group words intelligently for better balance
+  const wordGroups = groupWordsForBalance(words);
+
+  console.log(
+    `📝 Word groups for balanced layout: ${wordGroups.map((group) => `"${group.join(' ')}"`).join(' | ')}`
+  );
+
+  // Place each group on a separate row, centered
+  let currentRow = 1; // Start at row 1 for better balance
+
+  for (const wordGroup of wordGroups) {
+    if (currentRow >= 8) {
+      return null; // Not enough space
+    }
+
+    const groupText = wordGroup.join(' ');
+    const groupLength = groupText.length;
+
+    // Center the group in the row (aim for ~8 character width)
+    const targetWidth = 8;
+    const startCol = Math.max(0, Math.floor((targetWidth - groupLength) / 2));
+
+    console.log(`📍 Placing group "${groupText}" at row ${currentRow}, start col ${startCol}`);
+
+    // Place the group
+    let col = startCol;
+    for (let i = 0; i < groupText.length; i++) {
+      const char = groupText[i];
+      if (char === ' ') {
+        // Place space
+        if (currentRow >= 0 && currentRow < 9 && col >= 0 && col < 9) {
+          const spaceCell = newGrid[currentRow]?.[col];
+          if (spaceCell) {
+            spaceCell.letter = null;
+            spaceCell.isPreFilled = false;
+            spaceCell.isSpace = true;
+            spaceCell.isUnused = false;
+          }
+        }
+      } else {
+        // Place letter
+        if (currentRow >= 0 && currentRow < 9 && col >= 0 && col < 9 && char) {
+          const cell = newGrid[currentRow]?.[col];
+          if (cell) {
+            cell.letter = char;
+            cell.isPreFilled = false;
+            cell.isSpace = false;
+            cell.isUnused = false;
+          }
+        }
+      }
+      col++;
+    }
+
+    currentRow++;
+  }
+
+  return newGrid;
+};
+
+// Group words for better balance and visual appeal
+const groupWordsForBalance = (words: string[]): string[][] => {
+  const groups: string[][] = [];
+
+  if (words.length === 0) return groups;
+
+  // General algorithm for other phrases
+  let currentGroup: string[] = [];
+  let currentLength = 0;
+  const maxGroupLength = 8; // Target width
+
+  for (const word of words) {
+    const wordWithSpace = currentLength > 0 ? word.length + 1 : word.length;
+
+    // If adding this word would exceed the max length, start a new group
+    if (currentLength + wordWithSpace > maxGroupLength && currentGroup.length > 0) {
+      groups.push([...currentGroup]);
+      currentGroup = [word];
+      currentLength = word.length;
+    } else {
+      currentGroup.push(word);
+      currentLength += wordWithSpace;
+    }
+  }
+
+  // Add the last group
+  if (currentGroup.length > 0) {
+    groups.push(currentGroup);
+  }
+
+  return groups;
+};
+
+// Trim the board to remove excess empty space and center based on phrase bounds following lettered.md algorithm
+export const trimBoard = (grid: GridCell[][]): GridCell[][] => {
+  if (grid.length === 0) return grid;
+
+  const gridHeight = grid.length;
+  const gridWidth = grid[0]?.length || 0;
+
+  // Find the bounds of non-unused cells (the phrase)
+  let minRow = gridHeight;
+  let maxRow = -1;
+  let minCol = gridWidth;
+  let maxCol = -1;
+
+  for (let row = 0; row < gridHeight; row++) {
+    for (let col = 0; col < gridWidth; col++) {
+      const cell = grid[row]?.[col];
+      if (cell && !cell.isUnused && !cell.isSpace && cell.letter) {
+        minRow = Math.min(minRow, row);
+        maxRow = Math.max(maxRow, row);
+        minCol = Math.min(minCol, col);
+        maxCol = Math.max(maxCol, col);
+      }
+    }
+  }
+
+  // If no letters found, return original grid
+  if (minRow === gridHeight || maxRow === -1) {
+    console.log('No letters found for trimming, returning original grid');
+    return grid;
+  }
+
+  // Calculate the dimensions of the phrase area
+  const phraseHeight = maxRow - minRow + 1;
+  const phraseWidth = maxCol - minCol + 1;
+  const letterCount = phraseHeight * phraseWidth;
+
+  console.log(
+    `Trimming: Phrase bounds [${minRow},${minCol}] to [${maxRow},${maxCol}] (${phraseHeight}x${phraseWidth}, ${letterCount} letters)`
+  );
+
+  // Create a more balanced layout by extracting the phrase content and repositioning it
+  const phraseContent = extractPhraseContent(grid, minRow, maxRow, minCol, maxCol);
+
+  // Create a balanced layout
+  const balancedGrid = createBalancedLayout(phraseContent, gridHeight, gridWidth);
+
+  console.log(`Trimmed result: ${balancedGrid.length}x${balancedGrid[0]?.length || 0}`);
+
+  return balancedGrid;
+};
+
+// Extract the phrase content from the grid
+const extractPhraseContent = (
+  grid: GridCell[][],
+  minRow: number,
+  maxRow: number,
+  minCol: number,
+  maxCol: number
+): GridCell[][] => {
+  const content: GridCell[][] = [];
+
+  for (let row = minRow; row <= maxRow; row++) {
+    const contentRow: GridCell[] = [];
+    for (let col = minCol; col <= maxCol; col++) {
+      const cell = grid[row]?.[col];
+      if (cell) {
+        contentRow.push({ ...cell });
+      }
+    }
+    if (contentRow.length > 0) {
+      content.push(contentRow);
+    }
+  }
+
+  return content;
+};
+
+// Create a balanced layout with proper centering and padding
+const createBalancedLayout = (
+  phraseContent: GridCell[][],
+  maxHeight: number,
+  maxWidth: number
+): GridCell[][] => {
+  // Determine optimal target dimensions for balanced layout
+  const contentHeight = phraseContent.length;
+  const contentWidth = phraseContent[0]?.length || 0;
+
+  // For balanced layout, aim for roughly square dimensions with padding
+  let targetHeight: number;
+  let targetWidth: number;
+
+  if (contentHeight <= 3 && contentWidth <= 6) {
+    // Small content - use 6x8 for good balance
+    targetHeight = 6;
+    targetWidth = 8;
+  } else if (contentHeight <= 4 && contentWidth <= 7) {
+    // Medium content - use 6x8 or 6x9
+    targetHeight = 6;
+    targetWidth = Math.min(9, Math.max(8, contentWidth + 2));
+  } else {
+    // Larger content - ensure minimum padding
+    targetHeight = Math.max(6, contentHeight + 2);
+    targetWidth = Math.max(8, contentWidth + 2);
+  }
+
+  // Ensure dimensions don't exceed grid bounds
+  targetHeight = Math.min(targetHeight, maxHeight);
+  targetWidth = Math.min(targetWidth, maxWidth);
+
+  console.log(
+    `Balanced Layout: Content ${contentHeight}x${contentWidth} -> Target ${targetHeight}x${targetWidth}`
+  );
+
+  // Create the target grid
+  const balancedGrid: GridCell[][] = [];
+  for (let row = 0; row < targetHeight; row++) {
+    const gridRow: GridCell[] = [];
+    for (let col = 0; col < targetWidth; col++) {
+      gridRow.push({
+        letter: null,
+        isPreFilled: false,
+        isSpace: false,
+        isUnused: true,
+      });
+    }
+    balancedGrid.push(gridRow);
+  }
+
+  // Center the content in the target grid
+  const startRow = Math.max(0, Math.floor((targetHeight - contentHeight) / 2));
+  const startCol = Math.max(0, Math.floor((targetWidth - contentWidth) / 2));
+
+  console.log(
+    `Centering: Content ${contentHeight}x${contentWidth} placed at [${startRow},${startCol}] in ${targetHeight}x${targetWidth} grid`
+  );
+
+  // Copy content to the centered position
+  for (let row = 0; row < contentHeight; row++) {
+    for (let col = 0; col < contentWidth; col++) {
+      const sourceCell = phraseContent[row]?.[col];
+      const targetCell = balancedGrid[startRow + row]?.[startCol + col];
+
+      if (sourceCell && targetCell) {
+        targetCell.letter = sourceCell.letter;
+        targetCell.isPreFilled = sourceCell.isPreFilled;
+        targetCell.isSpace = sourceCell.isSpace;
+        targetCell.isUnused = sourceCell.isUnused;
+      }
+    }
+  }
+
+  return balancedGrid;
+};
+
+// Generate letter pieces using the new algorithm from lettered.md
+export const generateLetterPieces = (grid: GridCell[][], seed?: number): LetterPiece[] => {
+  // Create intermediate grid with skipped tracking for piece generation
+  const generationGrid: GenerationGridCell[][] = grid.map((row) =>
+    row.map((cell) => ({ ...cell, isSkipped: false }))
+  );
+  // Get all available letters (non-pre-filled) with their grid positions
+  const availableLetters: Array<{ letter: string; position: GridPosition }> = [];
+  const preFilledLetters: string[] = [];
+
+  for (let row = 0; row < grid.length; row++) {
+    for (let col = 0; col < grid[row]!.length; col++) {
+      const cell = grid[row]?.[col];
+      if (cell?.letter && !cell.isUnused && !cell.isSpace) {
+        if (cell.isPreFilled) {
+          preFilledLetters.push(cell.letter);
+        } else {
+          availableLetters.push({
+            letter: cell.letter,
+            position: { row, col },
+          });
+        }
+      }
+    }
+  }
+
+  if (availableLetters.length === 0) {
+    return [];
+  }
+
+  // Use the new algorithm from lettered.md
+  const skippedLetters: Array<{ letter: string; position: GridPosition }> = [];
+  const pieces = generatePiecesWithNewAlgorithm(
+    availableLetters,
+    generationGrid,
+    seed,
+    skippedLetters
+  );
+  return pieces;
+};
+
+// Simple seeded random number generator
+const seededRandom = (seed: number) => {
+  let x = Math.sin(seed) * 10000;
+  return () => {
+    x = Math.sin(x) * 10000;
+    return x - Math.floor(x);
+  };
+};
+
+// Generate pieces using the new scanner algorithm from lettered.md
+const generatePiecesWithNewAlgorithm = (
+  availableLetters: Array<{ letter: string; position: GridPosition }>,
+  grid: GenerationGridCell[][],
+  seed?: number,
+  skippedLetters?: Array<{ letter: string; position: GridPosition }>
+): LetterPiece[] => {
+  console.log(`🔢 New Scanner Algorithm: Total available letters: ${availableLetters.length}`);
+  console.log(
+    `📝 Available letters: ${availableLetters.map((l) => `${l.letter}(${l.position.row},${l.position.col})`).join(', ')}`
+  );
+
+  // Initialize seeded random generator
+  const random = seed ? seededRandom(seed) : Math.random;
+
+  const usedLetters = new Set<string>();
+  const pieces: LetterPiece[] = [];
+
+  // Continue until all letters are used
+  while (usedLetters.size < availableLetters.length) {
+    console.log(
+      `🔄 Piece generation round: ${usedLetters.size}/${availableLetters.length} letters used, ${pieces.length} pieces created`
+    );
+
+    // Step 1: Pick a random number 2-6 for piece size
+    const pieceSize = Math.floor(random() * 5) + 2; // 2-6
+    console.log(`🎯 Starting new piece with target size: ${pieceSize}`);
+
+    // Step 2: Find next available letter using scanner from top-left
+    const startingLetter = findNextAvailableLetterWithScanner(usedLetters, grid);
+    if (!startingLetter) {
+      console.log(`⏹️ No more available letters found. Stopping generation.`);
+      break;
+    }
+
+    console.log(
+      `🎯 Starting piece with letter: ${startingLetter.letter} at (${startingLetter.position.row},${startingLetter.position.col})`
+    );
+
+    // Step 3-7: Build piece by randomly selecting adjacent letters
+    const piece = buildPieceWithRandomDirections(
+      startingLetter,
+      pieceSize,
+      grid,
+      usedLetters,
+      random
+    );
+    if (piece && piece.letters.length >= 2) {
+      pieces.push(piece);
+      console.log(
+        `✅ Generated piece ${pieces.length}: "${piece.letters.join('')}" (${piece.letters.length} letters)`
+      );
+    } else {
+      // Add starting letter to skipped letters list for later processing
+      if (skippedLetters) {
+        skippedLetters.push({
+          letter: startingLetter.letter,
+          position: startingLetter.position,
+        });
+      }
+
+      // Mark starting letter as skipped so scanner won't retry it, but stranded cleanup can still find it
+      const startCell = grid[startingLetter.position.row]?.[startingLetter.position.col];
+      if (startCell) {
+        startCell.isSkipped = true;
+      }
+      console.log(
+        `❌ Piece generation failed, adding starting letter to skipped list - will be handled by stranded cleanup`
+      );
+    }
+  }
+
+  // Step 11a: Try to generate pieces from skipped letters
+  if (skippedLetters && skippedLetters.length > 0) {
+    console.log(`🔄 Attempting to generate pieces from ${skippedLetters.length} skipped letters`);
+    handleSkippedLetters(pieces, skippedLetters, grid, usedLetters, random);
+  }
+
+  // Step 11b: Handle any remaining stranded pieces
+  handleStrandedPieces(pieces, grid, usedLetters, random);
+
+  console.log(
+    `🏁 New algorithm complete: ${pieces.length} pieces generated, ${usedLetters.size}/${availableLetters.length} letters used, ${skippedLetters?.length || 0} skipped letters collected`
+  );
+
+  // Validate that all letters were used
+  if (usedLetters.size !== availableLetters.length) {
+    console.log(`⚠️ Letter count mismatch: used ${usedLetters.size}/${availableLetters.length}`);
+  }
+
+  return pieces;
+};
+
+// Find next available letter using scanner from top-left (Step 2)
+const findNextAvailableLetterWithScanner = (
+  usedLetters: Set<string>,
+  grid: GenerationGridCell[][]
+): { letter: string; position: GridPosition } | null => {
+  console.log(`🔍 Scanner: Finding next available letter`);
+
+  // Scan from top-left to bottom-right
+  for (let row = 0; row < grid.length; row++) {
+    for (let col = 0; col < grid[row]!.length; col++) {
+      const key = `${row},${col}`;
+
+      // Skip if already used or previously skipped
+      if (usedLetters.has(key)) continue;
+
+      // Skip if previously failed piece generation
+      const cell = grid[row]?.[col];
+      if (cell?.isSkipped) continue;
+
+      // Check if this position has a letter (any letter, not just available ones)
+      if (cell?.letter && !cell.isUnused && !cell.isSpace) {
+        console.log(`✅ Scanner found available letter: ${cell.letter} at (${row},${col})`);
+        return {
+          letter: cell.letter,
+          position: { row, col },
+        };
+      }
+    }
+  }
+
+  console.log(`❌ Scanner found no available letters`);
+  return null;
+};
+
+// Build piece by randomly selecting adjacent directions (Steps 3-7)
+const buildPieceWithRandomDirections = (
+  startingLetter: { letter: string; position: GridPosition },
+  targetSize: number,
+  grid: GridCell[][],
+  usedLetters: Set<string>,
+  random: () => number
+): LetterPiece | null => {
+  const pieceLetters: string[] = [];
+  const piecePositions: GridPosition[] = [];
+  let currentPos = startingLetter.position;
+
+  // Step 3: Mark starting letter as used
+  const startKey = `${startingLetter.position.row},${startingLetter.position.col}`;
+  usedLetters.add(startKey);
+  pieceLetters.push(startingLetter.letter);
+  piecePositions.push(startingLetter.position);
+
+  console.log(`📝 Started piece with: "${pieceLetters.join('')}"`);
+
+  // Step 5-7: Keep adding letters until target size reached
+  while (pieceLetters.length < targetSize) {
+    // Find all valid adjacent letters (up, down, left, right)
+    const adjacentLetters = findAdjacentLetters(currentPos, grid, usedLetters);
+
+    if (adjacentLetters.length === 0) {
+      console.log(`🛑 No adjacent letters available from (${currentPos.row},${currentPos.col})`);
+      break;
+    }
+
+    // Step 5: Pick random direction
+    const randomIndex = Math.floor(random() * adjacentLetters.length);
+    const selectedLetter = adjacentLetters[randomIndex];
+
+    if (!selectedLetter) {
+      console.log(`❌ No valid adjacent letter found`);
+      break;
+    }
+
+    console.log(
+      `➡️ Adding ${selectedLetter.letter} at (${selectedLetter.position.row},${selectedLetter.position.col})`
+    );
+
+    // Step 6: Add to piece and mark as used
+    const newKey = `${selectedLetter.position.row},${selectedLetter.position.col}`;
+    usedLetters.add(newKey);
+    pieceLetters.push(selectedLetter.letter);
+    piecePositions.push(selectedLetter.position);
+    currentPos = selectedLetter.position;
+
+    console.log(`📝 Piece now: "${pieceLetters.join('')}" (${pieceLetters.length}/${targetSize})`);
+  }
+
+  // Step 9: Validate minimum size
+  if (pieceLetters.length < 2) {
+    console.log(`❌ Piece too small (${pieceLetters.length} letters), discarding`);
+    // Undo changes
+    for (const pos of piecePositions) {
+      usedLetters.delete(`${pos.row},${pos.col}`);
+    }
+    return null;
+  }
+
+  // Step 10: Validate connectivity (sides only, not corners)
+  if (!isPieceConnected(piecePositions)) {
+    console.log(`❌ Piece not properly connected: "${pieceLetters.join('')}". Undoing changes.`);
+    // Undo changes
+    for (const pos of piecePositions) {
+      usedLetters.delete(`${pos.row},${pos.col}`);
+    }
+    return null;
+  }
+
+  // Create normalized shape
+  const minRow = Math.min(...piecePositions.map((p) => p.row));
+  const minCol = Math.min(...piecePositions.map((p) => p.col));
+  const shape = piecePositions.map((pos) => ({
+    row: pos.row - minRow,
+    col: pos.col - minCol,
+  }));
+
+  const finalPiece = {
+    id: `piece-${Date.now()}-${random().toString(36).substr(2, 9)}`,
+    letters: pieceLetters,
+    shape,
+    color: PIECE_COLORS[Math.floor(random() * PIECE_COLORS.length)] || '#EF4444',
+  };
+
+  console.log(
+    `✅ Created piece: "${pieceLetters.join('')}" with shape ${shape.map((s) => `(${s.row},${s.col})`).join(' ')}`
+  );
+
+  return finalPiece;
+};
+
+// Find adjacent letters in 4 directions (up, down, left, right)
+const findAdjacentLetters = (
+  currentPos: GridPosition,
+  grid: GridCell[][],
+  usedLetters: Set<string>
+): Array<{ letter: string; position: GridPosition }> => {
+  const adjacent: Array<{ letter: string; position: GridPosition }> = [];
+  const directions = [
+    { row: -1, col: 0, name: 'up' }, // up
+    { row: 0, col: 1, name: 'right' }, // right
+    { row: 1, col: 0, name: 'down' }, // down
+    { row: 0, col: -1, name: 'left' }, // left
+  ];
+
+  for (const direction of directions) {
+    const nextPos = {
+      row: currentPos.row + direction.row,
+      col: currentPos.col + direction.col,
+    };
+
+    // Check bounds
+    if (
+      nextPos.row < 0 ||
+      nextPos.row >= grid.length ||
+      nextPos.col < 0 ||
+      nextPos.col >= grid[0]!.length
+    ) {
+      continue;
+    }
+
+    const nextKey = `${nextPos.row},${nextPos.col}`;
+
+    // Skip if already used
+    if (usedLetters.has(nextKey)) continue;
+
+    // Check if position has a letter (any letter, not just available ones)
+    const cell = grid[nextPos.row]?.[nextPos.col];
+    if (cell?.letter && !cell.isUnused && !cell.isSpace) {
+      adjacent.push({
+        letter: cell.letter,
+        position: nextPos,
+      });
+    }
+  }
+
+  return adjacent;
+};
+
+// Handle skipped letters by attempting to generate smaller pieces from them
+const handleSkippedLetters = (
+  pieces: LetterPiece[],
+  skippedLetters: Array<{ letter: string; position: GridPosition }>,
+  grid: GenerationGridCell[][],
+  usedLetters: Set<string>,
+  random: () => number
+): void => {
+  console.log(`🔄 Processing ${skippedLetters.length} skipped letters for piece generation`);
+
+  for (const skippedLetter of skippedLetters) {
+    const key = `${skippedLetter.position.row},${skippedLetter.position.col}`;
+
+    // Skip if already used
+    if (usedLetters.has(key)) {
+      console.log(
+        `⏭️ Skipped letter ${skippedLetter.letter} at (${skippedLetter.position.row},${skippedLetter.position.col}) already used`
+      );
+      continue;
+    }
+
+    // Try to generate a smaller piece (2-3 letters) from this skipped letter
+    const piece = buildPieceWithRandomDirections(
+      skippedLetter,
+      Math.floor(random() * 2) + 2, // 2-3 letters for smaller pieces
+      grid,
+      usedLetters,
+      random
+    );
+
+    if (piece && piece.letters.length >= 2) {
+      pieces.push(piece);
+      console.log(
+        `✅ Generated piece from skipped letter: "${piece.letters.join('')}" (${piece.letters.length} letters)`
+      );
+    } else {
+      console.log(
+        `❌ Failed to generate piece from skipped letter ${skippedLetter.letter} at (${skippedLetter.position.row},${skippedLetter.position.col})`
+      );
+    }
+  }
+
+  console.log(`✅ Skipped letters processing complete: ${pieces.length} total pieces now`);
+};
+
+// Handle stranded pieces by connecting them to nearest piece (Step 11)
+const handleStrandedPieces = (
+  pieces: LetterPiece[],
+  grid: GenerationGridCell[][],
+  usedLetters: Set<string>,
+  random: () => number
+): void => {
+  // Find all stranded letters: unused cells that have letters and aren't pre-filled
+  const strandedLetters: Array<{ letter: string; position: GridPosition }> = [];
+
+  // Create a mapping of positions to pieces for faster lookup
+  const positionToPiece = new Map<string, LetterPiece>();
+
+  console.log(`🔧 Building position mapping for ${pieces.length} pieces:`);
+  for (const piece of pieces) {
+    console.log(`  Piece: ${piece.letters.join('')} (${piece.shape.length} positions)`);
+  }
+
+  // Reconstruct piece positions by finding the correct offset for each piece
+  for (const piece of pieces) {
+    let pieceMapped = false;
+
+    // Try to find the correct offset by checking each used position as a potential anchor
+    for (const usedKey of usedLetters) {
+      if (pieceMapped) break; // Already found the correct mapping for this piece
+
+      const parts = usedKey.split(',');
+      const usedRow = parseInt(parts[0]!);
+      const usedCol = parseInt(parts[1]!);
+
+      // Try each shape position as a potential anchor point
+      for (let shapeIndex = 0; shapeIndex < piece.shape.length; shapeIndex++) {
+        if (pieceMapped) break;
+
+        const anchorShape = piece.shape[shapeIndex];
+        if (!anchorShape) continue;
+
+        // Calculate the grid offset for this piece
+        const offsetRow = usedRow - anchorShape.row;
+        const offsetCol = usedCol - anchorShape.col;
+
+        // Check if all positions in this piece match with this offset
+        let allPositionsMatch = true;
+        for (const shapePos of piece.shape) {
+          const expectedRow = offsetRow + shapePos.row;
+          const expectedCol = offsetCol + shapePos.col;
+          const expectedKey = `${expectedRow},${expectedCol}`;
+
+          if (!usedLetters.has(expectedKey)) {
+            allPositionsMatch = false;
+            break;
+          }
+        }
+
+        if (allPositionsMatch) {
+          // Verify this piece doesn't conflict with already mapped positions
+          let hasConflict = false;
+          for (const shapePos of piece.shape) {
+            const gridRow = offsetRow + shapePos.row;
+            const gridCol = offsetCol + shapePos.col;
+            const gridKey = `${gridRow},${gridCol}`;
+
+            if (positionToPiece.has(gridKey)) {
+              hasConflict = true;
+              break;
+            }
+          }
+
+          if (!hasConflict) {
+            // This offset works and doesn't conflict - record all its positions
+            console.log(
+              `  ✅ Mapped ${piece.letters.join('')} at offset (${offsetRow},${offsetCol})`
+            );
+            for (const shapePos of piece.shape) {
+              const gridRow = offsetRow + shapePos.row;
+              const gridCol = offsetCol + shapePos.col;
+              const gridKey = `${gridRow},${gridCol}`;
+              positionToPiece.set(gridKey, piece);
+            }
+            pieceMapped = true;
+            break;
+          }
+        }
+      }
+    }
+
+    if (!pieceMapped) {
+      console.log(
+        `  ❌ Could not map ${piece.letters.join('')} - no valid non-conflicting position found`
+      );
+    }
+  }
+
+  for (let row = 0; row < grid.length; row++) {
+    for (let col = 0; col < grid[row]!.length; col++) {
+      const cell = grid[row]?.[col];
+      if (cell?.letter && !cell.isUnused && !cell.isSpace && !cell.isPreFilled) {
+        const key = `${row},${col}`;
+        if (!usedLetters.has(key)) {
+          strandedLetters.push({
+            letter: cell.letter,
+            position: { row, col },
+          });
+        }
+      }
+    }
+  }
+
+  if (strandedLetters.length === 0) {
+    console.log(`✅ No stranded pieces to handle`);
+    return;
+  }
+
+  console.log(`🔄 Handling ${strandedLetters.length} stranded pieces`);
+
+  // Debug: Show position mapping summary
+  const pieceCounts = new Map<string, number>();
+  for (const [, piece] of positionToPiece) {
+    const pieceName = piece.letters.join('');
+    pieceCounts.set(pieceName, (pieceCounts.get(pieceName) || 0) + 1);
+  }
+
+  console.log(`📊 Mapping summary:`);
+  for (const [pieceName, count] of pieceCounts) {
+    console.log(`  ${pieceName}: ${count} positions`);
+  }
+
+  console.log(`📍 Full position to piece mapping:`);
+  for (const [pos, piece] of positionToPiece) {
+    console.log(`  ${pos} -> ${piece.letters.join('')}`);
+  }
+
+  for (const strandedLetter of strandedLetters) {
+    console.log(
+      `🔍 Processing stranded ${strandedLetter.letter} at (${strandedLetter.position.row},${strandedLetter.position.col})`
+    );
+
+    // First, check for direct neighbors (up, down, left, right)
+    let adjacentPiece: LetterPiece | null = null;
+    const directions = [
+      { row: -1, col: 0, name: 'up' }, // up
+      { row: 1, col: 0, name: 'down' }, // down
+      { row: 0, col: -1, name: 'left' }, // left
+      { row: 0, col: 1, name: 'right' }, // right
+    ];
+
+    for (const direction of directions) {
+      const neighborPos = {
+        row: strandedLetter.position.row + direction.row,
+        col: strandedLetter.position.col + direction.col,
+      };
+
+      console.log(`  Checking ${direction.name}: (${neighborPos.row},${neighborPos.col})`);
+
+      // Check bounds
+      if (
+        neighborPos.row < 0 ||
+        neighborPos.row >= grid.length ||
+        neighborPos.col < 0 ||
+        neighborPos.col >= grid[0]!.length
+      ) {
+        console.log(`    ❌ Out of bounds`);
+        continue;
+      }
+
+      // Check if this neighbor position is used by any piece
+      const neighborKey = `${neighborPos.row},${neighborPos.col}`;
+      if (usedLetters.has(neighborKey)) {
+        console.log(`    ✅ Position (${neighborPos.row},${neighborPos.col}) is used`);
+        // Use our position-to-piece mapping to find which piece contains this neighbor
+        const neighborPiece = positionToPiece.get(neighborKey);
+        console.log(`    🔍 Neighbor piece: ${neighborPiece?.letters.join('') || 'null'}`);
+        if (neighborPiece && neighborPiece.letters.length < 6) {
+          adjacentPiece = neighborPiece;
+          console.log(`    🎯 Found valid adjacent piece: ${neighborPiece.letters.join('')}`);
+          break;
+        } else if (neighborPiece) {
+          console.log(
+            `    ❌ Piece ${neighborPiece.letters.join('')} is full (${neighborPiece.letters.length}/6)`
+          );
+        }
+      } else {
+        console.log(`    ❌ Position (${neighborPos.row},${neighborPos.col}) is not used`);
+      }
+    }
+
+    if (!adjacentPiece) {
+      console.log(`  ❌ No valid adjacent pieces found for ${strandedLetter.letter}`);
+    }
+
+    // Only connect to direct neighbors - no fallback to nearest piece
+
+    if (adjacentPiece && adjacentPiece.letters.length < 6) {
+      console.log(
+        `🔗 Connecting stranded ${strandedLetter.letter} to piece "${adjacentPiece.letters.join('')}"`
+      );
+
+      // Store the old piece name for updating the mapping
+      const oldPieceName = adjacentPiece.letters.join('');
+
+      adjacentPiece.letters.push(strandedLetter.letter);
+
+      // Update position mapping for all positions that belong to this piece
+      // Find all positions that were mapped to the old piece name and update them
+      for (const [posKey, piece] of positionToPiece) {
+        if (piece.letters.join('') === oldPieceName) {
+          positionToPiece.set(posKey, adjacentPiece);
+        }
+      }
+
+      // Also add the new position to the mapping
+      positionToPiece.set(
+        `${strandedLetter.position.row},${strandedLetter.position.col}`,
+        adjacentPiece
+      );
+
+      // Calculate the correct relative position for the stranded letter
+      // We need to find where this piece is positioned on the grid
+      let pieceOffsetRow = 0;
+      let pieceOffsetCol = 0;
+
+      // Find the grid offset by checking which positions this piece occupies
+      if (adjacentPiece.shape.length > 0) {
+        // Use the neighbor position we found to calculate the offset
+        for (const direction of [
+          { row: -1, col: 0 },
+          { row: 1, col: 0 },
+          { row: 0, col: -1 },
+          { row: 0, col: 1 },
+        ]) {
+          const neighborPos = {
+            row: strandedLetter.position.row + direction.row,
+            col: strandedLetter.position.col + direction.col,
+          };
+          const neighborKey = `${neighborPos.row},${neighborPos.col}`;
+
+          if (usedLetters.has(neighborKey)) {
+            // This is the adjacent position - find which shape position it corresponds to
+            for (let shapeIndex = 0; shapeIndex < adjacentPiece.shape.length; shapeIndex++) {
+              const shapePos = adjacentPiece.shape[shapeIndex];
+              if (!shapePos) continue;
+
+              // Try this shape position as the anchor for the neighbor
+              const testOffsetRow = neighborPos.row - shapePos.row;
+              const testOffsetCol = neighborPos.col - shapePos.col;
+
+              // Verify this offset works for the entire piece
+              let offsetValid = true;
+              for (const testShapePos of adjacentPiece.shape) {
+                const expectedRow = testOffsetRow + testShapePos.row;
+                const expectedCol = testOffsetCol + testShapePos.col;
+                const expectedKey = `${expectedRow},${expectedCol}`;
+
+                if (!usedLetters.has(expectedKey)) {
+                  offsetValid = false;
+                  break;
+                }
+              }
+
+              if (offsetValid) {
+                pieceOffsetRow = testOffsetRow;
+                pieceOffsetCol = testOffsetCol;
+                break;
+              }
+            }
+            break;
+          }
+        }
+      }
+
+      // Calculate the relative position of the stranded letter
+      const relativeRow = strandedLetter.position.row - pieceOffsetRow;
+      const relativeCol = strandedLetter.position.col - pieceOffsetCol;
+
+      // Add the stranded letter at its correct relative position
+      adjacentPiece.shape.push({ row: relativeRow, col: relativeCol });
+
+      // Re-normalize the shape to ensure min row/col are 0
+      const minRow = Math.min(...adjacentPiece.shape.map((pos) => pos.row));
+      const minCol = Math.min(...adjacentPiece.shape.map((pos) => pos.col));
+      adjacentPiece.shape = adjacentPiece.shape.map((pos) => ({
+        row: pos.row - minRow,
+        col: pos.col - minCol,
+      }));
+
+      usedLetters.add(`${strandedLetter.position.row},${strandedLetter.position.col}`);
+
+      console.log(`📍 Updated mapping after adding ${strandedLetter.letter}:`);
+      for (const [pos, piece] of positionToPiece) {
+        if (piece === adjacentPiece) {
+          console.log(`  ${pos} -> ${piece.letters.join('')}`);
+        }
+      }
+    } else {
+      // Create new piece if no suitable piece found
+      console.log(`⚠️ Creating new piece for stranded letter ${strandedLetter.letter}`);
+      const singlePiece = {
+        id: `piece-${Date.now()}-${random().toString(36).substr(2, 9)}`,
+        letters: [strandedLetter.letter],
+        shape: [{ row: 0, col: 0 }],
+        color: PIECE_COLORS[Math.floor(random() * PIECE_COLORS.length)] || '#EF4444',
+      };
+      pieces.push(singlePiece);
+      usedLetters.add(`${strandedLetter.position.row},${strandedLetter.position.col}`);
+      positionToPiece.set(
+        `${strandedLetter.position.row},${strandedLetter.position.col}`,
+        singlePiece
+      );
+
+      console.log(
+        `📍 Added new single piece: ${strandedLetter.position.row},${strandedLetter.position.col} -> ${singlePiece.letters.join('')}`
+      );
+    }
+  }
+
+  console.log(`✅ Stranded pieces handled, final piece count: ${pieces.length}`);
+};
+
+// Generate pieces using the exact algorithm from lettered.md
+const generatePiecesWithBacktracking = (
+  availableLetters: Array<{ letter: string; position: GridPosition }>,
+  phrase: string
+): LetterPiece[] => {
+  const totalLetters = availableLetters.length;
+  console.log(`🔢 Piece Generation Debug: Total available letters: ${totalLetters}`);
+  console.log(
+    `📝 Available letters: ${availableLetters.map((l) => `${l.letter}(${l.position.row},${l.position.col})`).join(', ')}`
+  );
+
+  // Determine number of pieces based on algorithm from lettered.md:
+  // "For example, for 'PEANUT BUTTER IS GOOD' we can choose 4 pieces that are 2-5 letters long each.
+  // This is decided by taking the (number of letters - count of anchor letters) and dividing it by 3 for puzzles less than 24 letters,
+  // 4 for puzzles between 24 and 28 letters, and 5 for puzzles longer than 28 letters."
+  let targetPieceCount: number;
+  if (totalLetters < 24) {
+    targetPieceCount = Math.floor(totalLetters / 3);
+  } else if (totalLetters <= 28) {
+    targetPieceCount = Math.floor(totalLetters / 4);
+  } else {
+    targetPieceCount = Math.floor(totalLetters / 5);
+  }
+
+  console.log(
+    `🎯 Target piece count determined: ${targetPieceCount} (using divisor ${totalLetters < 24 ? 3 : totalLetters <= 28 ? 4 : 5})`
+  );
+
+  // Start with calculated count but if generation fails, reduce count
+  const targetPieceCounts = [targetPieceCount];
+  if (targetPieceCount > 3) targetPieceCounts.push(targetPieceCount - 1);
+  if (targetPieceCount > 4) targetPieceCounts.push(targetPieceCount - 2);
+  targetPieceCounts.push(3); // minimum fallback
+
+  console.log(`📊 Piece count options to try: ${targetPieceCounts.join(', ')}`);
+
+  for (const pieceCount of targetPieceCounts) {
+    console.log(`🔄 Attempting to generate ${pieceCount} pieces...`);
+    const result = generatePiecesWithExactAlgorithm(availableLetters, pieceCount, phrase);
+    if (result) {
+      console.log(`✅ Successfully generated ${pieceCount} pieces with backtracking algorithm`);
+      return result;
+    } else {
+      console.log(`❌ Failed to generate ${pieceCount} pieces, trying next count...`);
+    }
+  }
+
+  // Ultimate fallback
+  console.log(`🔄 All piece count attempts failed, using fallback algorithm...`);
+  return createFallbackPieces(availableLetters);
+};
+
+// Generate pieces using the exact algorithm from lettered.md
+const generatePiecesWithExactAlgorithm = (
+  availableLetters: Array<{ letter: string; position: GridPosition }>,
+  targetPieceCount: number,
+  phrase: string
+): LetterPiece[] | null => {
+  console.log(
+    `🔍 Backtracking Algorithm Debug: Starting with target piece count: ${targetPieceCount}`
+  );
+
+  // Algorithm from lettered.md:
+  // - From there, start the generation of the letter pieces also using a backtracking algorithm.
+  // - This is a recursive backtracking algorithm
+  // - Choose the specifications of the pieces before starting the algorithm.
+  // - For example, for "PEANUT BUTTER IS GOOD" we can choose 4 pieces that are 2-5 letters long each.
+
+  // Create a copy of the filled out board layout for tracking
+  const gridCopy = availableLetters.map((letter) => ({ ...letter }));
+  const usedLetters = new Set<string>();
+
+  const pieces: LetterPiece[] = [];
+  let totalLettersUsed = 0;
+  let pieceGenerationAttempts = 0;
+
+  console.log(
+    `📋 Initial state: ${availableLetters.length} letters available, ${usedLetters.size} used`
+  );
+
+  // Continue until all letters are used
+  while (totalLettersUsed < availableLetters.length) {
+    console.log(
+      `🔄 Piece generation round ${pieceGenerationAttempts + 1}: ${totalLettersUsed}/${availableLetters.length} letters used, ${pieces.length}/${targetPieceCount} pieces created`
+    );
+
+    // Find next available letter by starting at 0,0 and moving towards the right
+    const startingLetter = findNextAvailableLetterForPiece(gridCopy, usedLetters);
+
+    if (!startingLetter) {
+      console.log(`⏹️ No more available letters found. Stopping generation.`);
+      break;
+    }
+
+    console.log(
+      `🎯 Starting new piece with letter: ${startingLetter.letter} at (${startingLetter.position.row},${startingLetter.position.col})`
+    );
+
+    // Generate piece using the backtracking algorithm from lettered.md
+    const piece = generateSinglePieceWithBacktracking(startingLetter, gridCopy, usedLetters);
+
+    if (!piece || piece.letters.length < 2) {
+      console.log(
+        `❌ Piece generation failed or piece too small (${piece?.letters.length || 0} letters). Skipping starting letter - will be handled by stranded cleanup.`
+      );
+      pieceGenerationAttempts++;
+      continue;
+    }
+
+    pieces.push(piece);
+    totalLettersUsed += piece.letters.length;
+
+    console.log(
+      `✅ Successfully generated piece ${pieces.length}: "${piece.letters.join('')}" (${piece.letters.length} letters)`
+    );
+    console.log(
+      `📊 Updated state: ${totalLettersUsed}/${availableLetters.length} letters used, ${pieces.length}/${targetPieceCount} pieces created`
+    );
+
+    // If we have enough pieces and all letters are used, we're done
+    if (pieces.length >= targetPieceCount && totalLettersUsed === availableLetters.length) {
+      console.log(
+        `🎉 Target reached: ${pieces.length} pieces created, all ${totalLettersUsed} letters used`
+      );
+      break;
+    }
+
+    pieceGenerationAttempts++;
+  }
+
+  console.log(
+    `🏁 Backtracking complete: ${pieces.length} pieces generated, ${totalLettersUsed}/${availableLetters.length} letters used`
+  );
+
+  // Validate final result
+  if (totalLettersUsed !== availableLetters.length || pieces.length === 0) {
+    console.log(
+      `❌ Validation failed: Used ${totalLettersUsed}/${availableLetters.length} letters, created ${pieces.length} pieces`
+    );
+    return null; // Failed to generate valid solution
+  }
+
+  // Check that no piece contains complete words (optional validation)
+  if (containsCompleteWords(pieces, phrase)) {
+    console.log(`❌ Word validation failed: Some pieces contain complete words from the phrase`);
+    return null;
+  }
+
+  console.log(`✅ All validations passed. Returning ${pieces.length} valid pieces.`);
+  return pieces;
+};
+
+// Validate that a piece is connected via sides (not corners)
+const isPieceConnected = (positions: GridPosition[]): boolean => {
+  if (positions.length <= 1) return true;
+
+  // Use BFS to check connectivity - only allow side connections (up, down, left, right)
+  const visited = new Set<string>();
+  const startPos = positions[0];
+  if (!startPos) return false;
+  const queue = [startPos];
+  visited.add(`${startPos.row},${startPos.col}`);
+
+  while (queue.length > 0) {
+    const current = queue.shift()!;
+
+    // Check all 4 side directions (not corners)
+    const directions = [
+      { row: -1, col: 0 }, // up
+      { row: 0, col: 1 }, // right
+      { row: 1, col: 0 }, // down
+      { row: 0, col: -1 }, // left
+    ];
+
+    for (const direction of directions) {
+      const nextPos = {
+        row: current.row + direction.row,
+        col: current.col + direction.col,
+      };
+
+      const nextKey = `${nextPos.row},${nextPos.col}`;
+
+      // Check if this position is in our piece and not visited
+      if (!visited.has(nextKey)) {
+        const found = positions.find((p) => p.row === nextPos.row && p.col === nextPos.col);
+        if (found) {
+          visited.add(nextKey);
+          queue.push(found);
+        }
+      }
+    }
+  }
+
+  // Check if all positions were visited (fully connected)
+  return visited.size === positions.length;
+};
+
+// Find next available letter by scanning from top-left following lettered.md algorithm
+const findNextAvailableLetterForPiece = (
+  gridCopy: Array<{ letter: string; position: GridPosition }>,
+  usedLetters: Set<string>
+): { letter: string; position: GridPosition } | null => {
+  console.log(
+    `🔍 Letter Tracking Debug: Finding next available letter from ${gridCopy.length} total letters, ${usedLetters.size} already used`
+  );
+
+  // Scan from top-left to bottom-right as specified in algorithm
+  for (const letter of gridCopy) {
+    const key = `${letter.position.row},${letter.position.col}`;
+    if (!usedLetters.has(key)) {
+      console.log(
+        `✅ Found available letter: ${letter.letter} at (${letter.position.row},${letter.position.col})`
+      );
+      return letter;
+    } else {
+      console.log(
+        `⏭️ Letter ${letter.letter} at (${letter.position.row},${letter.position.col}) already used, skipping`
+      );
+    }
+  }
+
+  console.log(`❌ No available letters found`);
+  return null;
+};
+
+// Generate single piece using the backtracking algorithm from lettered.md
+const generateSinglePieceWithBacktracking = (
+  startingLetter: { letter: string; position: GridPosition },
+  gridCopy: Array<{ letter: string; position: GridPosition }>,
+  usedLetters: Set<string>
+): LetterPiece | null => {
+  console.log(
+    `🔧 Individual Piece Debug: Starting piece generation from ${startingLetter.letter} at (${startingLetter.position.row},${startingLetter.position.col})`
+  );
+
+  const pieceLetters: string[] = [];
+  const piecePositions: GridPosition[] = [];
+  const currentPath: GridPosition[] = [];
+
+  // Initialize with starting letter
+  pieceLetters.push(startingLetter.letter);
+  piecePositions.push(startingLetter.position);
+  currentPath.push(startingLetter.position);
+
+  const startKey = `${startingLetter.position.row},${startingLetter.position.col}`;
+  usedLetters.add(startKey);
+
+  console.log(
+    `📝 Piece state: Started with "${pieceLetters.join('')}" (${pieceLetters.length} letters)`
+  );
+
+  // Recursive function to build the piece
+  const buildPiece = (currentPos: GridPosition, depth: number = 0): boolean => {
+    const indent = '  '.repeat(depth);
+    console.log(
+      `${indent}🔄 Build step ${depth}: Current piece "${pieceLetters.join('')}" (${pieceLetters.length} letters) at (${currentPos.row},${currentPos.col})`
+    );
+
+    // If we've reached 5 letters, this is a valid piece (maximum size)
+    if (pieceLetters.length >= 5) {
+      console.log(
+        `${indent}✅ Maximum size reached: "${pieceLetters.join('')}" (${pieceLetters.length} letters)`
+      );
+      return true;
+    }
+
+    // If we have 2 or more letters and no more valid moves, this is valid
+    if (pieceLetters.length >= 2) {
+      // Check if there are any valid moves left
+      let hasValidMoves = false;
+      const directions = [
+        { row: -1, col: 0, name: 'up' },
+        { row: 0, col: 1, name: 'right' },
+        { row: 1, col: 0, name: 'down' },
+        { row: 0, col: -1, name: 'left' },
+      ];
+
+      for (const direction of directions) {
+        const nextPos = {
+          row: currentPos.row + direction.row,
+          col: currentPos.col + direction.col,
+        };
+
+        if (nextPos.row < 0 || nextPos.row >= 9 || nextPos.col < 0 || nextPos.col >= 9) {
+          continue;
+        }
+
+        const nextKey = `${nextPos.row},${nextPos.col}`;
+        const nextLetter = gridCopy.find(
+          (letter) => letter.position.row === nextPos.row && letter.position.col === nextPos.col
+        );
+
+        if (nextLetter && !usedLetters.has(nextKey)) {
+          hasValidMoves = true;
+          break;
+        }
+      }
+
+      if (!hasValidMoves) {
+        console.log(
+          `${indent}✅ No more valid moves, piece complete: "${pieceLetters.join('')}" (${pieceLetters.length} letters)`
+        );
+        return true;
+      }
+    }
+
+    // Try directions: up, down, left, right (clockwise)
+    const directions = [
+      { row: -1, col: 0, name: 'up' }, // up
+      { row: 0, col: 1, name: 'right' }, // right
+      { row: 1, col: 0, name: 'down' }, // down
+      { row: 0, col: -1, name: 'left' }, // left
+    ];
+
+    for (const direction of directions) {
+      const nextPos = {
+        row: currentPos.row + direction.row,
+        col: currentPos.col + direction.col,
+      };
+
+      console.log(
+        `${indent}➡️ Trying direction ${direction.name}: (${nextPos.row},${nextPos.col})`
+      );
+
+      // Check bounds (assuming 9x9 grid)
+      if (nextPos.row < 0 || nextPos.row >= 9 || nextPos.col < 0 || nextPos.col >= 9) {
+        console.log(`${indent}🚫 Out of bounds`);
+        continue;
+      }
+
+      const nextKey = `${nextPos.row},${nextPos.col}`;
+      const nextLetter = gridCopy.find(
+        (letter) => letter.position.row === nextPos.row && letter.position.col === nextPos.col
+      );
+
+      // Check if position has a letter and is not used
+      if (!nextLetter) {
+        console.log(`${indent}🚫 No letter at this position`);
+        continue;
+      }
+
+      if (usedLetters.has(nextKey)) {
+        console.log(`${indent}🚫 Letter already used: ${nextLetter.letter}`);
+        continue;
+      }
+
+      console.log(`${indent}✅ Adding letter ${nextLetter.letter} to piece`);
+
+      // Add to current path
+      currentPath.push(nextPos);
+      pieceLetters.push(nextLetter.letter);
+      piecePositions.push(nextPos);
+      usedLetters.add(nextKey);
+
+      console.log(
+        `${indent}📝 Piece now: "${pieceLetters.join('')}" (${pieceLetters.length} letters)`
+      );
+
+      // Recursively continue building
+      if (buildPiece(nextPos, depth + 1)) {
+        return true;
+      }
+
+      // Backtrack
+      console.log(`${indent}⬅️ Backtracking from ${nextLetter.letter}, removing from piece`);
+      currentPath.pop();
+      pieceLetters.pop();
+      piecePositions.pop();
+      usedLetters.delete(nextKey);
+
+      console.log(
+        `${indent}📝 After backtrack: "${pieceLetters.join('')}" (${pieceLetters.length} letters)`
+      );
+    }
+
+    // Check if we have a valid piece size
+    const isValidSize = pieceLetters.length >= 2 && pieceLetters.length <= 5;
+    console.log(
+      `${indent}🏁 Direction exploration complete. Valid size: ${isValidSize} (${pieceLetters.length} letters)`
+    );
+    return isValidSize;
+  };
+
+  const success = buildPiece(startingLetter.position);
+
+  console.log(
+    `🏁 Piece generation result: success=${success}, letters=${pieceLetters.length}, piece="${pieceLetters.join('')}"`
+  );
+
+  if (!success || pieceLetters.length < 2 || pieceLetters.length > 5) {
+    console.log(
+      `❌ Invalid piece: success=${success}, size=${pieceLetters.length}. Undoing changes.`
+    );
+    // Undo the changes if piece is invalid
+    for (const pos of piecePositions) {
+      const key = `${pos.row},${pos.col}`;
+      usedLetters.delete(key);
+    }
+    return null;
+  }
+
+  // Additional validation: ensure the piece is connected via sides (not corners)
+  if (!isPieceConnected(piecePositions)) {
+    console.log(`❌ Piece not properly connected: "${pieceLetters.join('')}". Undoing changes.`);
+    // Undo the changes if piece is invalid
+    for (const pos of piecePositions) {
+      const key = `${pos.row},${pos.col}`;
+      usedLetters.delete(key);
+    }
+    return null;
+  }
+
+  // Create normalized shape
+  const minRow = Math.min(...piecePositions.map((p) => p.row));
+  const minCol = Math.min(...piecePositions.map((p) => p.col));
+  const shape = piecePositions.map((pos) => ({
+    row: pos.row - minRow,
+    col: pos.col - minCol,
+  }));
+
+  const finalPiece = {
+    id: `piece-${Date.now()}`, // Temporary ID
+    letters: pieceLetters,
+    shape,
+    color: PIECE_COLORS[Math.floor(Math.random() * PIECE_COLORS.length)] || '#EF4444',
+  };
+
+  console.log(
+    `✅ Piece completed: "${pieceLetters.join('')}" with shape ${shape.map((s) => `(${s.row},${s.col})`).join(' ')}`
+  );
+
+  return finalPiece;
+};
+
+// Check if any piece contains a complete word from the phrase
+const containsCompleteWords = (pieces: LetterPiece[], phrase: string): boolean => {
+  const words = phrase
+    .toUpperCase()
+    .split(' ')
+    .filter((word) => word.length > 1); // Only check words longer than 1 letter
+
+  for (const piece of pieces) {
+    const pieceText = piece.letters.join('');
+
+    // Check if this piece is exactly a complete word
+    for (const word of words) {
+      if (pieceText === word) {
+        return true;
+      }
+
+      // Also check reverse (in case letters are in reverse order)
+      const reverseWord = word.split('').reverse().join('');
+      if (pieceText === reverseWord) {
+        return true;
+      }
+    }
+  }
+
+  return false;
+};
+
+// Create fallback pieces when backtracking fails
+const createFallbackPieces = (
+  availableLetters: Array<{ letter: string; position: GridPosition }>
+): LetterPiece[] => {
+  console.log(`🔄 Fallback Debug: Creating fallback pieces for ${availableLetters.length} letters`);
+
+  const pieces: LetterPiece[] = [];
+  const used = new Set<string>();
+
+  console.log(
+    `📋 Starting fallback piece creation with ${availableLetters.length} available letters`
+  );
+
+  // Group letters into simple linear pieces
+  for (let i = 0; i < availableLetters.length; i++) {
+    const letter = availableLetters[i];
+    if (!letter) continue;
+
+    const posKey = `${letter.position.row},${letter.position.col}`;
+
+    if (used.has(posKey)) {
+      console.log(
+        `⏭️ Skipping already used letter: ${letter.letter} at (${letter.position.row},${letter.position.col})`
+      );
+      continue;
+    }
+
+    const pieceLetters = [letter.letter];
+    const piecePositions = [letter.position];
+    used.add(posKey);
+
+    console.log(
+      `🔨 Starting new fallback piece with: ${letter.letter} at (${letter.position.row},${letter.position.col})`
+    );
+
+    // Try to add one more adjacent letter
+    for (const otherLetter of availableLetters) {
+      if (!otherLetter) continue;
+
+      const otherPosKey = `${otherLetter.position.row},${otherLetter.position.col}`;
+      if (used.has(otherPosKey)) continue;
+
+      const rowDiff = Math.abs(letter.position.row - otherLetter.position.row);
+      const colDiff = Math.abs(letter.position.col - otherLetter.position.col);
+
+      if ((rowDiff === 1 && colDiff === 0) || (rowDiff === 0 && colDiff === 1)) {
+        console.log(
+          `➕ Adding adjacent letter: ${otherLetter.letter} at (${otherLetter.position.row},${otherLetter.position.col})`
+        );
+        pieceLetters.push(otherLetter.letter);
+        piecePositions.push(otherLetter.position);
+        used.add(otherPosKey);
+        break;
+      }
+    }
+
+    // Ensure minimum 2 letters per piece
+    if (pieceLetters.length < 2) {
+      console.log(
+        `❌ Piece too small (${pieceLetters.length} letters), skipping: "${pieceLetters.join('')}"`
+      );
+      continue; // Skip single letter pieces
+    }
+
+    console.log(
+      `✅ Created fallback piece: "${pieceLetters.join('')}" (${pieceLetters.length} letters)`
+    );
+
+    // Create simple shape
+    const shape = [
+      { row: 0, col: 0 },
+      { row: 0, col: 1 },
+    ];
+
+    const newPiece = {
+      id: `piece-${pieces.length + 1}`,
+      letters: pieceLetters,
+      shape,
+      color: PIECE_COLORS[pieces.length % PIECE_COLORS.length] || '#EF4444',
+    };
+
+    pieces.push(newPiece);
+    console.log(
+      `📦 Added piece ${pieces.length}: "${newPiece.letters.join('')}" with color ${newPiece.color}`
+    );
+  }
+
+  console.log(`🔄 Handling remaining single letters...`);
+
+  // Handle any remaining single letters by adding them to existing pieces
+  const remainingLetters = availableLetters.filter((letter) => {
+    if (!letter) return false;
+    const posKey = `${letter.position.row},${letter.position.col}`;
+    return !used.has(posKey);
+  });
+
+  console.log(`📊 Found ${remainingLetters.length} remaining letters to distribute`);
+
+  for (const remainingLetter of remainingLetters) {
+    if (!remainingLetter) continue;
+
+    console.log(
+      `🔄 Distributing remaining letter: ${remainingLetter.letter} at (${remainingLetter.position.row},${remainingLetter.position.col})`
+    );
+
+    // Find the smallest piece to add this letter to
+    if (pieces.length === 0) {
+      console.log(`❌ No pieces available to add remaining letter to`);
+      continue;
+    }
+
+    let smallestPiece = pieces[0];
+    if (!smallestPiece) continue;
+
+    for (const piece of pieces) {
+      if (piece.letters.length < smallestPiece.letters.length) {
+        smallestPiece = piece;
+      }
+    }
+
+    if (smallestPiece && smallestPiece.letters.length < 5) {
+      console.log(
+        `➕ Adding ${remainingLetter.letter} to smallest piece "${smallestPiece.letters.join('')}"`
+      );
+      smallestPiece.letters.push(remainingLetter.letter);
+      // Extend the shape horizontally
+      const maxCol = Math.max(...smallestPiece.shape.map((pos) => pos.col));
+      smallestPiece.shape.push({ row: 0, col: maxCol + 1 });
+      console.log(
+        `📝 Updated piece: "${smallestPiece.letters.join('')}" (${smallestPiece.letters.length} letters)`
+      );
+    } else {
+      console.log(
+        `❌ Could not add remaining letter - no suitable piece found or piece already at max size`
+      );
+    }
+  }
+
+  console.log(`✅ Fallback piece creation complete: ${pieces.length} pieces created`);
+  pieces.forEach((piece, i) => {
+    console.log(
+      `  Fallback Piece ${i + 1}: "${piece.letters.join('')}" (${piece.shape.length} letters)`
+    );
+  });
+
+  return pieces;
+};
+
+// Select anchor letters using the algorithm specified in lettered.md
+export const addPreFilledLetters = (grid: GridCell[][], phrase: string): GridCell[][] => {
+  const newGrid = grid.map((row) => row.map((cell) => ({ ...cell })));
+
+  // Use the anchor selection algorithm from lettered.md
+  const gridWithAnchors = selectAnchorLettersAlgorithm(newGrid, phrase);
+
+  // Validate connectivity after anchors are selected
+  if (!validateConnectivity(gridWithAnchors)) {
+    // If connectivity fails, try with fewer anchors
+    return selectOptimalAnchorsWithConnectivityCheck(newGrid, phrase);
+  }
+
+  return gridWithAnchors;
+};
+
+// Select anchor letters using the algorithm from lettered.md exactly
+const selectAnchorLettersAlgorithm = (grid: GridCell[][], phrase: string): GridCell[][] => {
+  const newGrid = grid.map((row) => row.map((cell) => ({ ...cell })));
+
+  // Algorithm from lettered.md:
+  // 1. Get the length of the phrase including spaces. For phrases less than 28 letters, use 2 anchor letters. For phrases longer than 28 letters, use 3 anchor letters.
+  const phraseLength = phrase.length; // Including spaces
+  const anchorCount = phraseLength < 28 ? 2 : 3;
+
+  // Find all letter positions
+  const letterPositions: GridPosition[] = [];
+  for (let row = 0; row < grid.length; row++) {
+    for (let col = 0; col < grid[row]!.length; col++) {
+      const cell = newGrid[row]?.[col];
+      if (cell?.letter && !cell.isUnused && !cell.isSpace) {
+        letterPositions.push({ row, col });
+      }
+    }
+  }
+
+  if (letterPositions.length < anchorCount) {
+    // If less than required anchors, make all letters pre-filled
+    for (const pos of letterPositions) {
+      const cell = newGrid[pos.row]?.[pos.col];
+      if (cell) {
+        cell.isPreFilled = true;
+      }
+    }
+    return newGrid;
+  }
+
+  // 2. Choose the first random anchor letter.
+  // 3. Mark the letter as pre-filled.
+  // 4. Check the validity of the board.
+  // 5. If the board is invalid, remove the letter from the grid and choose a new random anchor letter.
+  // 6. If the board is valid, continue to the next anchor letter.
+  // 7. If there are no more anchor letters to choose, return the board layout.
+
+  const maxAttemptsPerAnchor = 20;
+  const selectedAnchors: GridPosition[] = [];
+
+  for (let anchorIndex = 0; anchorIndex < anchorCount; anchorIndex++) {
+    let foundValidAnchor = false;
+
+    for (let attempt = 0; attempt < maxAttemptsPerAnchor; attempt++) {
+      // Choose random anchor letter from remaining available letters
+      const availablePositions = letterPositions.filter(
+        (pos) =>
+          !selectedAnchors.some((selected) => selected.row === pos.row && selected.col === pos.col)
+      );
+
+      if (availablePositions.length === 0) {
+        break;
+      }
+
+      const randomIndex = Math.floor(Math.random() * availablePositions.length);
+      const candidateAnchor = availablePositions[randomIndex];
+
+      if (!candidateAnchor) continue;
+
+      // Create test grid with current anchors plus candidate
+      const testGrid = grid.map((row) => row.map((cell) => ({ ...cell })));
+
+      // Mark all selected anchors as pre-filled
+      for (const pos of selectedAnchors) {
+        const cell = testGrid[pos.row]?.[pos.col];
+        if (cell) {
+          cell.isPreFilled = true;
+        }
+      }
+
+      // Mark candidate as pre-filled
+      const candidateCell = testGrid[candidateAnchor.row]?.[candidateAnchor.col];
+      if (candidateCell) {
+        candidateCell.isPreFilled = true;
+      }
+
+      // Check validity of the board
+      if (validateBoardState(testGrid)) {
+        selectedAnchors.push(candidateAnchor);
+        foundValidAnchor = true;
+        break;
+      }
+    }
+
+    if (!foundValidAnchor) {
+      // Could not find a valid anchor, use fallback
+      break;
+    }
+  }
+
+  // Mark selected anchors as pre-filled in the final grid
+  for (const pos of selectedAnchors) {
+    const cell = newGrid[pos.row]?.[pos.col];
+    if (cell) {
+      cell.isPreFilled = true;
+    }
+  }
+
+  return newGrid;
+};
+
+// Validate board state according to lettered.md requirements exactly
+const validateBoardState = (grid: GridCell[][]): boolean => {
+  // The valid board state from lettered.md:
+  // - No single letter is stranded. This means that every letter is reachable from at least one other letter and only on the sides of the letter. No corners.
+  // - No letter overflows the bounds of the grid.
+  // - There is at least 2 anchor pieces.
+
+  let anchorCount = 0;
+  const letterPositions: GridPosition[] = [];
+
+  // Count anchors and collect all letter positions
+  for (let row = 0; row < grid.length; row++) {
+    for (let col = 0; col < grid[row]!.length; col++) {
+      const cell = grid[row]?.[col];
+      if (cell?.letter && !cell.isUnused && !cell.isSpace) {
+        letterPositions.push({ row, col });
+        if (cell.isPreFilled) {
+          anchorCount++;
+        }
+      }
+    }
+  }
+
+  // Check minimum anchor requirement
+  if (anchorCount < 2) {
+    return false;
+  }
+
+  // Check bounds (no letter overflows the bounds of the grid)
+  for (const pos of letterPositions) {
+    if (pos.row < 0 || pos.row >= grid.length || pos.col < 0 || pos.col >= (grid[0]?.length || 0)) {
+      return false;
+    }
+  }
+
+  // Check connectivity: No single letter is stranded
+  // Every letter must be reachable from at least one other letter via sides (not corners)
+  return validateConnectivity(grid);
+};
+
+// Select optimal anchors with connectivity validation
+const selectOptimalAnchorsWithConnectivityCheck = (
+  grid: GridCell[][],
+  phrase: string
+): GridCell[][] => {
+  const newGrid = grid.map((row) => row.map((cell) => ({ ...cell })));
+  const letterPositions: GridPosition[] = [];
+
+  // Find all letter positions
+  for (let row = 0; row < grid.length; row++) {
+    for (let col = 0; col < grid[row]!.length; col++) {
+      const cell = newGrid[row]?.[col];
+      if (cell?.letter && !cell.isUnused && !cell.isSpace) {
+        letterPositions.push({ row, col });
+      }
+    }
+  }
+
+  if (letterPositions.length < 2) {
+    // If less than 2 letters, make all pre-filled
+    for (const pos of letterPositions) {
+      const cell = newGrid[pos.row]?.[pos.col];
+      if (cell) {
+        cell.isPreFilled = true;
+      }
+    }
+    return newGrid;
+  }
+
+  // Try different anchor counts starting from minimum and increasing until connectivity works
+  for (
+    let anchorCount = 2;
+    anchorCount <= Math.min(letterPositions.length - 1, Math.floor(letterPositions.length / 2));
+    anchorCount++
+  ) {
+    // Try multiple anchor combinations for this count
+    for (let attempt = 0; attempt < 5; attempt++) {
+      // Reset grid
+      const testGrid = grid.map((row) => row.map((cell) => ({ ...cell })));
+
+      // Select anchors for this attempt
+      const seed = phrase.split('').reduce((acc, char) => acc + char.charCodeAt(0), 0) + attempt;
+      const selectedAnchors = selectWellDistributedAnchors(letterPositions, anchorCount, seed);
+
+      // Mark selected positions as pre-filled
+      for (const pos of selectedAnchors) {
+        const cell = testGrid[pos.row]?.[pos.col];
+        if (cell) {
+          cell.isPreFilled = true;
+        }
+      }
+
+      // Test connectivity
+      if (validateConnectivity(testGrid)) {
+        return testGrid;
+      }
+    }
+  }
+
+  // Fallback: use minimum anchors (just 2)
+  const fallbackAnchors = letterPositions.slice(0, 2);
+  for (const pos of fallbackAnchors) {
+    const cell = newGrid[pos.row]?.[pos.col];
+    if (cell) {
+      cell.isPreFilled = true;
+    }
+  }
+
+  return newGrid;
+};
+
+// Select well-distributed anchor letters across the grid
+const selectWellDistributedAnchors = (
+  positions: GridPosition[],
+  count: number,
+  seed: number
+): GridPosition[] => {
+  if (positions.length <= count) {
+    return [...positions];
+  }
+
+  const selected: GridPosition[] = [];
+  const minDistance = 2; // Minimum Manhattan distance between anchors
+
+  // Sort positions for deterministic selection
+  const sortedPositions = [...positions].sort((a, b) => {
+    if (a.row !== b.row) return a.row - b.row;
+    return a.col - b.col;
+  });
+
+  // Select first anchor (deterministic based on seed)
+  const firstIndex = seed % sortedPositions.length;
+  const firstAnchor = sortedPositions[firstIndex];
+  if (firstAnchor) {
+    selected.push(firstAnchor);
+  }
+
+  // Select remaining anchors ensuring good distribution
+  let attempts = 0;
+  const maxAttempts = positions.length * 3;
+
+  while (selected.length < count && attempts < maxAttempts) {
+    // Find candidate positions that are far enough from existing anchors
+    const candidates = sortedPositions.filter((pos) => {
+      // Skip if already selected
+      if (selected.some((sel) => sel.row === pos.row && sel.col === pos.col)) {
+        return false;
+      }
+
+      // Check minimum distance from all selected anchors
+      return selected.every((anchor) => {
+        const distance = Math.abs(anchor.row - pos.row) + Math.abs(anchor.col - pos.col);
+        return distance >= minDistance;
+      });
+    });
+
+    if (candidates.length === 0) {
+      // Reduce minimum distance requirement if no candidates found
+      const relaxedCandidates = sortedPositions.filter((pos) => {
+        return !selected.some((sel) => sel.row === pos.row && sel.col === pos.col);
+      });
+
+      if (relaxedCandidates.length > 0) {
+        // Select the one with maximum minimum distance to existing anchors
+        let bestCandidate = relaxedCandidates[0];
+        let bestMinDistance = 0;
+
+        for (const candidate of relaxedCandidates) {
+          const minDistToAnchors = Math.min(
+            ...selected.map(
+              (anchor) =>
+                Math.abs(anchor.row - candidate.row) + Math.abs(anchor.col - candidate.col)
+            )
+          );
+
+          if (
+            minDistToAnchors > bestMinDistance ||
+            (minDistToAnchors === bestMinDistance && (seed + attempts) % 2 === 0)
+          ) {
+            bestMinDistance = minDistToAnchors;
+            bestCandidate = candidate;
+          }
+        }
+
+        if (bestCandidate) {
+          selected.push(bestCandidate);
+        }
+      }
+    } else {
+      // Select from valid candidates
+      const candidateIndex = (seed + attempts + selected.length) % candidates.length;
+      const selectedCandidate = candidates[candidateIndex];
+      if (selectedCandidate) {
+        selected.push(selectedCandidate);
+      }
+    }
+
+    attempts++;
+  }
+
+  return selected;
+};
+
+// Validate that all letters are connected (no stranded single letters)
+const validateConnectivity = (grid: GridCell[][]): boolean => {
+  // Create a copy of the grid for validation
+  const validationGrid: (string | null)[][] = Array(grid.length)
+    .fill(null)
+    .map(() => Array(grid[0]?.length || 0).fill(null));
+
+  // Populate validation grid with letters, excluding anchor/pre-filled letters
+  for (let row = 0; row < grid.length; row++) {
+    for (let col = 0; col < grid[row]!.length; col++) {
+      const cell = grid[row]?.[col];
+      if (cell?.letter && !cell.isUnused && !cell.isSpace && !cell.isPreFilled) {
+        validationGrid[row]![col] = cell.letter;
+      }
+    }
+  }
+
+  // Find all non-anchor letter positions
+  const letterPositions: GridPosition[] = [];
+  for (let row = 0; row < validationGrid.length; row++) {
+    for (let col = 0; col < validationGrid[row]!.length; col++) {
+      if (validationGrid[row]![col] !== null) {
+        letterPositions.push({ row, col });
+      }
+    }
+  }
+
+  // If there are fewer than 2 non-anchor letters, they are automatically connected
+  if (letterPositions.length < 2) {
+    return true;
+  }
+
+  // Check that each letter has at least one adjacent letter (side connection)
+  for (const pos of letterPositions) {
+    const hasAdjacentLetter = letterPositions.some((otherPos) => {
+      if (otherPos.row === pos.row && otherPos.col === pos.col) return false;
+
+      // Check 4-directional adjacency (sides only, not corners)
+      const rowDiff = Math.abs(otherPos.row - pos.row);
+      const colDiff = Math.abs(otherPos.col - pos.col);
+
+      return (rowDiff === 1 && colDiff === 0) || (rowDiff === 0 && colDiff === 1);
+    });
+
+    if (!hasAdjacentLetter) {
+      return false; // Found a stranded letter
+    }
+  }
+
+  return true;
+};
+
+// Generate solution positions for each piece
+export const generateSolutionPositions = (
+  pieces: LetterPiece[],
+  grid: GridCell[][]
+): GridPosition[][] => {
+  const solutions: GridPosition[][] = [];
+
+  for (const piece of pieces) {
+    const pieceSolutions: GridPosition[] = [];
+
+    // Try every possible position on the grid
+    for (let row = 0; row < grid.length; row++) {
+      for (let col = 0; col < grid[row]!.length; col++) {
+        if (isValidPiecePlacement(piece, { row, col }, grid)) {
+          pieceSolutions.push({ row, col });
+        }
+      }
+    }
+
+    solutions.push(pieceSolutions);
+  }
+
+  return solutions;
+};
+
+// Check if a piece can be placed at a specific position and matches the grid letters
+const isValidPiecePlacement = (
+  piece: LetterPiece,
+  position: GridPosition,
+  grid: GridCell[][]
+): boolean => {
+  // Check bounds
+  for (const shapePos of piece.shape) {
+    const gridRow = position.row + shapePos.row;
+    const gridCol = position.col + shapePos.col;
+
+    if (gridRow < 0 || gridRow >= grid.length || gridCol < 0 || gridCol >= grid[0]!.length) {
+      return false;
+    }
+
+    const cell = grid[gridRow]?.[gridCol];
+    if (!cell || cell.isUnused || cell.isSpace) {
+      return false;
+    }
+  }
+
+  // Check if all piece letters match the grid letters
+  for (let i = 0; i < piece.shape.length; i++) {
+    const shapePos = piece.shape[i];
+    if (!shapePos) continue;
+
+    const gridRow = position.row + shapePos.row;
+    const gridCol = position.col + shapePos.col;
+    const cell = grid[gridRow]?.[gridCol];
+
+    // The piece letter should match the grid letter
+    const pieceLetter = piece.letters[i];
+    if (pieceLetter && cell?.letter && pieceLetter !== cell.letter) {
+      return false;
+    }
+  }
+
+  return true;
+};
+
+// Export helper functions for testing
+export {
+  generatePhraseLayoutOn9x9Grid,
+  selectAnchorLettersAlgorithm,
+  generatePiecesWithBacktracking,
+  validateBoardState,
+  validateConnectivity,
+};
+
+// Generate a complete mock game following the new process
+export const generateMockGame = (
+  category: string,
+  phrase: string,
+  seed?: number
+): LetteredGameData => {
+  try {
+    console.log(`\n🎮 Generating game for phrase: "${phrase}"\n`);
+
+    // Step 1: Generate proper square phrase using a standard 9x9 grid
+    console.log('Step 1: Creating initial 9x9 grid...');
+    const initialGrid = create9x9Grid();
+    printBoard(initialGrid, 'Step 1: Initial 9x9 Grid');
+
+    console.log('Step 2: Placing phrase on grid...');
+    const placedGrid = placePhraseOn9x9Grid(initialGrid, phrase);
+    printBoard(placedGrid, 'Step 2: After Placing Phrase');
+
+    // Step 3: Add pre-filled letters (anchor letters) to create the square puzzle
+    console.log('Step 3: Adding anchor letters...');
+    const boardWithAnchors = addPreFilledLetters(placedGrid, phrase);
+    printBoard(boardWithAnchors, 'Step 3: After Adding Anchor Letters');
+
+    // Step 4: Trim the board after the square puzzle is created
+    console.log('Step 4: Trimming and centering board...');
+    const trimmedGrid = trimBoard(boardWithAnchors);
+    printBoard(trimmedGrid, 'Step 4: After Trimming & Centering');
+
+    // Step 5: Generate pieces
+    console.log('Step 5: Generating letter pieces...');
+    const pieces = generateLetterPieces(trimmedGrid, seed);
+    console.log(`Generated ${pieces.length} pieces:`);
+    pieces.forEach((piece, i) => {
+      console.log(
+        `  Piece ${i + 1}: "${piece.letters.join('')}" (${piece.shape.length} letters, color: ${piece.color})`
+      );
+    });
+
+    // Step 6: Generate solution
+    console.log('Step 6: Generating solution positions...');
+    const solution = generateSolutionPositions(pieces, trimmedGrid);
+    console.log(`Generated solutions for ${solution.length} pieces`);
+
+    console.log('\n✅ Game generation complete!\n');
+
+    return {
+      id: 'mock-game-1',
+      category,
+      phrase,
+      grid: trimmedGrid,
+      rows: trimmedGrid.length,
+      cols: trimmedGrid[0]?.length || 0,
+      pieces,
+      solution,
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    };
+  } catch (error) {
+    console.error('❌ Error generating mock game:', error);
+    // Return a simpler fallback game
+    console.log('Falling back to simple game generation...');
+    return generateFallbackGame(category, phrase);
+  }
+};
+
+// Fallback game with a simpler layout
+const generateFallbackGame = (category: string, phrase: string): LetteredGameData => {
+  const grid = createEmptyGrid();
+  const words = phrase.toUpperCase().split(' ');
+
+  // Simple horizontal layout
+  const currentRow = 2;
+  let currentCol = 1;
+
+  for (const word of words) {
+    for (let i = 0; i < word.length; i++) {
+      if (currentCol < 8 && grid[currentRow]?.[currentCol]) {
+        grid[currentRow][currentCol] = {
+          letter: word[i] || null,
+          isPreFilled: i % 3 === 0, // Every 3rd letter is pre-filled
+          isSpace: false,
+          isUnused: false,
+        };
+        currentCol++;
+      }
+    }
+    // Add space between words
+    if (currentCol < 8 && grid[currentRow]?.[currentCol]) {
+      grid[currentRow][currentCol] = {
+        letter: null,
+        isPreFilled: false,
+        isSpace: true,
+        isUnused: false,
+      };
+      currentCol++;
+    }
+  }
+
+  const pieces = generateLetterPieces(grid);
+  const solution = generateSolutionPositions(pieces, grid);
+
+  return {
+    id: 'fallback-game-1',
+    category,
+    phrase,
+    grid,
+    rows: 8,
+    cols: 8,
+    pieces,
+    solution,
+    created_at: new Date().toISOString(),
+    updated_at: new Date().toISOString(),
+  };
+};

@@ -4,6 +4,8 @@ CREATE TABLE IF NOT EXISTS public.lettered_games (
     category TEXT NOT NULL,
     phrase TEXT NOT NULL,
     grid JSONB NOT NULL, -- NxM grid as JSON
+    rows INTEGER NOT NULL, -- Number of rows in the grid
+    cols INTEGER NOT NULL, -- Number of columns in the grid
     pieces JSONB NOT NULL, -- Array of letter pieces as JSON
     solution JSONB NOT NULL, -- Solution positions for each piece as JSON
     created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL,
@@ -12,6 +14,7 @@ CREATE TABLE IF NOT EXISTS public.lettered_games (
 
 -- Create indexes for efficient queries
 CREATE INDEX IF NOT EXISTS idx_lettered_games_category ON public.lettered_games(category);
+CREATE INDEX IF NOT EXISTS idx_lettered_games_board_size ON public.lettered_games(rows, cols);
 
 -- Create trigger to automatically update updated_at
 CREATE TRIGGER handle_lettered_games_updated_at

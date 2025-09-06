@@ -23,7 +23,7 @@ We are going to be creating a new game
 - Use proper libraries for the drag and drop mechanics so that it is responsive and works on mobile.
 - Start with a mobile first design and we can iterate later
 
-## Clarity on the following points:
+## Clarity on the following points
 
 Tetris Pieces: What specific tetris piece shapes should I include? The classic 7 pieces (I, O, T, S, Z, J, L) or a custom set? Should they be different colors like the image shows?
 
@@ -93,6 +93,8 @@ Piece Snapping: When pieces snap to invalid positions, should they return to:
 
 Algorithm for generating a valid board layout:
 
+We start with a 9x9 grid that is represented as a 2d array of GridCell objects.
+
 - Start with the phrase. Layout the phrase on the grid so that it forms a square as close as possible
   - For example,
     - P E A N U T
@@ -120,6 +122,15 @@ There should be no specific shape for any phrase. Any phrase can be inputted and
 5. If the next word does not fit, place it in a new row.
 6. Repeat until all words are placed.
 7. If there are no more words to place, return the board layout.
+
+#### Trimming the board layout
+
+We want to trim the board layout to remove excess empty space.
+
+- Apply trimming constraints:
+- At most 1 padding of empty space between unsolved letters and top/bottom.
+- If there is more than 1 padding of empty space, remove the padding from the top and bottom.
+- On the sides, if there is more than 1 padding of empty space, remove the padding from the left and right. But ONLY if the size is greater than 8 square total. If the size is 8 squares or less, do not remove any padding.
 
 ### Algorithm for choosing anchor letters
 
@@ -190,3 +201,54 @@ Example of the algorithm in action:
       - At each step we check if the board is in a valid state.
     - We remove the letters "P", "E", "B", and "I" from the grid.
   - We generated the following piece sizes: 4 pieces = 4 letters, 4 letters, 4 letters, and 3 letters.
+
+### Final Board Layout
+
+We want to generate a final board layout that will be passed to the client.
+
+Extend the board grid created by the generation algorithm.
+
+It should be extended by 20 rows to place the pieces.
+
+Each letter pieces should be placed starting from top of the extended grid and moving right and then down.
+
+- A piece should be placed in the first available space starting from top of the extended grid and moving right and then down. There should be 1 cell gap between each piece.
+- There should be no overlapping pieces.
+- There should be no pieces that are outside the grid. This includes any parts of the piece that are outside the grid.
+
+Once all pieces are placed, trim the extended grid to remove any excess empty space. There should be 1 row of padding between the last piece and the bottom of the grid.
+
+### Test Suite
+
+Write a test suite that does the following:
+
+- Runs the generation algorithm. For example:
+  - "PEANUT BUTTER IS GOOD"
+    - The algorithm should generate a valid board layout.
+    - The algorithm should generate 4 pieces that are 2-5 letters long each.
+    - The algorithm should generate a solution that is valid.
+    - The algorithm should generate a board layout that is valid.
+    - The algorithm should generate a board layout that is valid.
+
+Then the test should place all the pieces that are generated from the solution to see if the solution is valid.
+It should check that the letter at each position in the grid is a valid letter. And that the final board layout matches the original phrase.
+
+### Letter Piece Generation Algorithm
+
+Keep an array of used letters by their position in the grid.
+
+2. Start looking for the next letter in a scanner starting from the top left and moving right and then down once the end of the row is reached.
+3. The first valid letter is the starting letter.
+4. Mark the letter as used by adding it to the array of used letters.
+5. Find another letter by picking a random direction from up, down, left, right. This should only be in the bounds of the grid. This should be a loop that tries all 4 directions in a clockwise manner starting with a random direction.
+6. If the letter is valid (unused in itself or any other piece), add it to the piece and mark it as used.
+7. Repeat until the piece is complete by reaching the random number of letters OR if the letter is 2 or more letters long and there are no more valid moves, in which case the piece is complete.
+8. Start over with step 1.
+9. Each letter must be at least 2 pieces long, if that's not possible, pop the stack and start over with step 1.
+10. The piece must be connected via sides and not just corners.
+11. Once the generation is finished, go over any stranded pieces and then connect them to the nearest piece.
+12. This is done by looping over the grid and checking if any letter is not in the array of used letters. If it is not, then it is stranded.
+13. If the piece is stranded, look at it's neighbors up, down, left, right. The first valid neighbor is the nearest piece and the one to connect it to.
+14. Once the piece is connected to the nearest piece, mark the letter as used by adding it to the array of used letters.
+15. If there are no valid neighbors, then create a new piece with just the single letter and mark it as used.
+16. repeat until all pieces are connected.

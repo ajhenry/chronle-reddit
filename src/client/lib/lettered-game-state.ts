@@ -43,7 +43,7 @@ export class LetteredGameStateManager {
       lastScoreUpdate: Date.now(),
       gameStartTime: Date.now(),
       gameData,
-      timerDisabled: false,
+      timerDisabled: true,
     };
   }
 

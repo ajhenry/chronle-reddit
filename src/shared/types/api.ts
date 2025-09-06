@@ -183,6 +183,8 @@ export type LetteredGameData = {
   category: string;
   phrase: string;
   grid: GridCell[][]; // 8x8 grid
+  rows: number;
+  cols: number;
   pieces: LetterPiece[];
   solution: GridPosition[][]; // where each piece should be placed
   created_at: string;
