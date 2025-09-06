@@ -633,6 +633,7 @@ export const LetteredPage = ({ onBack }: { onBack?: () => void }) => {
           defaultItemClassName="bg-primary text-primary-foreground"
           getBoardTileClassName={boardTileClass}
           getTileDraggingClassName={pieceTileDraggingClass}
+          disabled={gameComplete}
         />
       </div>
       {/* Confetti Animation */}

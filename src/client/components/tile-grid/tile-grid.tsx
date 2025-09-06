@@ -123,6 +123,7 @@ type GridContextType = {
   gridSize: GridSize;
   cellSize: GridSize;
   spacing: number;
+  disabled: boolean;
   dragPreview: { item: DraggableItem; position: GridPosition; isValid: boolean } | null;
   draggedItemId: string | null;
   grabOffset: GridPosition | null;
@@ -162,6 +163,7 @@ type GridProviderProps = {
   cellSize: GridSize;
   initialItems?: Omit<DraggableItem, 'id'>[];
   onLayoutChange?: (layout: (string | null)[][]) => void;
+  disabled?: boolean;
 };
 
 function GridProvider({
@@ -170,6 +172,7 @@ function GridProvider({
   cellSize,
   initialItems = [],
   onLayoutChange,
+  disabled = false,
 }: GridProviderProps) {
   const spacing = gridSize.spacing ?? 0;
   const gridId = useMemo(() => generateGridId(), []);
@@ -445,6 +448,7 @@ function GridProvider({
       gridSize,
       cellSize,
       spacing,
+      disabled,
       dragPreview,
       draggedItemId,
       grabOffset,
@@ -467,6 +471,7 @@ function GridProvider({
       gridSize,
       cellSize,
       spacing,
+      disabled,
       dragPreview,
       draggedItemId,
       grabOffset,
@@ -557,7 +562,7 @@ const GridCell = React.memo(({ x, y, className = '', style }: GridCellProps) => 
   return (
     <div
       id={cellId}
-      className={cn('border-border border transition-colors', combinedClassName)}
+      className={cn('border transition-colors border-border', combinedClassName)}
       style={cellStyle}
       data-testid={`grid-cell-${x}-${y}`}
       data-occupied={isOccupied}
@@ -579,8 +584,8 @@ type DraggableItemProps = {
 
 const DraggableItemComponent = React.memo(
   ({ item, onDragStart, onDragEnd, className = '', defaultClassName }: DraggableItemProps) => {
-    const { cellSize, spacing } = useGrid();
-    const isDisabled = item.disabled ?? false;
+    const { cellSize, spacing, disabled: gridDisabled } = useGrid();
+    const isDisabled = (item.disabled ?? false) || gridDisabled;
     const [isDragging, setIsDragging] = useState(false);
     const [cursorType, setCursorType] = useState<'default' | 'move' | 'not-allowed'>('default');
     const itemRef = React.useRef<HTMLDivElement>(null);
@@ -1007,6 +1012,7 @@ type GridProps = {
   onLayoutChange?: (layout: (string | null)[][]) => void;
   className?: string;
   children?: ReactNode;
+  disabled?: boolean; // Whether all pieces are disabled and cannot be moved
   getBoardTileStyle?: (x: number, y: number) => React.CSSProperties | undefined;
   getBoardTileClassName?: (x: number, y: number) => string | undefined;
   getTileDraggingClassName?: (piece: DraggableItem, valid: boolean) => string | undefined;
@@ -1025,6 +1031,7 @@ function Grid({
   onLayoutChange,
   className = '',
   children,
+  disabled = false,
   getBoardTileStyle,
   getBoardTileClassName,
   getTileDraggingClassName,
@@ -1037,6 +1044,7 @@ function Grid({
       cellSize={cellSize}
       initialItems={initialItems}
       onLayoutChange={onLayoutChange}
+      disabled={disabled}
     >
       <GridContent
         className={className}

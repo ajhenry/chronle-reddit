@@ -138,6 +138,12 @@ export class LetteredGameStateManager {
   placePiece(pieceId: string, position: GridPosition): boolean {
     console.log(`🎯 Placing piece ${pieceId} at (${position.row}, ${position.col})`);
 
+    // Prevent piece movement when game is complete
+    if (this.state.gameComplete) {
+      console.log('🚫 Cannot move pieces - game is complete');
+      return false;
+    }
+
     if (!this.state.gameData) {
       console.log('❌ No game data');
       return false;
@@ -186,6 +192,12 @@ export class LetteredGameStateManager {
 
   // Remove a piece from the board
   removePiece(pieceId: string): boolean {
+    // Prevent piece movement when game is complete
+    if (this.state.gameComplete) {
+      console.log('🚫 Cannot remove pieces - game is complete');
+      return false;
+    }
+
     if (!this.state.placedPieces.has(pieceId)) {
       return false;
     }
