@@ -18,5 +18,8 @@
   "typescript.tsdk": "node_modules/typescript/lib",
   "files.exclude": {
     "**/.git": false
-  }
+  },
+  "debug.node.autoAttach": "on",
+  "debug.javascript.usePreview": true,
+  "debug.openDebug": "openOnDebugBreak"
 }

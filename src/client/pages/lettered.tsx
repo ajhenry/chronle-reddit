@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import Confetti from 'react-confetti';
 import { GameLayout } from '../components/GameLayout';
 import { toast } from 'sonner';
@@ -24,6 +24,7 @@ import {
 } from '../components/ui/select';
 import { Grid, DraggableItem } from '../components/tile-grid/tile-grid';
 import { cn } from '@sglara/cn';
+import { LetteredGameStateManager } from '../lib/lettered-game-state';
 
 // Conversion functions for Grid component
 const convertGridDataToItems = ({
@@ -223,19 +224,10 @@ const convertGridDataToItems = ({
   return items;
 };
 
-const handleLayoutChange = (_layout: (string | null)[][]) => {
-  // You can add additional logic here if needed
-};
-
-interface GameState {
-  score: number;
-  initialScore: number;
-  gameComplete: boolean;
-  gameWon: boolean;
+// UI-specific state (separate from core game state)
+interface UIState {
   showConfetti: boolean;
-  gameStartTime: number | null;
-  placedPieces: Map<string, GridPosition>; // piece ID -> grid position
-  lastValidPositions: Map<string, GridPosition>; // piece ID -> last valid position
+  showGameOverModal: boolean;
   previewPiece: LetterPiece | null; // Currently dragged piece for preview
   previewPosition: GridPosition | null; // Position where preview should be shown
   lastValidPreviewPosition: GridPosition | null; // Last valid preview position
@@ -248,11 +240,26 @@ export const LetteredPage = ({ onBack }: { onBack?: () => void }) => {
   const [gameData, setGameData] = useState<LetteredGameData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [showGameOverModal, setShowGameOverModal] = useState(false);
-  const [scoreUpdateTimer, setScoreUpdateTimer] = useState<ReturnType<typeof setInterval> | null>(
-    null
-  );
   const [currentGameIndex, setCurrentGameIndex] = useState<number>(0);
+
+  // UI-specific state
+  const [uiState, setUIState] = useState<UIState>({
+    showConfetti: false,
+    showGameOverModal: false,
+    previewPiece: null,
+    previewPosition: null,
+    lastValidPreviewPosition: null,
+    isValidPreview: false,
+  });
+
+  // Game state manager (core game logic, doesn't cause rerenders)
+  const gameStateManagerRef = useRef<LetteredGameStateManager | null>(null);
+
+  // State for UI updates from game state manager
+  const [gameScore, setGameScore] = useState(5000);
+  const [placedPieces, setPlacedPieces] = useState<Map<string, GridPosition>>(new Map());
+  const [gameComplete, setGameComplete] = useState(false);
+  const [gameWon, setGameWon] = useState(false);
 
   // Get responsive viewport information
   const { breakpoint } = useViewport();
@@ -261,36 +268,34 @@ export const LetteredPage = ({ onBack }: { onBack?: () => void }) => {
 
   // Touch scroll prevention is handled via CSS touch-none and event handlers
 
-  const [gameState, setGameState] = useState<GameState>({
-    score: 5000,
-    initialScore: 5000,
-    gameComplete: false,
-    gameWon: false,
-    showConfetti: false,
-    gameStartTime: Date.now(),
-    placedPieces: new Map(),
-    lastValidPositions: new Map(),
-    previewPiece: null,
-    previewPosition: null,
-    lastValidPreviewPosition: null,
-    isValidPreview: false,
-  });
-
-  // Real-time score updating effect (same as TopX)
+  // Initialize game state manager and set up callbacks
   useEffect(() => {
-    if (gameState.gameStartTime && !gameState.gameComplete) {
-      const timer = setInterval(() => {
-        // Timer for future score decay implementation
-        // Currently disabled to focus on game mechanics
-      }, 1000);
+    if (!gameStateManagerRef.current) {
+      gameStateManagerRef.current = new LetteredGameStateManager();
 
-      setScoreUpdateTimer(timer);
+      // Set up callback to receive game state updates
+      const unsubscribe = gameStateManagerRef.current.onUpdate((updates) => {
+        if (updates.score !== undefined) {
+          setGameScore(updates.score);
+        }
+        if (updates.placedPieces) {
+          setPlacedPieces(updates.placedPieces);
+        }
+        if (updates.gameComplete !== undefined) {
+          setGameComplete(updates.gameComplete);
+        }
+        if (updates.gameWon !== undefined) {
+          setGameWon(updates.gameWon);
+        }
+      });
+
       return () => {
-        clearInterval(timer);
-        setScoreUpdateTimer(null);
+        unsubscribe();
+        gameStateManagerRef.current?.destroy();
+        gameStateManagerRef.current = null;
       };
     }
-  }, [gameState.gameStartTime, gameState.gameComplete, gameState.initialScore]);
+  }, []);
 
   // Load mock game data
   const loadGame = useCallback(async (gameIndex: number = 0) => {
@@ -305,16 +310,15 @@ export const LetteredPage = ({ onBack }: { onBack?: () => void }) => {
       setGameData(mockGame);
       setCurrentGameIndex(gameIndex);
 
-      // Reset game state for new game
-      setGameState({
-        score: 5000,
-        initialScore: 5000,
-        gameComplete: false,
-        gameWon: false,
+      // Initialize game state manager with new game
+      if (gameStateManagerRef.current) {
+        gameStateManagerRef.current.initializeGame(mockGame);
+      }
+
+      // Reset UI state for new game
+      setUIState({
         showConfetti: false,
-        gameStartTime: Date.now(),
-        placedPieces: new Map(),
-        lastValidPositions: new Map(),
+        showGameOverModal: false,
         previewPiece: null,
         previewPosition: null,
         lastValidPreviewPosition: null,
@@ -350,88 +354,9 @@ export const LetteredPage = ({ onBack }: { onBack?: () => void }) => {
     void initializeGame();
   }, [loadGame]);
 
-  // Validate if all pieces are placed correctly according to the solution
-  const validateSolution = useCallback((): boolean => {
-    if (!gameData || !gameData.solution) {
-      return false;
-    }
-
-    // Check if all pieces are placed
-    const allPiecesPlaced = gameData.pieces.every((piece) => gameState.placedPieces.has(piece.id));
-    if (!allPiecesPlaced) {
-      return false;
-    }
-
-    // Validate each piece is in its correct position
-    for (let i = 0; i < gameData.pieces.length; i++) {
-      const piece = gameData.pieces[i];
-      const solutionPositions = gameData.solution[i];
-      const placedPosition = piece ? gameState.placedPieces.get(piece.id) : null;
-
-      if (!piece || !placedPosition || !solutionPositions) {
-        return false;
-      }
-
-      // Check if the placed position matches any of the solution positions
-      // The solution might have multiple valid positions for each piece
-      const isCorrectPosition = solutionPositions.some(
-        (solutionPos) =>
-          solutionPos.row === placedPosition.row && solutionPos.col === placedPosition.col
-      );
-
-      if (!isCorrectPosition) {
-        return false;
-      }
-    }
-
-    return true;
-  }, [gameData, gameState.placedPieces]);
-
-  // Check if game is won
-  const checkGameComplete = useCallback(() => {
-    if (!gameData) return;
-
-    // Check if all pieces are placed
-    const allPiecesPlaced = gameData.pieces.every((piece) => gameState.placedPieces.has(piece.id));
-
-    if (allPiecesPlaced && !gameState.gameComplete) {
-      // Validate if pieces are in correct positions
-      const isSolutionCorrect = validateSolution();
-
-      if (isSolutionCorrect) {
-        // Game is won!
-        setGameState((prev) => ({
-          ...prev,
-          gameComplete: true,
-          gameWon: true,
-        }));
-
-        // Stop score timer
-        if (scoreUpdateTimer) {
-          clearInterval(scoreUpdateTimer);
-          setScoreUpdateTimer(null);
-        }
-      } else {
-        // All pieces are placed but not in correct positions - show error
-        toast.error('Pieces are not in the correct positions!', { duration: 2000 });
-      }
-    }
-  }, [
-    gameData,
-    gameState.placedPieces,
-    gameState.gameComplete,
-    scoreUpdateTimer,
-    validateSolution,
-  ]);
-
-  // Check game completion whenever pieces are placed
-  useEffect(() => {
-    checkGameComplete();
-  }, [gameState.placedPieces, gameData, checkGameComplete]);
-
-  // Show game over modal and effects when game completes
-  useEffect(() => {
-    if (gameState.gameComplete && gameState.gameWon) {
+  // Handle game completion effects (UI side)
+  const handleGameComplete = useCallback(() => {
+    if (gameWon && gameComplete) {
       toast.success('🎉 Congratulations!', {
         description: 'You completed the puzzle!',
         duration: 1500,
@@ -439,13 +364,13 @@ export const LetteredPage = ({ onBack }: { onBack?: () => void }) => {
 
       // Show confetti and gold shimmer after 1 second
       const confettiTimer = setTimeout(() => {
-        setGameState((prev) => ({ ...prev, showConfetti: true }));
+        setUIState((prev) => ({ ...prev, showConfetti: true }));
         setShowGoldShimmer(true);
       }, 1000);
 
       // Show modal after confetti
       const modalTimer = setTimeout(() => {
-        setShowGameOverModal(true);
+        setUIState((prev) => ({ ...prev, showGameOverModal: true }));
       }, 4000);
 
       return () => {
@@ -453,7 +378,59 @@ export const LetteredPage = ({ onBack }: { onBack?: () => void }) => {
         clearTimeout(modalTimer);
       };
     }
-  }, [gameState.gameComplete, gameState.gameWon]);
+  }, [gameWon, gameComplete]);
+
+  // Handle game completion effects when game state changes
+  useEffect(() => {
+    return handleGameComplete();
+  }, [handleGameComplete]);
+
+  // Handle layout changes from the grid
+  const handleGridLayoutChange = useCallback(
+    (layout: (string | null)[][]) => {
+      if (!gameData || !gameStateManagerRef.current) return;
+
+      // Convert layout to piece positions
+      const newPlacedPieces = new Map<string, GridPosition>();
+
+      layout.forEach((row, rowIndex) => {
+        row.forEach((itemId, colIndex) => {
+          if (itemId) {
+            // Find the piece that corresponds to this item ID
+            const piece = gameData.pieces.find((p: LetterPiece) => p.id === itemId);
+            if (piece && !newPlacedPieces.has(piece.id)) {
+              newPlacedPieces.set(piece.id, { row: rowIndex, col: colIndex });
+            }
+          }
+        });
+      });
+
+      console.log('newPlacedPieces', newPlacedPieces);
+
+      // Update game state manager with new piece positions
+      // Only update pieces that have changed to avoid unnecessary work
+      const currentPlacedPieces = gameStateManagerRef.current.getPlacedPieces();
+
+      for (const [pieceId, newPosition] of newPlacedPieces) {
+        const currentPosition = currentPlacedPieces.get(pieceId);
+        if (
+          !currentPosition ||
+          currentPosition.row !== newPosition.row ||
+          currentPosition.col !== newPosition.col
+        ) {
+          gameStateManagerRef.current.placePiece(pieceId, newPosition);
+        }
+      }
+
+      // Remove pieces that are no longer placed
+      for (const [pieceId] of currentPlacedPieces) {
+        if (!newPlacedPieces.has(pieceId)) {
+          gameStateManagerRef.current.removePiece(pieceId);
+        }
+      }
+    },
+    [gameData]
+  );
 
   const handleBackToMenu = () => {
     if (onBack) {
@@ -470,22 +447,13 @@ export const LetteredPage = ({ onBack }: { onBack?: () => void }) => {
 
   // Development functions
   const forceGameWin = () => {
-    if (!gameData) return;
+    if (!gameData || !gameStateManagerRef.current) return;
 
     // Place all pieces in valid positions (simplified for testing)
-    const newPlacedPieces = new Map<string, GridPosition>();
-
     gameData.pieces.forEach((piece, index) => {
       // Simple placement for testing - place pieces in a row
-      newPlacedPieces.set(piece.id, { row: index, col: 0 });
+      gameStateManagerRef.current!.placePiece(piece.id, { row: index, col: 0 });
     });
-
-    setGameState((prev) => ({
-      ...prev,
-      placedPieces: newPlacedPieces,
-      gameWon: true,
-      gameComplete: true,
-    }));
   };
 
   const handleBoardChange = async (value: string) => {
@@ -569,7 +537,7 @@ export const LetteredPage = ({ onBack }: { onBack?: () => void }) => {
   return (
     <GameLayout
       gameTitle="Lettered Daily"
-      score={gameState.score}
+      score={gameScore}
       onBack={handleBackToMenu}
       onLeaderboard={() => console.log('Leaderboard clicked')}
     >
@@ -613,10 +581,10 @@ export const LetteredPage = ({ onBack }: { onBack?: () => void }) => {
                   variant="default"
                   size="sm"
                   onClick={forceGameWin}
-                  disabled={gameState.gameComplete}
+                  disabled={gameComplete}
                   className="text-xs bg-green-600 hover:bg-green-700"
                 >
-                  🎉 Force Win
+                  Force Win
                 </Button>
                 <Button
                   variant="outline"
@@ -624,7 +592,7 @@ export const LetteredPage = ({ onBack }: { onBack?: () => void }) => {
                   onClick={() => loadGame(Math.floor(Math.random() * MOCK_GAMES.length))}
                   className="text-xs"
                 >
-                  🎲 Random Board
+                  Random Board
                 </Button>
                 <Button
                   variant="outline"
@@ -632,7 +600,7 @@ export const LetteredPage = ({ onBack }: { onBack?: () => void }) => {
                   onClick={() => loadGame(currentGameIndex)}
                   className="text-xs"
                 >
-                  🔄 Restart Board
+                  Restart Board
                 </Button>
               </div>
             </div>
@@ -656,11 +624,11 @@ export const LetteredPage = ({ onBack }: { onBack?: () => void }) => {
           cellSize={responsiveCellSize}
           initialItems={convertGridDataToItems({
             grid: gameData.grid,
-            placedPieces: gameState.placedPieces,
+            placedPieces: placedPieces,
             pieces: gameData.pieces,
             getTileClassName: (piece) => getPieceTileClass(piece, 'text-2xl font-bold'),
           })}
-          onLayoutChange={handleLayoutChange}
+          onLayoutChange={handleGridLayoutChange}
           defaultBoardTileClassName="bg-card hover:bg-accent transition-colors"
           defaultItemClassName="bg-primary text-primary-foreground"
           getBoardTileClassName={boardTileClass}
@@ -668,7 +636,7 @@ export const LetteredPage = ({ onBack }: { onBack?: () => void }) => {
         />
       </div>
       {/* Confetti Animation */}
-      {gameState.showConfetti && (
+      {uiState.showConfetti && (
         <Confetti
           width={window.innerWidth}
           height={window.innerHeight}
@@ -687,11 +655,11 @@ export const LetteredPage = ({ onBack }: { onBack?: () => void }) => {
       )}
       {/* Game Over Modal */}
       <Dialog
-        open={showGameOverModal}
+        open={uiState.showGameOverModal}
         onOpenChange={(open) => {
-          setShowGameOverModal(open);
+          setUIState((prev) => ({ ...prev, showGameOverModal: open }));
           if (!open) {
-            setGameState((prev) => ({ ...prev, showConfetti: false }));
+            setUIState((prev) => ({ ...prev, showConfetti: false }));
             setShowGoldShimmer(false);
           }
         }}
@@ -699,10 +667,10 @@ export const LetteredPage = ({ onBack }: { onBack?: () => void }) => {
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
             <DialogTitle className="text-2xl font-bold text-center text-green-600">
-              🎉 PUZZLE COMPLETE!
+              PUZZLE COMPLETE
             </DialogTitle>
             <DialogDescription className="text-base text-center">
-              You solved the puzzle perfectly!
+              You solved the puzzle perfectly
             </DialogDescription>
           </DialogHeader>
 
@@ -710,11 +678,11 @@ export const LetteredPage = ({ onBack }: { onBack?: () => void }) => {
             {/* Game Stats */}
             <div className="grid grid-cols-2 gap-4">
               <div className="text-center">
-                <div className="text-2xl font-bold text-primary">{gameState.score}</div>
+                <div className="text-2xl font-bold text-primary">{gameScore}</div>
                 <div className="text-sm text-muted-foreground">Final Score</div>
               </div>
               <div className="text-center">
-                <div className="text-2xl font-bold text-primary">{gameData.pieces.length}</div>
+                <div className="text-2xl font-bold text-primary">{placedPieces.size}</div>
                 <div className="text-sm text-muted-foreground">Pieces Placed</div>
               </div>
             </div>
@@ -723,13 +691,16 @@ export const LetteredPage = ({ onBack }: { onBack?: () => void }) => {
             <div className="flex justify-center pt-4">
               <Button
                 onClick={() => {
-                  setShowGameOverModal(false);
-                  setGameState((prev) => ({ ...prev, showConfetti: false }));
+                  setUIState((prev) => ({
+                    ...prev,
+                    showGameOverModal: false,
+                    showConfetti: false,
+                  }));
                   resetGame();
                 }}
                 className="w-full"
               >
-                🔄 PLAY AGAIN
+                PLAY AGAIN
               </Button>
             </div>
           </div>

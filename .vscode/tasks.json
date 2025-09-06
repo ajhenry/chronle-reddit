@@ -1,0 +1,55 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "npm: dev:vite",
+      "type": "shell",
+      "command": "npm",
+      "args": ["run", "dev:vite"],
+      "group": "build",
+      "presentation": {
+        "echo": true,
+        "reveal": "silent",
+        "focus": false,
+        "panel": "shared",
+        "showReuseMessage": false,
+        "clear": false
+      },
+      "isBackground": true,
+      "problemMatcher": []
+    },
+    {
+      "label": "npm: local:server",
+      "type": "shell",
+      "command": "npm",
+      "args": ["run", "local:server"],
+      "group": "build",
+      "presentation": {
+        "echo": true,
+        "reveal": "silent",
+        "focus": false,
+        "panel": "shared",
+        "showReuseMessage": false,
+        "clear": false
+      },
+      "isBackground": true,
+      "problemMatcher": []
+    },
+    {
+      "label": "terminate-all",
+      "command": "echo",
+      "args": ["${input:terminate}"],
+      "type": "shell",
+      "problemMatcher": []
+    }
+  ],
+  "inputs": [
+    {
+      "id": "terminate",
+      "description": "Terminate all running tasks",
+      "default": "Terminating all tasks...",
+      "type": "command",
+      "command": "workbench.action.tasks.terminate"
+    }
+  ]
+}

@@ -176,7 +176,7 @@ function GridProvider({
   const [items, setItems] = useState<DraggableItem[]>(() =>
     initialItems.map((item, index) => ({
       ...item,
-      id: generateItemId(gridId, index),
+      id: item.shape.name || generateItemId(gridId, index),
     }))
   );
   const [dragPreview, setDragPreview] = useState<{
@@ -209,7 +209,7 @@ function GridProvider({
         ...prev,
         {
           ...item,
-          id: generateItemId(gridId, prev.length),
+          id: item.shape.name || generateItemId(gridId, prev.length),
         },
       ]);
     },
