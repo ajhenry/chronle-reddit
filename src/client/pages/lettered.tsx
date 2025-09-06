@@ -11,12 +11,7 @@ import {
   DialogTitle,
   DialogDescription,
 } from '../components/ui/dialog';
-import {
-  LetteredGameData,
-  GridPosition,
-  LetterPiece as LetterPieceType,
-  GridCell,
-} from '../../shared/types/api';
+import { LetteredGameData, GridPosition, LetterPiece, GridCell } from '../../shared/types/api';
 import { isDevelopment } from '../lib/dev-utils';
 import { MOCK_GAMES, getResponsiveCellSize, getResponsiveCellSpacing } from '../lib/lettered-utils';
 import { useViewport } from '../hooks/useViewport';
@@ -31,14 +26,19 @@ import { Grid, DraggableItem } from '../components/tile-grid/tile-grid';
 import { cn } from '@sglara/cn';
 
 // Conversion functions for Grid component
-const convertGridDataToItems = (
-  grid: GridCell[][],
-  placedPieces: Map<string, GridPosition>,
-  pieces: LetterPieceType[],
-  spacing: number,
-  getTileStyle?: (piece: LetterPieceType) => React.CSSProperties | undefined,
-  getTileClassName?: (piece: LetterPieceType) => string | undefined
-): Omit<DraggableItem, 'id'>[] => {
+const convertGridDataToItems = ({
+  grid,
+  placedPieces,
+  pieces,
+  getTileStyle,
+  getTileClassName,
+}: {
+  grid: GridCell[][];
+  placedPieces: Map<string, GridPosition>;
+  pieces: LetterPiece[];
+  getTileStyle?: (piece: LetterPiece) => React.CSSProperties | undefined;
+  getTileClassName?: (piece: LetterPiece) => string | undefined;
+}): Omit<DraggableItem, 'id'>[] => {
   const items: Omit<DraggableItem, 'id'>[] = [];
 
   // Convert placed pieces to Grid component format
@@ -96,7 +96,7 @@ const convertGridDataToItems = (
         };
 
         // Create a mock piece for the anchor letter
-        const anchorPiece: LetterPieceType = {
+        const anchorPiece: LetterPiece = {
           id: `anchor-${row}-${col}`,
           letters: [cell.letter],
           shape: [{ row: 0, col: 0 }],
@@ -236,7 +236,7 @@ interface GameState {
   gameStartTime: number | null;
   placedPieces: Map<string, GridPosition>; // piece ID -> grid position
   lastValidPositions: Map<string, GridPosition>; // piece ID -> last valid position
-  previewPiece: LetterPieceType | null; // Currently dragged piece for preview
+  previewPiece: LetterPiece | null; // Currently dragged piece for preview
   previewPosition: GridPosition | null; // Position where preview should be shown
   lastValidPreviewPosition: GridPosition | null; // Last valid preview position
   isValidPreview: boolean; // Whether the current preview position is valid
@@ -352,11 +352,15 @@ export const LetteredPage = ({ onBack }: { onBack?: () => void }) => {
 
   // Validate if all pieces are placed correctly according to the solution
   const validateSolution = useCallback((): boolean => {
-    if (!gameData || !gameData.solution) return false;
+    if (!gameData || !gameData.solution) {
+      return false;
+    }
 
     // Check if all pieces are placed
     const allPiecesPlaced = gameData.pieces.every((piece) => gameState.placedPieces.has(piece.id));
-    if (!allPiecesPlaced) return false;
+    if (!allPiecesPlaced) {
+      return false;
+    }
 
     // Validate each piece is in its correct position
     for (let i = 0; i < gameData.pieces.length; i++) {
@@ -364,7 +368,9 @@ export const LetteredPage = ({ onBack }: { onBack?: () => void }) => {
       const solutionPositions = gameData.solution[i];
       const placedPosition = piece ? gameState.placedPieces.get(piece.id) : null;
 
-      if (!piece || !placedPosition || !solutionPositions) return false;
+      if (!piece || !placedPosition || !solutionPositions) {
+        return false;
+      }
 
       // Check if the placed position matches any of the solution positions
       // The solution might have multiple valid positions for each piece
@@ -373,7 +379,9 @@ export const LetteredPage = ({ onBack }: { onBack?: () => void }) => {
           solutionPos.row === placedPosition.row && solutionPos.col === placedPosition.col
       );
 
-      if (!isCorrectPosition) return false;
+      if (!isCorrectPosition) {
+        return false;
+      }
     }
 
     return true;
@@ -485,6 +493,51 @@ export const LetteredPage = ({ onBack }: { onBack?: () => void }) => {
     if (!isNaN(gameIndex) && gameIndex >= 0 && gameIndex < MOCK_GAMES.length) {
       await loadGame(gameIndex);
       toast.success(`Loaded board: ${MOCK_GAMES[gameIndex]?.phrase}`, { duration: 2000 });
+    }
+  };
+
+  const boardTileClass = (x: number, y: number) => {
+    const baseClass = 'bg-card hover:bg-accent transition-colors';
+    // Style board tiles based on the lettered grid data
+    const cell = gameData?.grid[y]?.[x];
+    if (!cell) {
+      // Check if we're in the extended area (below the main board)
+      if (y >= (gameData?.grid.length ?? 0)) {
+        return cn(baseClass, 'bg-background'); // Letter pieces area
+      }
+      return 'bg-muted'; // Main board
+    }
+
+    // Don't style cells that have pre-filled anchor letters (they're rendered as pieces)
+    if (cell.isPreFilled) {
+      return cn(baseClass, 'bg-background');
+    }
+
+    // Make unoccupied spaces use theme-aware muted colors
+    if (cell.isUnused || cell.isSpace) {
+      return cn(baseClass, 'border-2 border-border bg-muted');
+    }
+
+    // For cells with letters that will be filled by pieces, use transparent
+    return cn(baseClass, 'bg-background');
+  };
+
+  const pieceTileClass = (piece: LetterPiece) => {
+    const baseClass = 'bg-card hover:bg-accent text-card-foreground transition-colors';
+    return cn(baseClass, `bg-[${piece.color}]`);
+  };
+
+  // Enhanced version that accepts additional classes
+  const getPieceTileClass = (piece: LetterPiece, additionalClassName?: string) => {
+    return cn(pieceTileClass(piece), additionalClassName);
+  };
+
+  const pieceTileDraggingClass = (_piece: DraggableItem, valid: boolean) => {
+    const baseClass = 'border-2 border-dashed opacity-100 transition-colors';
+    if (valid) {
+      return cn(baseClass, 'bg-accent/20 border-primary');
+    } else {
+      return cn(baseClass, 'bg-destructive/20 border-destructive');
     }
   };
 
@@ -601,42 +654,17 @@ export const LetteredPage = ({ onBack }: { onBack?: () => void }) => {
             spacing: responsiveCellSpacing,
           }}
           cellSize={responsiveCellSize}
-          initialItems={convertGridDataToItems(
-            gameData.grid,
-            gameState.placedPieces,
-            gameData.pieces,
-            responsiveCellSpacing,
-            undefined, // getTileStyle (optional)
-            undefined // getTileClassName - let items use their own classes or defaults
-          )}
+          initialItems={convertGridDataToItems({
+            grid: gameData.grid,
+            placedPieces: gameState.placedPieces,
+            pieces: gameData.pieces,
+            getTileClassName: (piece) => getPieceTileClass(piece, 'text-2xl font-bold'),
+          })}
           onLayoutChange={handleLayoutChange}
-          defaultBoardTileClassName="bg-gray-50 hover:bg-gray-100"
-          defaultItemClassName="bg-blue-500 text-white"
-          getBoardTileClassName={(x, y) => {
-            const baseClass = 'bg-gray-50 hover:bg-gray-800';
-            // Style board tiles based on the lettered grid data
-            const cell = gameData.grid[y]?.[x];
-            if (!cell) {
-              // Check if we're in the extended area (below the main board)
-              if (y >= gameData.grid.length) {
-                return cn(baseClass, 'bg-background'); // Letter pieces area
-              }
-              return 'bg-gray-400'; // Main board
-            }
-
-            // Don't style cells that have pre-filled anchor letters (they're rendered as pieces)
-            if (cell.isPreFilled) {
-              return cn(baseClass, 'bg-background');
-            }
-
-            // Make unoccupied spaces gray
-            if (cell.isUnused || cell.isSpace) {
-              return cn(baseClass, 'border-2 border-gray-700 bg-gray-900');
-            }
-
-            // For cells with letters that will be filled by pieces, use transparent
-            return cn(baseClass, 'bg-background');
-          }}
+          defaultBoardTileClassName="bg-card hover:bg-accent transition-colors"
+          defaultItemClassName="bg-primary text-primary-foreground"
+          getBoardTileClassName={boardTileClass}
+          getTileDraggingClassName={pieceTileDraggingClass}
         />
       </div>
       {/* Confetti Animation */}

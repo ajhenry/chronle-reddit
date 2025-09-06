@@ -516,13 +516,13 @@ const GridCell = React.memo(({ x, y, className = '', style }: GridCellProps) => 
 
   const getBackgroundClass = useCallback(() => {
     if (isOccupied) {
-      return 'bg-blue-100 border-blue-300';
+      return 'bg-accent/20 border-accent';
     }
     if (isHovered) {
-      return 'bg-green-200';
+      return 'bg-primary/20';
     }
     // Base background - hover is handled in combinedClassName logic
-    return 'bg-gray-50';
+    return 'bg-card';
   }, [isOccupied, isHovered]);
 
   // Combine default classes with custom classes
@@ -547,7 +547,7 @@ const GridCell = React.memo(({ x, y, className = '', style }: GridCellProps) => 
 
     // Not dragging - add default hover if no custom hover classes
     if (!customClasses.includes('hover:')) {
-      return cn(defaultClasses, 'hover:bg-gray-100', customClasses);
+      return cn(defaultClasses, 'hover:bg-accent transition-colors', customClasses);
     }
 
     // Custom hover classes present - use them as-is
@@ -557,7 +557,7 @@ const GridCell = React.memo(({ x, y, className = '', style }: GridCellProps) => 
   return (
     <div
       id={cellId}
-      className={cn('border transition-colors', combinedClassName)}
+      className={cn('border-border border transition-colors', combinedClassName)}
       style={cellStyle}
       data-testid={`grid-cell-${x}-${y}`}
       data-occupied={isOccupied}
@@ -811,15 +811,23 @@ const DraggableItemComponent = React.memo(
           <div
             key={`cell-${index}`}
             className={cn(
-              'border border-white/30 flex justify-center items-center',
-              item.color || 'bg-blue-500',
+              'border border-border flex justify-center items-center',
+              item.color || 'bg-primary',
               isDragging ? 'opacity-70' : 'opacity-100',
               item.className || defaultClassName || ''
             )}
             style={cellStyle}
           >
             {cellContent && (
-              <div className="p-1 text-xs font-semibold text-center text-white">{cellContent}</div>
+              <div
+                className={cn(
+                  'p-1 text-xs font-semibold text-center text-primary-foreground',
+                  // Apply text-related classes from item.className to the text element
+                  item.className
+                )}
+              >
+                {cellContent}
+              </div>
             )}
           </div>
         );
@@ -870,6 +878,7 @@ const DragPreviewComponent = React.memo(
     isValid,
     cellSize,
     spacing,
+    getTileDraggingClassName,
     defaultClassName,
   }: {
     item: DraggableItem;
@@ -877,6 +886,7 @@ const DragPreviewComponent = React.memo(
     isValid: boolean;
     cellSize: GridSize;
     spacing: number;
+    getTileDraggingClassName?: (piece: DraggableItem, valid: boolean) => string | undefined;
     defaultClassName?: string;
   }) => {
     const boundingBox = useMemo(() => getItemBoundingBox(item), [item]);
@@ -900,6 +910,11 @@ const DragPreviewComponent = React.memo(
       const contentString = typeof item.content === 'string' ? item.content : '';
       const shouldDistributeLetters =
         contentString.length > 1 && item.shape.cells.length === contentString.length;
+
+      // Get custom class name if function is provided
+      const customDraggingClassName = getTileDraggingClassName
+        ? getTileDraggingClassName(item, isValid)
+        : undefined;
 
       return item.shape.cells.map((cell, index) => {
         const cellStyle = {
@@ -925,24 +940,46 @@ const DragPreviewComponent = React.memo(
             key={`preview-cell-${index}`}
             className={cn(
               'border-2 border-dashed flex justify-center items-center',
-              item.color || 'bg-blue-500',
-              item.className || defaultClassName || ''
+              item.color || 'bg-primary',
+              item.className || defaultClassName || '',
+              customDraggingClassName || '' // Add custom dragging class
             )}
             style={{
               ...cellStyle,
-              backgroundColor: isValid
-                ? 'rgba(59, 130, 246, 0.3)' // Semi-transparent blue for valid
-                : 'rgba(239, 68, 68, 0.3)', // Semi-transparent red for invalid
-              borderColor: isValid
-                ? 'rgba(59, 130, 246, 0.6)' // Blue border for valid
-                : 'rgba(239, 68, 68, 0.6)', // Red border for invalid
+              // Only apply default styling if no custom class is provided
+              ...(customDraggingClassName
+                ? {}
+                : {
+                    backgroundColor: isValid
+                      ? 'hsl(var(--primary) / 0.3)' // Semi-transparent primary for valid
+                      : 'hsl(var(--destructive) / 0.3)', // Semi-transparent destructive for invalid
+                    borderColor: isValid
+                      ? 'hsl(var(--primary) / 0.6)' // Primary border for valid
+                      : 'hsl(var(--destructive) / 0.6)', // Destructive border for invalid
+                  }),
             }}
           >
             {cellContent && (
               <div
                 className={cn(
                   'p-1 text-xs font-semibold text-center',
-                  isValid ? 'text-blue-800' : 'text-red-800'
+                  // Only apply default text color if no custom class is provided
+                  customDraggingClassName
+                    ? ''
+                    : isValid
+                      ? 'text-primary-foreground'
+                      : 'text-destructive-foreground',
+                  // Apply text-related classes from item.className to the text element
+                  item.className
+                    ?.split(' ')
+                    .filter(
+                      (cls) =>
+                        cls.startsWith('text-') ||
+                        cls.startsWith('font-') ||
+                        cls.startsWith('leading-') ||
+                        cls.startsWith('tracking-')
+                    )
+                    .join(' ') || ''
                 )}
               >
                 {cellContent}
@@ -951,17 +988,7 @@ const DragPreviewComponent = React.memo(
           </div>
         );
       });
-    }, [
-      item.shape.cells,
-      item.color,
-      item.content,
-      item.style,
-      item.className,
-      cellSize,
-      spacing,
-      defaultClassName,
-      isValid,
-    ]);
+    }, [item, cellSize, spacing, defaultClassName, isValid, getTileDraggingClassName]);
 
     return <div style={previewStyle}>{previewCells}</div>;
   }
@@ -982,6 +1009,7 @@ type GridProps = {
   children?: ReactNode;
   getBoardTileStyle?: (x: number, y: number) => React.CSSProperties | undefined;
   getBoardTileClassName?: (x: number, y: number) => string | undefined;
+  getTileDraggingClassName?: (piece: DraggableItem, valid: boolean) => string | undefined;
   // Default classes that can be completely overridden
   defaultBoardTileClassName?: string;
   defaultItemClassName?: string;
@@ -999,6 +1027,7 @@ function Grid({
   children,
   getBoardTileStyle,
   getBoardTileClassName,
+  getTileDraggingClassName,
   defaultBoardTileClassName,
   defaultItemClassName,
 }: GridProps) {
@@ -1013,6 +1042,7 @@ function Grid({
         className={className}
         getBoardTileStyle={getBoardTileStyle}
         getBoardTileClassName={getBoardTileClassName}
+        getTileDraggingClassName={getTileDraggingClassName}
         defaultBoardTileClassName={defaultBoardTileClassName}
         defaultItemClassName={defaultItemClassName}
       >
@@ -1028,6 +1058,7 @@ function GridContent({
   children,
   getBoardTileStyle,
   getBoardTileClassName,
+  getTileDraggingClassName,
   defaultBoardTileClassName,
   defaultItemClassName,
 }: {
@@ -1035,6 +1066,7 @@ function GridContent({
   children: ReactNode;
   getBoardTileStyle?: (x: number, y: number) => React.CSSProperties | undefined;
   getBoardTileClassName?: (x: number, y: number) => string | undefined;
+  getTileDraggingClassName?: (piece: DraggableItem, valid: boolean) => string | undefined;
   defaultBoardTileClassName?: string;
   defaultItemClassName?: string;
 }) {
@@ -1151,6 +1183,7 @@ function GridContent({
             isValid={dragPreview.isValid}
             cellSize={cellSize}
             spacing={spacing}
+            getTileDraggingClassName={getTileDraggingClassName}
             defaultClassName={defaultItemClassName}
           />
         )}
