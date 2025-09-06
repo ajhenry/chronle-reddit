@@ -38,12 +38,12 @@ export class LetteredGameStateManager {
       boardLayout: gameData?.grid || [],
       placedPieces: new Map(),
       lastValidPositions: new Map(),
-      scoreDecayRate: 10, // 10 points per second
-      scoreDecayInterval: 1000, // Update every second
+      scoreDecayRate: 3,
+      scoreDecayInterval: 250,
       lastScoreUpdate: Date.now(),
       gameStartTime: Date.now(),
       gameData,
-      timerDisabled: true,
+      timerDisabled: false,
     };
   }
 
@@ -136,22 +136,22 @@ export class LetteredGameStateManager {
 
   // Place a piece on the board
   placePiece(pieceId: string, position: GridPosition): boolean {
-    console.log(`🎯 Placing piece ${pieceId} at (${position.row}, ${position.col})`);
+    console.log(`[DEBUG] Placing piece ${pieceId} at (${position.row}, ${position.col})`);
 
     // Prevent piece movement when game is complete
     if (this.state.gameComplete) {
-      console.log('🚫 Cannot move pieces - game is complete');
+      console.log('[DEBUG] Cannot move pieces - game is complete');
       return false;
     }
 
     if (!this.state.gameData) {
-      console.log('❌ No game data');
+      console.log('[DEBUG] No game data');
       return false;
     }
 
     const piece = this.state.gameData.pieces.find((p) => p.id === pieceId);
     if (!piece) {
-      console.log(`❌ Piece ${pieceId} not found`);
+      console.log(`[DEBUG] Piece ${pieceId} not found`);
       return false;
     }
 
@@ -159,13 +159,13 @@ export class LetteredGameStateManager {
     const validationResult = this.isValidPiecePlacement(piece, position);
     if (!validationResult.valid) {
       console.log(
-        `❌ Invalid placement for piece ${pieceId} at (${position.row}, ${position.col}): ${validationResult.reason}`
+        `[DEBUG] Invalid placement for piece ${pieceId} at (${position.row}, ${position.col}): ${validationResult.reason}`
       );
       return false;
     }
 
     console.log(
-      `✅ Placing ${piece.letters.join('')} (${pieceId}) at (${position.row}, ${position.col})`
+      `[DEBUG] Placing ${piece.letters.join('')} (${pieceId}) at (${position.row}, ${position.col})`
     );
 
     // Save current state for undo if needed
@@ -194,7 +194,7 @@ export class LetteredGameStateManager {
   removePiece(pieceId: string): boolean {
     // Prevent piece movement when game is complete
     if (this.state.gameComplete) {
-      console.log('🚫 Cannot remove pieces - game is complete');
+      console.log('[DEBUG] Cannot remove pieces - game is complete');
       return false;
     }
 
@@ -307,10 +307,10 @@ export class LetteredGameStateManager {
 
   // Check if the game is complete
   private checkGameCompletion(): void {
-    console.log('🔄 Checking game completion...');
+    console.log('[DEBUG] Checking game completion...');
 
     if (!this.state.gameData || this.state.gameComplete) {
-      console.log('⏭️ Skipping - no game data or already complete');
+      console.log('[DEBUG] Skipping - no game data or already complete');
       return;
     }
 
@@ -320,21 +320,21 @@ export class LetteredGameStateManager {
     );
 
     console.log(
-      `📦 Pieces placed: ${this.state.placedPieces.size}/${this.state.gameData.pieces.length}`
+      `[DEBUG] Pieces placed: ${this.state.placedPieces.size}/${this.state.gameData.pieces.length}`
     );
 
     if (!allPiecesPlaced) {
-      console.log('⏭️ Not all pieces placed yet');
+      console.log('[DEBUG] Not all pieces placed yet');
       return;
     }
 
-    console.log('✅ All pieces placed - validating solution...');
+    console.log('[DEBUG] All pieces placed - validating solution...');
 
     // Validate by comparing board layout to original phrase
     const isSolutionCorrect = this.validateBoardAgainstPhrase();
 
     if (isSolutionCorrect) {
-      console.log('🎊 WIN CONDITION MET!');
+      console.log('[DEBUG] WIN CONDITION MET!');
       this.state.gameComplete = true;
       this.state.gameWon = true;
       this.stopScoreDecay();
@@ -344,24 +344,24 @@ export class LetteredGameStateManager {
         gameWon: true,
       });
     } else {
-      console.log('❌ Solution validation failed');
+      console.log('[DEBUG] Solution validation failed');
     }
   }
 
   // Validate by comparing board layout to original phrase
   private validateBoardAgainstPhrase(): boolean {
     if (!this.state.gameData) {
-      console.log('❌ No game data for validation');
+      console.log('[DEBUG] No game data for validation');
       return false;
     }
 
-    console.log('🔍 Extracting letters from current board...');
+    console.log('[DEBUG] Extracting letters from current board...');
     const currentLetters = this.extractLettersFromBoard();
 
-    console.log('📝 Getting expected phrase layout...');
+    console.log('[DEBUG] Getting expected phrase layout...');
     const expectedLetters = this.getExpectedPhraseLayout();
 
-    console.log('⚖️ Comparing layouts...');
+    console.log('[DEBUG] Comparing layouts...');
     return this.compareLayouts(currentLetters, expectedLetters);
   }
 
@@ -382,7 +382,7 @@ export class LetteredGameStateManager {
       letters.push(rowLetters);
     }
 
-    console.log('📋 Current board letters:');
+    console.log('[DEBUG] Current board letters:');
     letters.forEach((row, i) => {
       console.log(`  Row ${i}: ${row.join('').trim() || '(empty)'}`);
     });
@@ -398,7 +398,7 @@ export class LetteredGameStateManager {
     // We'll recreate the same layout algorithm that was used during grid generation
     const expectedGrid = this.recreateOriginalGridLayout();
 
-    console.log('🎯 Expected phrase layout:');
+    console.log('[DEBUG] Expected phrase layout:');
     expectedGrid.forEach((row, i) => {
       console.log(`  Row ${i}: ${row.join('').trim() || '(empty)'}`);
     });
@@ -486,7 +486,7 @@ export class LetteredGameStateManager {
 
   // Compare two layouts
   private compareLayouts(current: string[][], expected: string[][]): boolean {
-    console.log('🔍 Comparing layouts...');
+    console.log('[DEBUG] Comparing layouts...');
 
     for (let row = 0; row < 8; row++) {
       for (let col = 0; col < 8; col++) {
@@ -497,14 +497,14 @@ export class LetteredGameStateManager {
         if (expectedCell === ' ') continue;
         if (currentCell !== expectedCell) {
           console.log(
-            `❌ Mismatch at (${row}, ${col}): expected '${expectedCell}', got '${currentCell}'`
+            `[DEBUG] Mismatch at (${row}, ${col}): expected '${expectedCell}', got '${currentCell}'`
           );
           return false;
         }
       }
     }
 
-    console.log('✅ Layouts match!');
+    console.log('[DEBUG] Layouts match!');
     return true;
   }
 

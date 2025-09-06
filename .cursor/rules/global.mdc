@@ -15,5 +15,5 @@ Folders to code in:
 Rules:
 
 - Assume that typescript, vite, tailwind, eslint, prettier, and all codebase configuration is working. If there is a bug, it is more likely your code than the codebase configuration.
-- Prefer type aliases over interfaces when writing typescript
-- Do not ever use emojis in code or comments. It significantly cheapens the experience for users and is not allowed.
+- Prefer interfaces over type aliases when writing typescript
+- **Do not ever use emojis in code or comments**. It significantly cheapens the experience for users and is not allowed.

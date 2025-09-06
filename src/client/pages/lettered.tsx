@@ -13,18 +13,24 @@ import {
 } from '../components/ui/dialog';
 import { LetteredGameData, GridPosition, LetterPiece, GridCell } from '../../shared/types/api';
 import { isDevelopment } from '../lib/dev-utils';
-import { MOCK_GAMES, getResponsiveCellSize, getResponsiveCellSpacing } from '../lib/lettered-utils';
+import { getResponsiveCellSize, getResponsiveCellSpacing } from '../lib/lettered-utils';
 import { useViewport } from '../hooks/useViewport';
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '../components/ui/select';
 import { Grid, DraggableItem } from '../components/tile-grid/tile-grid';
 import { cn } from '@sglara/cn';
 import { LetteredGameStateManager } from '../lib/lettered-game-state';
+import { apiFetch } from '../lib/utils';
+import { LetteredDailyGameResponse } from '../../shared/types/api';
+
+// API functions for daily Lettered game
+const fetchTodaysGame = async (): Promise<LetteredDailyGameResponse> => {
+  const response = await apiFetch('/api/lettered/game', {
+    method: 'GET',
+  });
+  if (!response.ok) {
+    throw new Error("Failed to fetch today's game");
+  }
+  return await response.json();
+};
 
 // Conversion functions for Grid component
 const convertGridDataToItems = ({
@@ -240,7 +246,6 @@ export const LetteredPage = ({ onBack }: { onBack?: () => void }) => {
   const [gameData, setGameData] = useState<LetteredGameData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [currentGameIndex, setCurrentGameIndex] = useState<number>(0);
 
   // UI-specific state
   const [uiState, setUIState] = useState<UIState>({
@@ -297,22 +302,51 @@ export const LetteredPage = ({ onBack }: { onBack?: () => void }) => {
     }
   }, []);
 
-  // Load mock game data
-  const loadGame = useCallback(async (gameIndex: number = 0) => {
+  // Load game data from API
+  const loadGame = useCallback(async () => {
     try {
       setLoading(true);
 
-      const mockGame = MOCK_GAMES[gameIndex];
-      if (!mockGame) {
-        throw new Error(`No game found at index ${gameIndex}`);
+      // Fetch today's daily game
+      const gameData = await fetchTodaysGame();
+      console.log('Fetched game data:', gameData);
+
+      if (gameData.type !== 'lettered_daily_game') {
+        throw new Error('Invalid game response format');
       }
 
-      setGameData(mockGame);
-      setCurrentGameIndex(gameIndex);
+      const { game: apiGameData, session: apiSessionData } = gameData;
+
+      // Convert API game data to client format
+      const clientGameData: LetteredGameData = {
+        id: apiGameData.id,
+        category: apiGameData.category,
+        phrase: apiGameData.phrase,
+        grid: apiGameData.grid,
+        pieces: apiGameData.pieces,
+        solution: apiGameData.solution,
+        created_at: apiGameData.created_at,
+        updated_at: apiGameData.updated_at,
+      };
+
+      setGameData(clientGameData);
 
       // Initialize game state manager with new game
       if (gameStateManagerRef.current) {
-        gameStateManagerRef.current.initializeGame(mockGame);
+        gameStateManagerRef.current.initializeGame(clientGameData);
+
+        // If we have session data, restore the placed pieces
+        if (apiSessionData && apiSessionData.placedPieces.length > 0) {
+          console.log('Restoring session data:', apiSessionData);
+
+          // Place pieces from the session data
+          for (const placedPiece of apiSessionData.placedPieces) {
+            gameStateManagerRef.current.placePiece(placedPiece.pieceId, placedPiece.position);
+          }
+
+          // Update the score to match the session
+          setGameScore(apiSessionData.currentScore);
+        }
       }
 
       // Reset UI state for new game
@@ -327,6 +361,7 @@ export const LetteredPage = ({ onBack }: { onBack?: () => void }) => {
 
       setError(null);
     } catch (err) {
+      console.error('Error loading game:', err);
       setError(err instanceof Error ? err.message : 'Failed to load game');
     } finally {
       setLoading(false);
@@ -335,20 +370,7 @@ export const LetteredPage = ({ onBack }: { onBack?: () => void }) => {
 
   useEffect(() => {
     const initializeGame = async () => {
-      // Check if dev mode has selected a specific game
-      const devGameIndex = localStorage.getItem('dev_lettered_game_index');
-      let gameIndex = 0;
-
-      if (devGameIndex !== null && isDevelopment()) {
-        const parsedIndex = parseInt(devGameIndex, 10);
-        if (!isNaN(parsedIndex) && parsedIndex >= 0 && parsedIndex < MOCK_GAMES.length) {
-          gameIndex = parsedIndex;
-        }
-        // Clear the dev selection after using it
-        localStorage.removeItem('dev_lettered_game_index');
-      }
-
-      await loadGame(gameIndex);
+      await loadGame();
     };
 
     void initializeGame();
@@ -456,14 +478,6 @@ export const LetteredPage = ({ onBack }: { onBack?: () => void }) => {
     });
   };
 
-  const handleBoardChange = async (value: string) => {
-    const gameIndex = parseInt(value, 10);
-    if (!isNaN(gameIndex) && gameIndex >= 0 && gameIndex < MOCK_GAMES.length) {
-      await loadGame(gameIndex);
-      toast.success(`Loaded board: ${MOCK_GAMES[gameIndex]?.phrase}`, { duration: 2000 });
-    }
-  };
-
   const boardTileClass = (x: number, y: number) => {
     const baseClass = 'bg-card hover:bg-accent transition-colors';
     // Style board tiles based on the lettered grid data
@@ -555,26 +569,6 @@ export const LetteredPage = ({ onBack }: { onBack?: () => void }) => {
 
           {showDevButtons && (
             <div className="mt-2 space-y-3">
-              {/* Board Selection */}
-              <div className="flex gap-2 items-center">
-                <label className="min-w-0 text-xs font-medium text-muted-foreground">Board:</label>
-                <Select value={currentGameIndex.toString()} onValueChange={handleBoardChange}>
-                  <SelectTrigger className="w-full max-w-xs text-xs">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {MOCK_GAMES.map((game, index) => (
-                      <SelectItem key={index} value={index.toString()}>
-                        <div className="flex flex-col">
-                          <span className="font-medium">{game.phrase}</span>
-                          <span className="text-xs text-muted-foreground">{game.category}</span>
-                        </div>
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-
               {/* Action Buttons */}
               <div className="flex flex-wrap gap-2">
                 <Button
@@ -586,21 +580,8 @@ export const LetteredPage = ({ onBack }: { onBack?: () => void }) => {
                 >
                   Force Win
                 </Button>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => loadGame(Math.floor(Math.random() * MOCK_GAMES.length))}
-                  className="text-xs"
-                >
-                  Random Board
-                </Button>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => loadGame(currentGameIndex)}
-                  className="text-xs"
-                >
-                  Restart Board
+                <Button variant="outline" size="sm" onClick={() => loadGame()} className="text-xs">
+                  Reload Game
                 </Button>
               </div>
             </div>

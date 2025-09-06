@@ -1,0 +1,9 @@
+{
+  "watch": ["src/server"],
+  "ext": "ts,js,json",
+  "ignore": ["src/server/**/*.test.ts", "src/server/**/*.spec.ts", "node_modules", "dist", ".git"],
+  "exec": "tsx src/server/index.ts",
+  "env": {
+    "LOCAL_MODE": "true"
+  }
+}

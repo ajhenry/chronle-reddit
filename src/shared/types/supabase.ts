@@ -257,6 +257,71 @@ export interface Database {
         };
       };
 
+      // Lettered games table for storing lettered game data
+      lettered_games: {
+        Row: {
+          id: string;
+          category: string;
+          phrase: string;
+          grid: any; // JSONB 8x8 grid
+          pieces: any; // JSONB array of letter pieces
+          solution: any; // JSONB solution positions
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          category: string;
+          phrase: string;
+          grid: any;
+          pieces: any;
+          solution: any;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          id?: string;
+          category?: string;
+          phrase?: string;
+          grid?: any;
+          pieces?: any;
+          solution?: any;
+          created_at?: string;
+          updated_at?: string;
+        };
+      };
+
+      // Lettered submissions table for tracking individual piece placements
+      lettered_submissions: {
+        Row: {
+          id: string;
+          game_session_id: string;
+          piece_id: string;
+          position: any; // JSONB {row, col} position
+          placed_at: string;
+          score_at_placement: number;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          game_session_id: string;
+          piece_id: string;
+          position: any;
+          placed_at?: string;
+          score_at_placement: number;
+          created_at?: string;
+        };
+        Update: {
+          id?: string;
+          game_session_id?: string;
+          piece_id?: string;
+          position?: any;
+          placed_at?: string;
+          score_at_placement?: number;
+          created_at?: string;
+        };
+      };
+
       // Add more table types as you create them in Supabase
     };
     Views: {
@@ -303,6 +368,16 @@ export type TopXSubmissionUpdate = Database['public']['Tables']['topx_submission
 export type Leaderboard = Database['public']['Tables']['leaderboard']['Row'];
 export type LeaderboardInsert = Database['public']['Tables']['leaderboard']['Insert'];
 export type LeaderboardUpdate = Database['public']['Tables']['leaderboard']['Update'];
+
+export type LetteredGame = Database['public']['Tables']['lettered_games']['Row'];
+export type LetteredGameInsert = Database['public']['Tables']['lettered_games']['Insert'];
+export type LetteredGameUpdate = Database['public']['Tables']['lettered_games']['Update'];
+
+export type LetteredSubmission = Database['public']['Tables']['lettered_submissions']['Row'];
+export type LetteredSubmissionInsert =
+  Database['public']['Tables']['lettered_submissions']['Insert'];
+export type LetteredSubmissionUpdate =
+  Database['public']['Tables']['lettered_submissions']['Update'];
 
 // Auth-related types
 export interface AuthState {
