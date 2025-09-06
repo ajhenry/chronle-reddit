@@ -153,6 +153,7 @@ router.get('/api/lettered/game', async (_req, res): Promise<void> => {
 
 // POST /api/lettered/:gameId/session - Creates or updates a game session with the current grid state
 router.post('/api/lettered/:gameId/session', async (req, res): Promise<void> => {
+  console.log('POST /api/lettered/:gameId/session', { gameId: req.params.gameId, body: req.body });
   try {
     const { gameId } = req.params;
     const { grid, timestamp } = req.body;

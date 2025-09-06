@@ -3,6 +3,16 @@ import type { LetteredGameData, LetterPiece } from '../../shared/types/api';
 import type { DailyGame } from '../../shared/types/supabase';
 import { generateMockGame } from './lettered-game-generator';
 
+const isDevelopment = () => process.env.NODE_ENV === 'development';
+
+const removeSolution = (gameData: LetteredGameData): LetteredGameData => {
+  if (!isDevelopment()) {
+    delete gameData.solution;
+  }
+
+  return gameData;
+};
+
 /**
  * Gets or creates today's daily lettered game
  */
@@ -12,6 +22,7 @@ export async function getOrCreateTodaysLetteredGame(): Promise<{
   error?: string;
   statusCode?: number;
 }> {
+  // We need to remove the solution in our return except for in dev mode
   try {
     // First try to get today's game
     const { data: existingGame, error: fetchError } = await supabase.rpc(
@@ -23,24 +34,24 @@ export async function getOrCreateTodaysLetteredGame(): Promise<{
       return { success: false, error: "Failed to fetch today's game", statusCode: 500 };
     }
 
-    // if (existingGame && existingGame.length > 0) {
-    //   console.log('Lettered game found for today:', { existingGame: existingGame[0] });
-    //   // Game already exists for today
-    //   const dailyGame = existingGame[0];
-    //   const gameData = dailyGame.game_data as LetteredGameData;
+    if (existingGame && existingGame.length > 0) {
+      console.log('Lettered game found for today:', { existingGame: existingGame[0] });
+      // Game already exists for today
+      const dailyGame = existingGame[0];
+      const gameData = dailyGame.game_data as LetteredGameData;
 
-    //   return {
-    //     success: true,
-    //     data: { dailyGame, gameData },
-    //   };
-    // }
+      return {
+        success: true,
+        data: { dailyGame, gameData: removeSolution(gameData) },
+      };
+    }
 
     // No game exists for today, create one
     console.log('No lettered game found for today, creating one...');
 
     // Generate a new game using the server-side generator
     // For now, we'll use a fixed phrase and category - in production this could be randomized
-    const gameData = generateMockGame('movies', 'A CHRISTMAS STORY', 123);
+    const gameData = generateMockGame('movies', 'LETTER', 1234);
 
     // Remove all sessions for the game if they exist
     await supabase.from('game_sessions').delete();
@@ -58,6 +69,7 @@ export async function getOrCreateTodaysLetteredGame(): Promise<{
         cols: gameData.cols,
         pieces: gameData.pieces,
         solution: gameData.solution,
+        solution_hash: gameData.solutionHash,
       })
       .select()
       .single();
@@ -89,7 +101,7 @@ export async function getOrCreateTodaysLetteredGame(): Promise<{
 
     return {
       success: true,
-      data: { dailyGame, gameData },
+      data: { dailyGame, gameData: removeSolution(gameData) },
     };
   } catch (error) {
     console.error('Error in getOrCreateTodaysLetteredGame:', error);

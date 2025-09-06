@@ -165,7 +165,8 @@ export type GridPosition = {
 };
 
 export type GridCell = {
-  letter: string | null; // null for empty cells
+  letter: string | null; // null for empty cells - only sent to client in secure mode
+  isLetter: boolean; // true if cell contains a letter (secure mode)
   isPreFilled: boolean; // true for letters that start on the board
   isSpace: boolean; // true for word boundaries (gray squares)
   isUnused: boolean; // true for cells not part of the phrase (gray squares)
@@ -182,11 +183,12 @@ export type LetteredGameData = {
   id: string;
   category: string;
   phrase: string;
-  grid: GridCell[][]; // 8x8 grid
+  grid: GridCell[][]; // NxM grid
   rows: number;
   cols: number;
   pieces: LetterPiece[];
-  solution: GridPosition[][]; // where each piece should be placed
+  solution?: GridPosition[][]; // where each piece should be placed
+  solutionHash: string; // SHA256 hash of the solution for secure validation
   created_at: string;
   updated_at: string;
 };

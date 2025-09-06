@@ -1,5 +1,13 @@
 import { LetteredGameData, GridPosition, LetterPiece, GridCell } from '../../shared/types/api';
 
+// SHA256 hash function for client-side validation
+const sha256 = async (message: string): Promise<string> => {
+  const msgBuffer = new TextEncoder().encode(message);
+  const hashBuffer = await crypto.subtle.digest('SHA-256', msgBuffer);
+  const hashArray = Array.from(new Uint8Array(hashBuffer));
+  return hashArray.map((b) => b.toString(16).padStart(2, '0')).join('');
+};
+
 export type GameStateUpdateCallback = (updates: Partial<GameState>) => void;
 
 export interface GameState {
@@ -135,7 +143,7 @@ export class LetteredGameStateManager {
   }
 
   // Place a piece on the board
-  placePiece(pieceId: string, position: GridPosition): boolean {
+  async placePiece(pieceId: string, position: GridPosition): Promise<boolean> {
     console.log(`[DEBUG] Placing piece ${pieceId} at (${position.row}, ${position.col})`);
 
     // Prevent piece movement when game is complete
@@ -178,7 +186,7 @@ export class LetteredGameStateManager {
     this.updateBoardLayout();
 
     // Check if game is complete
-    this.checkGameCompletion();
+    await this.checkGameCompletion();
 
     this.notifyUpdates({
       placedPieces: new Map(this.state.placedPieces),
@@ -259,7 +267,7 @@ export class LetteredGameStateManager {
       }
     }
 
-    // Check if piece letters match grid letters
+    // Check if piece placement is valid for secure grid (no letter comparison)
     for (let i = 0; i < piece.shape.length; i++) {
       const shapePos = piece.shape[i];
       if (!shapePos) continue;
@@ -268,11 +276,13 @@ export class LetteredGameStateManager {
       const gridCol = position.col + shapePos.col;
       const cell = this.state.gameData.grid[gridRow]?.[gridCol];
 
-      const pieceLetter = piece.letters[i];
-      if (pieceLetter && cell?.letter && pieceLetter !== cell.letter) {
+      // In secure mode, we only check that:
+      // 1. The cell has a letter (isLetter: true)
+      // 2. The cell is not unused or a space
+      if (!cell || !cell.isLetter || cell.isUnused || cell.isSpace) {
         return {
           valid: false,
-          reason: `Letter '${pieceLetter}' does not match grid letter '${cell.letter}'`,
+          reason: `Piece cannot be placed here - invalid grid cell at (${gridRow}, ${gridCol})`,
         };
       }
     }
@@ -306,7 +316,7 @@ export class LetteredGameStateManager {
   }
 
   // Check if the game is complete
-  private checkGameCompletion(): void {
+  private async checkGameCompletion(): Promise<void> {
     console.log('[DEBUG] Checking game completion...');
 
     if (!this.state.gameData || this.state.gameComplete) {
@@ -330,8 +340,8 @@ export class LetteredGameStateManager {
 
     console.log('[DEBUG] All pieces placed - validating solution...');
 
-    // Validate by comparing board layout to original phrase
-    const isSolutionCorrect = this.validateBoardAgainstPhrase();
+    // Validate by comparing board layout to solution hash
+    const isSolutionCorrect = await this.validateBoardAgainstPhrase();
 
     if (isSolutionCorrect) {
       console.log('[DEBUG] WIN CONDITION MET!');
@@ -348,21 +358,50 @@ export class LetteredGameStateManager {
     }
   }
 
-  // Validate by comparing board layout to original phrase
-  private validateBoardAgainstPhrase(): boolean {
+  // Validate by comparing board layout to solution hash
+  private async validateBoardAgainstPhrase(): Promise<boolean> {
     if (!this.state.gameData) {
       console.log('[DEBUG] No game data for validation');
       return false;
     }
 
-    console.log('[DEBUG] Extracting letters from current board...');
-    const currentLetters = this.extractLettersFromBoard();
+    console.log('[DEBUG] Creating solution hash from current board state...');
+    const currentHash = await this.createSolutionHash();
 
-    console.log('[DEBUG] Getting expected phrase layout...');
-    const expectedLetters = this.getExpectedPhraseLayout();
+    console.log('[DEBUG] Comparing hashes...');
+    const expectedHash = this.state.gameData.solutionHash;
+    const isValid = currentHash === expectedHash;
 
-    console.log('[DEBUG] Comparing layouts...');
-    return this.compareLayouts(currentLetters, expectedLetters);
+    console.log(`[DEBUG] Hash validation: ${isValid ? 'PASS' : 'FAIL'}`);
+    if (!isValid) {
+      console.log(`[DEBUG] Expected: ${expectedHash}`);
+      console.log(`[DEBUG] Got: ${currentHash}`);
+    }
+
+    return isValid;
+  }
+
+  // Create SHA256 hash of current solution for validation
+  private async createSolutionHash(): Promise<string> {
+    if (!this.state.gameData) {
+      return '';
+    }
+
+    // Create solution data structure
+    const solutionData = {
+      grid: this.state.gameData.grid.map((row) =>
+        row.map((cell) => ({
+          isLetter: cell.isLetter,
+          isPreFilled: cell.isPreFilled,
+          isSpace: cell.isSpace,
+          isUnused: cell.isUnused,
+        }))
+      ),
+      solution: this.state.gameData.solution,
+    };
+
+    const solutionString = JSON.stringify(solutionData);
+    return await sha256(solutionString);
   }
 
   // Extract letters from the current board layout

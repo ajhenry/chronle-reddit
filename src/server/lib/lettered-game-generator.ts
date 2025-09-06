@@ -1,21 +1,22 @@
 import type { GridCell, GridPosition, LetterPiece, LetteredGameData } from '../../shared/types/api';
+import { createHash } from 'crypto';
 
 // Intermediate GridCell type for piece generation with skipped tracking
 type GenerationGridCell = GridCell & {
   isSkipped: boolean; // true for letters that failed piece generation but should be handled by stranded cleanup
 };
 
-// Available colors for tetris pieces
-const PIECE_COLORS = [
-  '#EF4444', // red
-  '#F97316', // orange
-  '#F59E0B', // amber
-  '#84CC16', // lime
-  '#10B981', // emerald
-  '#06B6D4', // cyan
-  '#3B82F6', // blue
-  '#8B5CF6', // violet
-  '#EC4899', // pink
+// Available color classes for tetris pieces
+const PIECE_COLOR_CLASSES = [
+  'piece-color-red',
+  'piece-color-orange',
+  'piece-color-amber',
+  'piece-color-lime',
+  'piece-color-emerald',
+  'piece-color-cyan',
+  'piece-color-blue',
+  'piece-color-violet',
+  'piece-color-pink',
 ];
 
 // Create an empty 8x8 grid
@@ -27,6 +28,7 @@ export const createEmptyGrid = (): GridCell[][] => {
         .fill(null)
         .map(() => ({
           letter: null,
+          isLetter: false,
           isPreFilled: false,
           isSpace: false,
           isUnused: true, // Start with all unused, will be updated when placing phrase
@@ -92,6 +94,7 @@ export const create9x9Grid = (): GridCell[][] => {
         .fill(null)
         .map(() => ({
           letter: null,
+          isLetter: false,
           isPreFilled: false,
           isSpace: false,
           isUnused: true, // Start with all unused, will be updated when placing phrase
@@ -171,6 +174,7 @@ const createBalancedPhraseLayout = (grid: GridCell[][], words: string[]): GridCe
           const spaceCell = newGrid[currentRow]?.[col];
           if (spaceCell) {
             spaceCell.letter = null;
+            spaceCell.isLetter = false;
             spaceCell.isPreFilled = false;
             spaceCell.isSpace = true;
             spaceCell.isUnused = false;
@@ -182,6 +186,7 @@ const createBalancedPhraseLayout = (grid: GridCell[][], words: string[]): GridCe
           const cell = newGrid[currentRow]?.[col];
           if (cell) {
             cell.letter = char;
+            cell.isLetter = true;
             cell.isPreFilled = false;
             cell.isSpace = false;
             cell.isUnused = false;
@@ -350,6 +355,7 @@ const createBalancedLayout = (
     for (let col = 0; col < targetWidth; col++) {
       gridRow.push({
         letter: null,
+        isLetter: false,
         isPreFilled: false,
         isSpace: false,
         isUnused: true,
@@ -374,6 +380,7 @@ const createBalancedLayout = (
 
       if (sourceCell && targetCell) {
         targetCell.letter = sourceCell.letter;
+        targetCell.isLetter = sourceCell.isLetter;
         targetCell.isPreFilled = sourceCell.isPreFilled;
         targetCell.isSpace = sourceCell.isSpace;
         targetCell.isUnused = sourceCell.isUnused;
@@ -425,13 +432,36 @@ export const generateLetterPieces = (grid: GridCell[][], seed?: number): LetterP
   return pieces;
 };
 
-// Simple seeded random number generator
+// Enhanced seeded random number generator with better entropy
 const seededRandom = (seed: number) => {
   let x = Math.sin(seed) * 10000;
+  let y = Math.cos(seed + 1) * 10000;
+  let z = Math.tan(seed + 2) * 10000;
+
   return () => {
-    x = Math.sin(x) * 10000;
-    return x - Math.floor(x);
+    // Use multiple mathematical operations for better randomness
+    x = Math.sin(x + y) * 10000;
+    y = Math.cos(y + z) * 10000;
+    z = Math.tan(z + x) * 10000;
+
+    // Combine multiple sources of entropy
+    const combined = x - Math.floor(x) + (y - Math.floor(y)) + (z - Math.floor(z));
+    return combined / 3 - Math.floor(combined / 3);
   };
+};
+
+// Enhanced shuffle with multiple randomization passes
+const shuffleArray = <T>(array: T[], random: () => number): void => {
+  // Multiple shuffle passes for better randomization
+  for (let pass = 0; pass < 3; pass++) {
+    // Fisher-Yates shuffle algorithm with seeded random
+    for (let i = array.length - 1; i > 0; i--) {
+      const j = Math.floor(random() * (i + 1));
+      const temp = array[i];
+      array[i] = array[j]!;
+      array[j] = temp!;
+    }
+  }
 };
 
 // Generate pieces using the new scanner algorithm from lettered.md
@@ -458,12 +488,16 @@ const generatePiecesWithNewAlgorithm = (
       `🔄 Piece generation round: ${usedLetters.size}/${availableLetters.length} letters used, ${pieces.length} pieces created`
     );
 
-    // Step 1: Pick a random number 2-6 for piece size
-    const pieceSize = Math.floor(random() * 5) + 2; // 2-6
-    console.log(`🎯 Starting new piece with target size: ${pieceSize}`);
+    // Step 1: Pick a random number 2-6 for piece size with some variation
+    const baseSize = Math.floor(random() * 5) + 2; // 2-6
+    const sizeVariation = Math.floor(random() * 3) - 1; // -1, 0, or 1
+    const pieceSize = Math.max(2, Math.min(6, baseSize + sizeVariation)); // Keep within 2-6 range
+    console.log(
+      `🎯 Starting new piece with target size: ${pieceSize} (base: ${baseSize}, variation: ${sizeVariation})`
+    );
 
     // Step 2: Find next available letter using scanner from top-left
-    const startingLetter = findNextAvailableLetterWithScanner(usedLetters, grid);
+    const startingLetter = findNextAvailableLetterWithScanner(usedLetters, grid, random);
     if (!startingLetter) {
       console.log(`⏹️ No more available letters found. Stopping generation.`);
       break;
@@ -524,15 +558,26 @@ const generatePiecesWithNewAlgorithm = (
     console.log(`⚠️ Letter count mismatch: used ${usedLetters.size}/${availableLetters.length}`);
   }
 
+  // Shuffle the pieces using the same seeded RNG for reproducibility
+  if (seed !== undefined) {
+    const random = seededRandom(seed + 12345); // Use a different seed offset for shuffling
+    shuffleArray(pieces, random);
+    console.log(`🔀 Shuffled ${pieces.length} pieces for better randomization`);
+  }
+
   return pieces;
 };
 
 // Find next available letter using scanner from top-left (Step 2)
 const findNextAvailableLetterWithScanner = (
   usedLetters: Set<string>,
-  grid: GenerationGridCell[][]
+  grid: GenerationGridCell[][],
+  random?: () => number
 ): { letter: string; position: GridPosition } | null => {
   console.log(`🔍 Scanner: Finding next available letter`);
+
+  // Collect all available letters
+  const availableLetters: Array<{ letter: string; position: GridPosition }> = [];
 
   // Scan from top-left to bottom-right
   for (let row = 0; row < grid.length; row++) {
@@ -548,17 +593,27 @@ const findNextAvailableLetterWithScanner = (
 
       // Check if this position has a letter (any letter, not just available ones)
       if (cell?.letter && !cell.isUnused && !cell.isSpace) {
-        console.log(`✅ Scanner found available letter: ${cell.letter} at (${row},${col})`);
-        return {
+        availableLetters.push({
           letter: cell.letter,
           position: { row, col },
-        };
+        });
       }
     }
   }
 
-  console.log(`❌ Scanner found no available letters`);
-  return null;
+  if (availableLetters.length === 0) {
+    console.log(`❌ Scanner found no available letters`);
+    return null;
+  }
+
+  // Pick a random available letter for more randomness
+  const randomIndex = random ? Math.floor(random() * availableLetters.length) : 0;
+  const selectedLetter = availableLetters[randomIndex];
+
+  console.log(
+    `✅ Scanner found ${availableLetters.length} available letters, picked: ${selectedLetter!.letter} at (${selectedLetter!.position.row},${selectedLetter!.position.col})`
+  );
+  return selectedLetter!;
 };
 
 // Build piece by randomly selecting adjacent directions (Steps 3-7)
@@ -646,7 +701,8 @@ const buildPieceWithRandomDirections = (
     id: `piece-${Date.now()}-${random().toString(36).substr(2, 9)}`,
     letters: pieceLetters,
     shape,
-    color: PIECE_COLORS[Math.floor(random() * PIECE_COLORS.length)] || '#EF4444',
+    color:
+      PIECE_COLOR_CLASSES[Math.floor(random() * PIECE_COLOR_CLASSES.length)] || 'piece-color-red',
   };
 
   console.log(
@@ -946,101 +1002,88 @@ const handleStrandedPieces = (
         `🔗 Connecting stranded ${strandedLetter.letter} to piece "${adjacentPiece.letters.join('')}"`
       );
 
-      // Store the old piece name for updating the mapping
-      const oldPieceName = adjacentPiece.letters.join('');
-
-      adjacentPiece.letters.push(strandedLetter.letter);
-
-      // Update position mapping for all positions that belong to this piece
-      // Find all positions that were mapped to the old piece name and update them
-      for (const [posKey, piece] of positionToPiece) {
-        if (piece.letters.join('') === oldPieceName) {
-          positionToPiece.set(posKey, adjacentPiece);
-        }
-      }
-
-      // Also add the new position to the mapping
-      positionToPiece.set(
-        `${strandedLetter.position.row},${strandedLetter.position.col}`,
-        adjacentPiece
-      );
-
-      // Calculate the correct relative position for the stranded letter
-      // We need to find where this piece is positioned on the grid
+      // Find the correct offset for the adjacent piece by using the position-to-piece mapping
       let pieceOffsetRow = 0;
       let pieceOffsetCol = 0;
+      let foundOffset = false;
 
-      // Find the grid offset by checking which positions this piece occupies
-      if (adjacentPiece.shape.length > 0) {
-        // Use the neighbor position we found to calculate the offset
-        for (const direction of [
-          { row: -1, col: 0 },
-          { row: 1, col: 0 },
-          { row: 0, col: -1 },
-          { row: 0, col: 1 },
-        ]) {
-          const neighborPos = {
-            row: strandedLetter.position.row + direction.row,
-            col: strandedLetter.position.col + direction.col,
-          };
-          const neighborKey = `${neighborPos.row},${neighborPos.col}`;
+      // Find one position that belongs to the adjacent piece
+      for (const [posKey, piece] of positionToPiece) {
+        if (piece === adjacentPiece) {
+          const parts = posKey.split(',');
+          const rowStr = parts[0];
+          const colStr = parts[1];
+          if (!rowStr || !colStr) continue;
+          const row = parseInt(rowStr);
+          const col = parseInt(colStr);
 
-          if (usedLetters.has(neighborKey)) {
-            // This is the adjacent position - find which shape position it corresponds to
-            for (let shapeIndex = 0; shapeIndex < adjacentPiece.shape.length; shapeIndex++) {
-              const shapePos = adjacentPiece.shape[shapeIndex];
-              if (!shapePos) continue;
+          // Find which shape position corresponds to this grid position
+          for (const shapePos of adjacentPiece.shape) {
+            const testOffsetRow = row - shapePos.row;
+            const testOffsetCol = col - shapePos.col;
 
-              // Try this shape position as the anchor for the neighbor
-              const testOffsetRow = neighborPos.row - shapePos.row;
-              const testOffsetCol = neighborPos.col - shapePos.col;
+            // Verify this offset works for all positions of the piece
+            let offsetValid = true;
+            for (const testShapePos of adjacentPiece.shape) {
+              const expectedRow = testOffsetRow + testShapePos.row;
+              const expectedCol = testOffsetCol + testShapePos.col;
+              const expectedKey = `${expectedRow},${expectedCol}`;
 
-              // Verify this offset works for the entire piece
-              let offsetValid = true;
-              for (const testShapePos of adjacentPiece.shape) {
-                const expectedRow = testOffsetRow + testShapePos.row;
-                const expectedCol = testOffsetCol + testShapePos.col;
-                const expectedKey = `${expectedRow},${expectedCol}`;
-
-                if (!usedLetters.has(expectedKey)) {
-                  offsetValid = false;
-                  break;
-                }
-              }
-
-              if (offsetValid) {
-                pieceOffsetRow = testOffsetRow;
-                pieceOffsetCol = testOffsetCol;
+              if (positionToPiece.get(expectedKey) !== adjacentPiece) {
+                offsetValid = false;
                 break;
               }
             }
-            break;
+
+            if (offsetValid) {
+              pieceOffsetRow = testOffsetRow;
+              pieceOffsetCol = testOffsetCol;
+              foundOffset = true;
+              break;
+            }
           }
+
+          if (foundOffset) break;
         }
       }
 
-      // Calculate the relative position of the stranded letter
-      const relativeRow = strandedLetter.position.row - pieceOffsetRow;
-      const relativeCol = strandedLetter.position.col - pieceOffsetCol;
+      if (!foundOffset) {
+        console.log(`❌ Could not find valid offset for piece ${adjacentPiece.letters.join('')}`);
+      } else {
+        // Calculate the relative position of the stranded letter
+        const relativeRow = strandedLetter.position.row - pieceOffsetRow;
+        const relativeCol = strandedLetter.position.col - pieceOffsetCol;
 
-      // Add the stranded letter at its correct relative position
-      adjacentPiece.shape.push({ row: relativeRow, col: relativeCol });
+        console.log(`📍 Piece offset: (${pieceOffsetRow},${pieceOffsetCol})`);
+        console.log(`📍 Stranded letter relative position: (${relativeRow},${relativeCol})`);
 
-      // Re-normalize the shape to ensure min row/col are 0
-      const minRow = Math.min(...adjacentPiece.shape.map((pos) => pos.row));
-      const minCol = Math.min(...adjacentPiece.shape.map((pos) => pos.col));
-      adjacentPiece.shape = adjacentPiece.shape.map((pos) => ({
-        row: pos.row - minRow,
-        col: pos.col - minCol,
-      }));
+        // Add the stranded letter to the piece
+        adjacentPiece.letters.push(strandedLetter.letter);
+        adjacentPiece.shape.push({ row: relativeRow, col: relativeCol });
 
-      usedLetters.add(`${strandedLetter.position.row},${strandedLetter.position.col}`);
+        // Re-normalize the shape to ensure min row/col are 0
+        const minRow = Math.min(...adjacentPiece.shape.map((pos) => pos.row));
+        const minCol = Math.min(...adjacentPiece.shape.map((pos) => pos.col));
+        adjacentPiece.shape = adjacentPiece.shape.map((pos) => ({
+          row: pos.row - minRow,
+          col: pos.col - minCol,
+        }));
 
-      console.log(`📍 Updated mapping after adding ${strandedLetter.letter}:`);
-      for (const [pos, piece] of positionToPiece) {
-        if (piece === adjacentPiece) {
-          console.log(`  ${pos} -> ${piece.letters.join('')}`);
-        }
+        // Update the used letters set
+        usedLetters.add(`${strandedLetter.position.row},${strandedLetter.position.col}`);
+
+        // Update the position-to-piece mapping
+        positionToPiece.set(
+          `${strandedLetter.position.row},${strandedLetter.position.col}`,
+          adjacentPiece
+        );
+
+        console.log(
+          `✅ Successfully added ${strandedLetter.letter} to piece "${adjacentPiece.letters.join('')}"`
+        );
+        console.log(
+          `📍 Final shape: ${adjacentPiece.shape.map((pos) => `(${pos.row},${pos.col})`).join(' ')}`
+        );
       }
     } else {
       // Create new piece if no suitable piece found
@@ -1049,7 +1092,9 @@ const handleStrandedPieces = (
         id: `piece-${Date.now()}-${random().toString(36).substr(2, 9)}`,
         letters: [strandedLetter.letter],
         shape: [{ row: 0, col: 0 }],
-        color: PIECE_COLORS[Math.floor(random() * PIECE_COLORS.length)] || '#EF4444',
+        color:
+          PIECE_COLOR_CLASSES[Math.floor(random() * PIECE_COLOR_CLASSES.length)] ||
+          'piece-color-red',
       };
       pieces.push(singlePiece);
       usedLetters.add(`${strandedLetter.position.row},${strandedLetter.position.col}`);
@@ -1491,7 +1536,9 @@ const generateSinglePieceWithBacktracking = (
     id: `piece-${Date.now()}`, // Temporary ID
     letters: pieceLetters,
     shape,
-    color: PIECE_COLORS[Math.floor(Math.random() * PIECE_COLORS.length)] || '#EF4444',
+    color:
+      PIECE_COLOR_CLASSES[Math.floor(Math.random() * PIECE_COLOR_CLASSES.length)] ||
+      'piece-color-red',
   };
 
   console.log(
@@ -1606,7 +1653,7 @@ const createFallbackPieces = (
       id: `piece-${pieces.length + 1}`,
       letters: pieceLetters,
       shape,
-      color: PIECE_COLORS[pieces.length % PIECE_COLORS.length] || '#EF4444',
+      color: PIECE_COLOR_CLASSES[pieces.length % PIECE_COLOR_CLASSES.length] || 'piece-color-red',
     };
 
     pieces.push(newPiece);
@@ -2168,15 +2215,20 @@ export const generateMockGame = (
 
     console.log('\n✅ Game generation complete!\n');
 
+    // Create secure grid and solution hash
+    const secureGrid = createSecureGrid(trimmedGrid);
+    const solutionHash = generateSolutionHash(trimmedGrid);
+
     return {
       id: 'mock-game-1',
       category,
       phrase,
-      grid: trimmedGrid,
+      grid: secureGrid,
       rows: trimmedGrid.length,
       cols: trimmedGrid[0]?.length || 0,
       pieces,
       solution,
+      solutionHash,
       created_at: new Date().toISOString(),
       updated_at: new Date().toISOString(),
     };
@@ -2186,6 +2238,35 @@ export const generateMockGame = (
     console.log('Falling back to simple game generation...');
     return generateFallbackGame(category, phrase);
   }
+};
+
+// Convert grid to secure format (remove non-pre-filled letters, keep isLetter)
+export const createSecureGrid = (grid: GridCell[][]): GridCell[][] => {
+  return grid.map((row) =>
+    row.map((cell) => ({
+      ...cell,
+      letter: cell.isPreFilled ? cell.letter : null, // Keep pre-filled letters, remove others for security
+    }))
+  );
+};
+
+// Generate SHA256 hash of the filled-in grid with letters
+export const generateSolutionHash = (grid: GridCell[][]): string => {
+  // Create a JSON representation of the 2D grid with letters filled in
+  const filledGridJson = JSON.stringify(
+    grid.map((row) =>
+      row.map((cell) => ({
+        letter: cell.letter,
+        isLetter: cell.isLetter,
+        isPreFilled: cell.isPreFilled,
+        isSpace: cell.isSpace,
+        isUnused: cell.isUnused,
+      }))
+    )
+  );
+
+  // Generate SHA256 hash
+  return createHash('sha256').update(filledGridJson).digest('hex');
 };
 
 // Fallback game with a simpler layout
@@ -2202,6 +2283,7 @@ const generateFallbackGame = (category: string, phrase: string): LetteredGameDat
       if (currentCol < 8 && grid[currentRow]?.[currentCol]) {
         grid[currentRow][currentCol] = {
           letter: word[i] || null,
+          isLetter: true,
           isPreFilled: i % 3 === 0, // Every 3rd letter is pre-filled
           isSpace: false,
           isUnused: false,
@@ -2213,6 +2295,7 @@ const generateFallbackGame = (category: string, phrase: string): LetteredGameDat
     if (currentCol < 8 && grid[currentRow]?.[currentCol]) {
       grid[currentRow][currentCol] = {
         letter: null,
+        isLetter: false,
         isPreFilled: false,
         isSpace: true,
         isUnused: false,
@@ -2224,15 +2307,20 @@ const generateFallbackGame = (category: string, phrase: string): LetteredGameDat
   const pieces = generateLetterPieces(grid);
   const solution = generateSolutionPositions(pieces, grid);
 
+  // Create secure grid and solution hash
+  const secureGrid = createSecureGrid(grid);
+  const solutionHash = generateSolutionHash(grid);
+
   return {
     id: 'fallback-game-1',
     category,
     phrase,
-    grid,
+    grid: secureGrid,
     rows: 8,
     cols: 8,
     pieces,
     solution,
+    solutionHash,
     created_at: new Date().toISOString(),
     updated_at: new Date().toISOString(),
   };

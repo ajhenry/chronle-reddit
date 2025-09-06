@@ -323,8 +323,11 @@ export const LetteredPage = ({ onBack }: { onBack?: () => void }) => {
         category: apiGameData.category,
         phrase: apiGameData.phrase,
         grid: apiGameData.grid,
+        rows: apiGameData.grid.length,
+        cols: apiGameData.grid[0]?.length || 0,
         pieces: apiGameData.pieces,
         solution: apiGameData.solution,
+        solutionHash: apiGameData.solutionHash,
         created_at: apiGameData.created_at,
         updated_at: apiGameData.updated_at,
       };
@@ -341,7 +344,7 @@ export const LetteredPage = ({ onBack }: { onBack?: () => void }) => {
 
           // Place pieces from the session data
           for (const placedPiece of apiSessionData.placedPieces) {
-            gameStateManagerRef.current.placePiece(placedPiece.pieceId, placedPiece.position);
+            await gameStateManagerRef.current.placePiece(placedPiece.pieceId, placedPiece.position);
           }
 
           // Update the score to match the session
@@ -409,7 +412,7 @@ export const LetteredPage = ({ onBack }: { onBack?: () => void }) => {
 
   // Handle layout changes from the grid
   const handleGridLayoutChange = useCallback(
-    (layout: (string | null)[][]) => {
+    async (layout: (string | null)[][]) => {
       if (!gameData || !gameStateManagerRef.current) return;
 
       // Convert layout to piece positions
@@ -440,7 +443,7 @@ export const LetteredPage = ({ onBack }: { onBack?: () => void }) => {
           currentPosition.row !== newPosition.row ||
           currentPosition.col !== newPosition.col
         ) {
-          gameStateManagerRef.current.placePiece(pieceId, newPosition);
+          await gameStateManagerRef.current.placePiece(pieceId, newPosition);
         }
       }
 
@@ -468,14 +471,14 @@ export const LetteredPage = ({ onBack }: { onBack?: () => void }) => {
   };
 
   // Development functions
-  const forceGameWin = () => {
+  const forceGameWin = async () => {
     if (!gameData || !gameStateManagerRef.current) return;
 
     // Place all pieces in valid positions (simplified for testing)
-    gameData.pieces.forEach((piece, index) => {
+    for (const [index, piece] of gameData.pieces.entries()) {
       // Simple placement for testing - place pieces in a row
-      gameStateManagerRef.current!.placePiece(piece.id, { row: index, col: 0 });
-    });
+      await gameStateManagerRef.current.placePiece(piece.id, { row: index, col: 0 });
+    }
   };
 
   const boardTileClass = (x: number, y: number) => {
@@ -505,8 +508,8 @@ export const LetteredPage = ({ onBack }: { onBack?: () => void }) => {
   };
 
   const pieceTileClass = (piece: LetterPiece) => {
-    const baseClass = 'bg-card hover:bg-accent text-card-foreground transition-colors';
-    return cn(baseClass, `bg-[${piece.color}]`);
+    const baseClass = 'text-card-foreground transition-colors';
+    return cn(baseClass, piece.color);
   };
 
   // Enhanced version that accepts additional classes

@@ -1,9 +1,9 @@
-import { generateMockGame, printBoardWithPieces } from './src/server/lib/lettered-game-generator';
+import { generateMockGame, printBoard } from './src/server/lib/lettered-game-generator';
 
 // Test the board printing functionality
 console.log('Testing board printing with various phrases...\n');
 
-const testPhrases = ['CHEESE', 'BOOKKEEPER', 'COMMITTEE', 'LETTER'];
+const testPhrases = ['BREAK A LEG OUT THERE'];
 
 for (const phrase of testPhrases) {
   try {
@@ -11,10 +11,16 @@ for (const phrase of testPhrases) {
     console.log(`Testing phrase: "${phrase}"`);
     console.log(`${'='.repeat(60)}\n`);
 
-    const gameData = generateMockGame('test', phrase, 12345); // Use a fixed seed for reproducible results
+    const gameData = generateMockGame('test', phrase, 123); // Use a fixed seed for reproducible results
 
-    // Print the board with pieces overlaid
-    printBoardWithPieces(gameData.grid, gameData.pieces, `Board with Pieces - "${phrase}"`);
+    // Print the board
+    printBoard(gameData.grid, `Board - "${phrase}"`);
+
+    // Print piece information
+    console.log(`\nGenerated ${gameData.pieces.length} pieces:`);
+    gameData.pieces.forEach((piece, i) => {
+      console.log(`  Piece ${i + 1}: "${piece.letters.join('')}" (${piece.shape.length} letters)`);
+    });
   } catch (error) {
     console.error(`Error with phrase "${phrase}":`, error);
   }

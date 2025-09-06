@@ -248,3 +248,40 @@ body {
   position: relative;
   z-index: 10;
 }
+
+/* Piece color classes for lettered game pieces */
+.piece-color-red {
+  background-color: #ef4444;
+}
+
+.piece-color-orange {
+  background-color: #f97316;
+}
+
+.piece-color-amber {
+  background-color: #f59e0b;
+}
+
+.piece-color-lime {
+  background-color: #84cc16;
+}
+
+.piece-color-emerald {
+  background-color: #10b981;
+}
+
+.piece-color-cyan {
+  background-color: #06b6d4;
+}
+
+.piece-color-blue {
+  background-color: #3b82f6;
+}
+
+.piece-color-violet {
+  background-color: #8b5cf6;
+}
+
+.piece-color-pink {
+  background-color: #ec4899;
+}

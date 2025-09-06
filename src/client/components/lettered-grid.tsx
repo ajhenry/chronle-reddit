@@ -171,19 +171,25 @@ export const LetteredGrid: React.FC<LetteredGridProps> = ({
       // Handle placed pieces - check if current cell is covered by any placed piece
       const placedCellKey = `${rowIndex}-${colIndex}`;
       let isPlaced = false;
-      for (const [, cellSet] of placedPiecePositions.entries()) {
+      let pieceColorClass = '';
+      for (const [pieceId, cellSet] of placedPiecePositions.entries()) {
         if (cellSet.has(placedCellKey)) {
           isPlaced = true;
+          const piece = pieces.find((p) => p.id === pieceId);
+          if (piece?.color) {
+            pieceColorClass = piece.color;
+          }
           break;
         }
       }
       if (isPlaced) {
-        return `${baseClasses} text-black dark:text-black border-black dark:border-gray-600`;
+        return `${baseClasses} text-black dark:text-black border-black dark:border-gray-600 ${pieceColorClass}`;
       }
 
       // Handle preview piece - check if current cell is covered by the preview piece
       if (previewPiecePositions.has(placedCellKey)) {
-        return `${baseClasses} text-black dark:text-black border-black dark:border-gray-600`;
+        const previewColorClass = previewPiece?.color || '';
+        return `${baseClasses} text-black dark:text-black border-black dark:border-gray-600 ${previewColorClass}`;
       }
 
       // Cell type styling with touch feedback
@@ -195,7 +201,7 @@ export const LetteredGrid: React.FC<LetteredGridProps> = ({
         return `${baseClasses} bg-gray-100 dark:bg-gray-700 border-black dark:border-gray-600 transition-colors duration-75`;
       }
 
-      if (cell.letter) {
+      if (cell.isLetter) {
         if (cell.pieceColor) {
           // Piece is placed here
           return `${baseClasses} text-black dark:text-black border-black dark:border-gray-600`;
@@ -281,14 +287,13 @@ export const LetteredGrid: React.FC<LetteredGridProps> = ({
 
   const getCellStyle = useMemo(
     () => (_cell: GridCell & { pieceColor?: string }, rowIndex: number, colIndex: number) => {
-      // Check if current cell is covered by any placed piece and get its neo brutalism color
+      // Check if current cell is covered by any placed piece
       const cellKey = `${rowIndex}-${colIndex}`;
       for (const [pieceId, cellSet] of placedPiecePositions.entries()) {
         if (cellSet.has(cellKey)) {
           const piece = pieces.find((p) => p.id === pieceId);
           if (piece) {
             return {
-              backgroundColor: `var(--chart-${(piece.id.charCodeAt(piece.id.length - 1) % 5) + 1})`,
               color: 'black',
             };
           }
@@ -298,7 +303,6 @@ export const LetteredGrid: React.FC<LetteredGridProps> = ({
       // Check if current cell is covered by the preview piece
       if (previewPiecePositions.has(cellKey) && previewPiece) {
         return {
-          backgroundColor: `var(--chart-${(previewPiece.id.charCodeAt(previewPiece.id.length - 1) % 5) + 1})`,
           color: 'black',
         };
       }

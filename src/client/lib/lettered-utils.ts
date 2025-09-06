@@ -60,10 +60,16 @@ export const isValidPiecePlacement = (
     const gridCol = position.col + shapePos.col;
     const cell = grid[gridRow]?.[gridCol];
 
-    // The piece letter should match the grid letter
+    // In secure mode: check letter match for pre-filled cells, just presence for others
     const pieceLetter = piece.letters[i];
-    if (pieceLetter && cell?.letter && pieceLetter !== cell.letter) {
-      return false;
+    if (cell?.isPreFilled && pieceLetter && cell?.letter && pieceLetter !== cell.letter) {
+      return false; // Pre-filled cells must match exactly
+    } else if (
+      !cell?.isPreFilled &&
+      pieceLetter &&
+      (!cell?.isLetter || cell?.isSpace || cell?.isUnused)
+    ) {
+      return false; // Non-pre-filled cells must have letters and be valid
     }
   }
 
