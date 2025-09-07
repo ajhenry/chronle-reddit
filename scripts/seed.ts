@@ -23,7 +23,7 @@ const GAME_DATA = [
   {
     category: 'books',
     phrases: [
-      'TO KILL A MOCKINGBIRD',
+      'TO KILL A MOCKING BIRD',
       'THE GREAT GATSBY',
       'PRIDE AND PREJUDICE',
       'THE CATCHER IN THE RYE',
@@ -31,8 +31,8 @@ const GAME_DATA = [
       'BRAVE NEW WORLD',
       'THE HOBBIT',
       'THE LITTLE PRINCE',
-      'ALICE IN WONDERLAND',
-      'THE CHRONICLES OF NARNIA',
+      'ALICE IN WONDER LAND',
+      'THE CHRONICLE OF NARNIA',
     ],
   },
   {
@@ -56,12 +56,12 @@ const GAME_DATA = [
       'SUPER BOWL CHAMPIONS',
       'WORLD CUP WINNERS',
       'OLYMPIC GAMES',
-      'NBA CHAMPIONSHIP',
+      'NBA CHAMPIONS',
       'SOCCER WORLD CUP',
       'TENNIS GRAND SLAM',
       'FORMULA ONE RACING',
       'NFL FOOTBALL',
-      'BASKETBALL NBA',
+      'NBA BASKETBALL',
       'SWIMMING OLYMPICS',
     ],
   },
@@ -72,7 +72,7 @@ const GAME_DATA = [
       'CHOCOLATE CHIP COOKIES',
       'NEW YORK STYLE PIZZA',
       'FRENCH ONION SOUP',
-      'CALIFORNIA ROLL SUSHI',
+      'CALI ROLL SUSHI',
       'BELGIAN WAFFLES',
       'TEXAS BARBECUE',
       'ITALIAN PASTA CARBONARA',
@@ -126,6 +126,7 @@ async function seedLetteredGames() {
             rows: gameData.rows,
             cols: gameData.cols,
             pieces: gameData.pieces,
+            initial_piece_positions: gameData.initialPiecePositions,
             solution: gameData.solution,
             solution_hash: gameData.solutionHash,
           })
@@ -141,6 +142,12 @@ async function seedLetteredGames() {
         }
       } catch (error) {
         console.error(`  ❌ Error generating game for "${phrase}":`, error);
+
+        // If it's a word length validation error, provide helpful guidance
+        if (error instanceof Error && error.message.includes('Words cannot be longer than')) {
+          console.error(`     💡 Tip: Split long words or choose shorter alternatives`);
+        }
+
         errorCount++;
       }
     }

@@ -230,44 +230,51 @@ export class LetteredGameStateManager {
       return { valid: false, reason: 'No game data available' };
     }
 
-    // Check if position is within bounds
-    if (position.row < 0 || position.row >= 8 || position.col < 0 || position.col >= 8) {
-      return { valid: false, reason: 'Position is out of bounds' };
-    }
+    // Allow placements outside the main 8x8 grid (extended area for piece storage)
+    // Only validate conflicts and invalid cells for areas within the main game grid
 
-    // Check bounds and validity
+    // Check bounds and validity for each cell that would be occupied by the piece
     for (const shapePos of piece.shape) {
       const gridRow = position.row + shapePos.row;
       const gridCol = position.col + shapePos.col;
 
-      if (gridRow < 0 || gridRow >= 8 || gridCol < 0 || gridCol >= 8) {
-        return { valid: false, reason: 'Piece extends outside the game board' };
-      }
+      // If this cell is within the main game grid (NxM), validate it
+      console.log(
+        `[DEBUG] Validating cell (${gridRow}, ${gridCol}) in main game grid (${this.state.gameData.rows}x${this.state.gameData.cols})`
+      );
+      if (
+        gridRow >= 0 &&
+        gridRow < this.state.gameData.rows &&
+        gridCol >= 0 &&
+        gridCol < this.state.gameData.cols
+      ) {
+        const cell = this.state.gameData.grid[gridRow]?.[gridCol];
 
-      const cell = this.state.gameData.grid[gridRow]?.[gridCol];
-      if (!cell || cell.isUnused || cell.isSpace) {
-        return { valid: false, reason: 'Piece overlaps with invalid or empty grid cells' };
-      }
+        if (!cell) {
+          return { valid: false, reason: 'Piece overlaps with invalid or empty grid cells' };
+        }
 
-      // Check if position conflicts with other placed pieces
-      for (const [placedPieceId, placedPosition] of this.state.placedPieces.entries()) {
-        if (placedPieceId === piece.id) continue; // Skip self
+        // Check if position conflicts with other placed pieces in the main game area
+        for (const [placedPieceId, placedPosition] of this.state.placedPieces.entries()) {
+          if (placedPieceId === piece.id) continue; // Skip self
 
-        const placedPiece = this.state.gameData.pieces.find((p) => p.id === placedPieceId);
-        if (!placedPiece) continue;
+          const placedPiece = this.state.gameData.pieces.find((p) => p.id === placedPieceId);
+          if (!placedPiece) continue;
 
-        for (const placedShapePos of placedPiece.shape) {
-          const placedGridRow = placedPosition.row + placedShapePos.row;
-          const placedGridCol = placedPosition.col + placedShapePos.col;
+          for (const placedShapePos of placedPiece.shape) {
+            const placedGridRow = placedPosition.row + placedShapePos.row;
+            const placedGridCol = placedPosition.col + placedShapePos.col;
 
-          if (placedGridRow === gridRow && placedGridCol === gridCol) {
-            return { valid: false, reason: 'Piece overlaps with another placed piece' };
+            if (placedGridRow === gridRow && placedGridCol === gridCol) {
+              return { valid: false, reason: 'Piece overlaps with another placed piece' };
+            }
           }
         }
       }
+      // If outside main grid, allow placement (extended storage area)
     }
 
-    // Check if piece placement is valid for secure grid (no letter comparison)
+    // Additional validation for secure grid mode - only check cells within the main game area
     for (let i = 0; i < piece.shape.length; i++) {
       const shapePos = piece.shape[i];
       if (!shapePos) continue;
@@ -276,10 +283,8 @@ export class LetteredGameStateManager {
       const gridCol = position.col + shapePos.col;
       const cell = this.state.gameData.grid[gridRow]?.[gridCol];
 
-      // In secure mode, we only check that:
-      // 1. The cell has a letter (isLetter: true)
-      // 2. The cell is not unused or a space
-      if (!cell || !cell.isLetter || cell.isUnused || cell.isSpace) {
+      // In secure mode, we allow all
+      if (!cell) {
         return {
           valid: false,
           reason: `Piece cannot be placed here - invalid grid cell at (${gridRow}, ${gridCol})`,
@@ -307,7 +312,12 @@ export class LetteredGameStateManager {
         const gridRow = position.row + shapePos.row;
         const gridCol = position.col + shapePos.col;
 
-        if (gridRow >= 0 && gridRow < 8 && gridCol >= 0 && gridCol < 8) {
+        if (
+          gridRow >= 0 &&
+          gridRow < this.state.gameData.rows &&
+          gridCol >= 0 &&
+          gridCol < this.state.gameData.cols
+        ) {
           // Mark as occupied (you might want to add a new property for this)
           // For now, we'll just ensure the cell state is preserved
         }
@@ -523,30 +533,6 @@ export class LetteredGameStateManager {
     return grid;
   }
 
-  // Compare two layouts
-  private compareLayouts(current: string[][], expected: string[][]): boolean {
-    console.log('[DEBUG] Comparing layouts...');
-
-    for (let row = 0; row < 8; row++) {
-      for (let col = 0; col < 8; col++) {
-        const currentCell = current[row]?.[col] || ' ';
-        const expectedCell = expected[row]?.[col] || ' ';
-
-        // Skip spaces and empty cells for comparison
-        if (expectedCell === ' ') continue;
-        if (currentCell !== expectedCell) {
-          console.log(
-            `[DEBUG] Mismatch at (${row}, ${col}): expected '${expectedCell}', got '${currentCell}'`
-          );
-          return false;
-        }
-      }
-    }
-
-    console.log('[DEBUG] Layouts match!');
-    return true;
-  }
-
   // Get current score
   getScore(): number {
     return this.state.score;
@@ -560,6 +546,40 @@ export class LetteredGameStateManager {
   // Get board layout
   getBoardLayout(): GridCell[][] {
     return this.state.boardLayout.map((row) => row.map((cell) => ({ ...cell })));
+  }
+
+  // Compare two board layouts to check if they are identical
+  public compareLayouts(layout1: GridCell[][], layout2: GridCell[][]): boolean {
+    if (!layout1 || !layout2 || layout1.length !== layout2.length) return false;
+
+    for (let row = 0; row < layout1.length; row++) {
+      const row1 = layout1[row];
+      const row2 = layout2[row];
+
+      if (!row1 || !row2 || row1.length !== row2.length) {
+        return false;
+      }
+
+      for (let col = 0; col < row1.length; col++) {
+        const cell1 = row1[col];
+        const cell2 = row2[col];
+
+        if (!cell1 || !cell2) return false;
+
+        // Compare relevant properties that affect the layout
+        if (
+          cell1.isLetter !== cell2.isLetter ||
+          cell1.isPreFilled !== cell2.isPreFilled ||
+          cell1.isSpace !== cell2.isSpace ||
+          cell1.isUnused !== cell2.isUnused ||
+          cell1.letter !== cell2.letter
+        ) {
+          return false;
+        }
+      }
+    }
+
+    return true;
   }
 
   // Check if game is complete

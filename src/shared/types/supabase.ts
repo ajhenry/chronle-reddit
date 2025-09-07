@@ -83,6 +83,7 @@ export type Database = {
           created_at: string
           grid: Json
           id: string
+          initial_piece_positions: Json
           phrase: string
           pieces: Json
           rows: number
@@ -96,6 +97,7 @@ export type Database = {
           created_at?: string
           grid: Json
           id?: string
+          initial_piece_positions?: Json
           phrase: string
           pieces: Json
           rows: number
@@ -109,6 +111,7 @@ export type Database = {
           created_at?: string
           grid?: Json
           id?: string
+          initial_piece_positions?: Json
           phrase?: string
           pieces?: Json
           rows?: number
@@ -174,31 +177,28 @@ export type Database = {
       }
       lettered_submissions: {
         Row: {
+          board_state: Json
           created_at: string
           game_session_id: string
           id: string
-          piece_id: string
-          placed_at: string
-          position: Json
-          score_at_placement: number
+          score_at_submission: number
+          submitted_at: string
         }
         Insert: {
+          board_state: Json
           created_at?: string
           game_session_id: string
           id?: string
-          piece_id: string
-          placed_at?: string
-          position: Json
-          score_at_placement: number
+          score_at_submission: number
+          submitted_at?: string
         }
         Update: {
+          board_state?: Json
           created_at?: string
           game_session_id?: string
           id?: string
-          piece_id?: string
-          placed_at?: string
-          position?: Json
-          score_at_placement?: number
+          score_at_submission?: number
+          submitted_at?: string
         }
         Relationships: [
           {

@@ -37,12 +37,14 @@ const convertGridDataToItems = ({
   grid,
   placedPieces,
   pieces,
+  initialPiecePositions,
   getTileStyle,
   getTileClassName,
 }: {
   grid: GridCell[][];
   placedPieces: Map<string, GridPosition>;
   pieces: LetterPiece[];
+  initialPiecePositions: Record<string, GridPosition>;
   getTileStyle?: (piece: LetterPiece) => React.CSSProperties | undefined;
   getTileClassName?: (piece: LetterPiece) => string | undefined;
 }): Omit<DraggableItem, 'id'>[] => {
@@ -128,17 +130,18 @@ const convertGridDataToItems = ({
     }
   }
 
-  // Add unplaced letter pieces to the extended grid area with proper spacing
+  // Add unplaced letter pieces using server-generated initial positions
   const unplacedPieces = pieces.filter((piece) => !placedPieces.has(piece.id));
-  const piecesStartRow = grid.length; // Start placing pieces below the main board
-  const maxCols = grid[0]!.length; // Use the same width as the main grid
-  const maxRows = 12; // Maximum rows for piece placement
-  const pieceSpacing = 1; // One cell gap between pieces
-
-  // Track occupied positions to prevent overlaps
-  const occupiedPositions = new Set<string>();
 
   for (const piece of unplacedPieces) {
+    // Use server-generated initial position
+    const initialPosition = initialPiecePositions[piece.id];
+
+    if (!initialPosition) {
+      console.warn(`No initial position found for piece ${piece.id}, skipping`);
+      continue;
+    }
+
     // Convert piece shape to Grid component format
     const shapeCells: { x: number; y: number }[] = piece.shape.map((shapePos) => ({
       x: shapePos.col,
@@ -149,82 +152,28 @@ const convertGridDataToItems = ({
     const width = Math.max(...shapeCells.map((cell) => cell.x)) + 1;
     const height = Math.max(...shapeCells.map((cell) => cell.y)) + 1;
 
-    // Find a valid position for this piece
-    let placed = false;
-    let currentRow = piecesStartRow;
-    let currentCol = 0;
+    const shape = {
+      name: piece.id,
+      cells: shapeCells,
+      width,
+      height,
+    };
 
-    while (!placed && currentRow < piecesStartRow + maxRows) {
-      // Try to place the piece at current position
-      const pieceLeft = currentCol;
-      const pieceTop = currentRow;
-      const pieceRight = pieceLeft + width + pieceSpacing;
-      const pieceBottom = pieceTop + height + pieceSpacing;
+    // Create content from letters
+    const content = piece.letters.join('') || piece.id;
 
-      // Check if piece fits within grid bounds
-      if (pieceRight <= maxCols && pieceBottom <= piecesStartRow + maxRows) {
-        // Check for overlaps with existing pieces
-        let hasOverlap = false;
+    // Use the piece's predefined color
+    const color = piece.color;
 
-        for (let checkRow = pieceTop; checkRow < pieceBottom && !hasOverlap; checkRow++) {
-          for (let checkCol = pieceLeft; checkCol < pieceRight && !hasOverlap; checkCol++) {
-            const positionKey = `${checkCol},${checkRow}`;
-            if (occupiedPositions.has(positionKey)) {
-              hasOverlap = true;
-            }
-          }
-        }
-
-        if (!hasOverlap) {
-          // Place the piece here
-          const shape = {
-            name: piece.id,
-            cells: shapeCells,
-            width,
-            height,
-          };
-
-          // Create content from letters
-          const content = piece.letters.join('') || piece.id;
-
-          // Use the piece's predefined color
-          const color = piece.color;
-
-          items.push({
-            position: { x: pieceLeft, y: pieceTop },
-            shape,
-            content,
-            color,
-            disabled: false,
-            style: getTileStyle ? getTileStyle(piece) : undefined,
-            className: getTileClassName ? getTileClassName(piece) : undefined,
-          });
-
-          // Mark positions as occupied (including spacing)
-          for (let occupyRow = pieceTop; occupyRow < pieceBottom; occupyRow++) {
-            for (let occupyCol = pieceLeft; occupyCol < pieceRight; occupyCol++) {
-              occupiedPositions.add(`${occupyCol},${occupyRow}`);
-            }
-          }
-
-          placed = true;
-        }
-      }
-
-      // Move to next column
-      currentCol += 1;
-
-      // If we've reached the end of the row, move to next row
-      if (currentCol + width + pieceSpacing > maxCols) {
-        currentCol = 0;
-        currentRow += 1;
-      }
-    }
-
-    // If piece couldn't be placed, log a warning (shouldn't happen with extended grid)
-    if (!placed) {
-      console.warn(`Could not place piece ${piece.id} - no available space`);
-    }
+    items.push({
+      position: { x: initialPosition.col, y: initialPosition.row },
+      shape,
+      content,
+      color,
+      disabled: false,
+      style: getTileStyle ? getTileStyle(piece) : undefined,
+      className: getTileClassName ? getTileClassName(piece) : undefined,
+    });
   }
 
   return items;
@@ -327,6 +276,7 @@ export const LetteredPage = ({ onBack }: { onBack?: () => void }) => {
         rows: apiGameData.rows,
         cols: apiGameData.cols,
         pieces: apiGameData.pieces,
+        initialPiecePositions: apiGameData.initialPiecePositions || {},
         solution: apiGameData.solution,
         solutionHash: apiGameData.solutionHash,
         created_at: apiGameData.created_at,
@@ -415,10 +365,15 @@ export const LetteredPage = ({ onBack }: { onBack?: () => void }) => {
   // Handle layout changes from the grid
   const handleGridLayoutChange = useCallback(
     async (layout: (string | null)[][]) => {
-      if (!gameData || !gameStateManagerRef.current) return;
+      if (!gameData || !gameStateManagerRef.current) {
+        return;
+      }
 
       // Convert layout to piece positions
       const newPlacedPieces = new Map<string, GridPosition>();
+
+      // Print the grid layout
+      console.log('Full layout array:', layout);
 
       layout.forEach((row, rowIndex) => {
         row.forEach((itemId, colIndex) => {
@@ -434,17 +389,24 @@ export const LetteredPage = ({ onBack }: { onBack?: () => void }) => {
 
       console.log('newPlacedPieces', newPlacedPieces);
 
+      // Store the layout state before making changes to compare later
+      const layoutBeforeChanges = gameStateManagerRef.current.getBoardLayout();
+      console.log('layout before changes', layoutBeforeChanges);
+
       // Update game state manager with new piece positions
-      // Only update pieces that have changed to avoid unnecessary work
       const currentPlacedPieces = gameStateManagerRef.current.getPlacedPieces();
+      console.log('currentPlacedPieces', currentPlacedPieces);
 
       for (const [pieceId, newPosition] of newPlacedPieces) {
         const currentPosition = currentPlacedPieces.get(pieceId);
+        console.log('currentPosition', currentPosition);
+        console.log('newPosition', newPosition);
         if (
           !currentPosition ||
           currentPosition.row !== newPosition.row ||
           currentPosition.col !== newPosition.col
         ) {
+          console.log('placing piece', pieceId, newPosition);
           await gameStateManagerRef.current.placePiece(pieceId, newPosition);
         }
       }
@@ -452,52 +414,35 @@ export const LetteredPage = ({ onBack }: { onBack?: () => void }) => {
       // Remove pieces that are no longer placed
       for (const [pieceId] of currentPlacedPieces) {
         if (!newPlacedPieces.has(pieceId)) {
-          gameStateManagerRef.current.removePiece(pieceId);
+          // gameStateManagerRef.current.removePiece(pieceId);
         }
       }
 
-      // Check if the layout has actually changed
-      let layoutChanged = false;
+      // Check if the layout has actually changed by comparing entire layouts
+      const layoutAfterChanges = gameStateManagerRef.current.getBoardLayout();
+      const layoutChanged = !gameStateManagerRef.current.compareLayouts(
+        layoutBeforeChanges,
+        layoutAfterChanges
+      );
+      console.log(
+        'layoutChanged',
+        gameStateManagerRef.current.compareLayouts(layoutBeforeChanges, layoutAfterChanges)
+      );
 
-      // Check for new or moved pieces
-      for (const [pieceId, newPosition] of newPlacedPieces) {
-        const currentPosition = currentPlacedPieces.get(pieceId);
-        if (
-          !currentPosition ||
-          currentPosition.row !== newPosition.row ||
-          currentPosition.col !== newPosition.col
-        ) {
-          layoutChanged = true;
-          break;
-        }
-      }
-
-      // Check for removed pieces
-      if (!layoutChanged) {
-        for (const [pieceId] of currentPlacedPieces) {
-          if (!newPlacedPieces.has(pieceId)) {
-            layoutChanged = true;
-            break;
-          }
-        }
-      }
+      console.log('layout after changes', layoutAfterChanges);
+      console.log('layoutChanged', layoutChanged);
 
       // Always save the current session state to server
       if (dailyGameId) {
         try {
-          // Send all placed pieces as a map with timestamps
-          const placedPiecesMap: Record<
-            string,
-            { pieceId: string; position: GridPosition; placedAt: string }
-          > = {};
-          const currentTime = new Date().toISOString();
+          // Send the complete board state
+          const currentBoardLayout = gameStateManagerRef.current.getBoardLayout();
+          const currentPlacedPieces = gameStateManagerRef.current.getPlacedPieces();
 
-          for (const [pieceId, position] of newPlacedPieces.entries()) {
-            placedPiecesMap[pieceId] = {
-              pieceId,
-              position,
-              placedAt: currentTime,
-            };
+          // Convert placed pieces Map to record for JSON serialization
+          const placedPiecesRecord: Record<string, GridPosition> = {};
+          for (const [pieceId, position] of currentPlacedPieces.entries()) {
+            placedPiecesRecord[pieceId] = position;
           }
 
           const response = await apiFetch(`/api/lettered/${dailyGameId}/session`, {
@@ -506,7 +451,10 @@ export const LetteredPage = ({ onBack }: { onBack?: () => void }) => {
               'Content-Type': 'application/json',
             },
             body: JSON.stringify({
-              placedPieces: placedPiecesMap,
+              boardState: {
+                grid: currentBoardLayout,
+                placedPieces: placedPiecesRecord,
+              },
               timestamp: Date.now(),
             }),
           });
@@ -677,8 +625,12 @@ export const LetteredPage = ({ onBack }: { onBack?: () => void }) => {
           cellSize={responsiveCellSize}
           initialItems={convertGridDataToItems({
             grid: gameData.grid,
-            placedPieces: placedPieces,
+            placedPieces:
+              placedPieces.size === 0
+                ? new Map(Object.entries(gameData.initialPiecePositions))
+                : placedPieces,
             pieces: gameData.pieces,
+            initialPiecePositions: gameData.initialPiecePositions,
             getTileClassName: (piece) => getPieceTileClass(piece, 'text-2xl font-bold'),
           })}
           onLayoutChange={handleGridLayoutChange}

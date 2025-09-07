@@ -110,6 +110,15 @@ export const placePhraseOn9x9Grid = (grid: GridCell[][], phrase: string): GridCe
     .filter((word) => word.length > 0);
   const totalLetters = words.join('').length;
 
+  // Check for individual words that are too long
+  const maxWordLength = 9;
+  const longWords = words.filter((word) => word.length > maxWordLength);
+  if (longWords.length > 0) {
+    throw new Error(
+      `Words cannot be longer than ${maxWordLength} characters. Found: ${longWords.join(', ')}`
+    );
+  }
+
   if (totalLetters > 45) {
     throw new Error('Phrase has too many letters for 9x9 grid (max 45)');
   }
@@ -2170,6 +2179,97 @@ export {
   validateConnectivity,
 };
 
+// Generate initial piece positions for the extended area (below main grid)
+export const generateInitialPiecePositions = (
+  pieces: LetterPiece[],
+  grid: GridCell[][],
+  seed?: number
+): Record<string, GridPosition> => {
+  const initialPositions: Record<string, GridPosition> = {};
+  const extendedStartRow = grid.length; // Start below the main grid
+  const maxCols = grid[0]?.length || 8;
+  const maxRows = 20; // Maximum rows for piece placement
+  const pieceSpacing = 1; // One cell gap between pieces
+
+  // Track occupied positions to prevent overlaps
+  const occupiedPositions = new Set<string>();
+
+  // Initialize seeded random generator for reproducible placement
+  const random = seed ? seededRandom(seed + 98765) : Math.random;
+
+  for (const piece of pieces) {
+    // Calculate bounding box
+    const width = Math.max(...piece.shape.map((pos) => pos.col)) + 1;
+    const height = Math.max(...piece.shape.map((pos) => pos.row)) + 1;
+
+    // Find a valid position for this piece
+    let placed = false;
+    let currentRow = extendedStartRow;
+    let currentCol = 0;
+    let attempts = 0;
+    const maxAttempts = 50; // Prevent infinite loops
+
+    while (!placed && attempts < maxAttempts) {
+      // Try to place the piece at current position
+      const pieceLeft = currentCol;
+      const pieceTop = currentRow;
+      const pieceRight = pieceLeft + width + pieceSpacing;
+      const pieceBottom = pieceTop + height + pieceSpacing;
+
+      // Check if piece fits within grid bounds
+      if (pieceRight <= maxCols && pieceBottom <= extendedStartRow + maxRows) {
+        // Check for overlaps with existing pieces
+        let hasOverlap = false;
+
+        for (let checkRow = pieceTop; checkRow < pieceBottom && !hasOverlap; checkRow++) {
+          for (let checkCol = pieceLeft; checkCol < pieceRight && !hasOverlap; checkCol++) {
+            const positionKey = `${checkCol},${checkRow}`;
+            if (occupiedPositions.has(positionKey)) {
+              hasOverlap = true;
+            }
+          }
+        }
+
+        if (!hasOverlap) {
+          // Place the piece here
+          initialPositions[piece.id] = { row: pieceTop, col: pieceLeft };
+
+          // Mark positions as occupied (including spacing)
+          for (let occupyRow = pieceTop; occupyRow < pieceBottom; occupyRow++) {
+            for (let occupyCol = pieceLeft; occupyCol < pieceRight; occupyCol++) {
+              occupiedPositions.add(`${occupyCol},${occupyRow}`);
+            }
+          }
+
+          placed = true;
+        }
+      }
+
+      // Move to next column
+      currentCol += 1;
+
+      // If we've reached the end of the row, move to next row
+      if (currentCol + width + pieceSpacing > maxCols) {
+        currentCol = 0;
+        currentRow += 1;
+      }
+
+      attempts++;
+    }
+
+    // If piece couldn't be placed, log a warning and place it anyway
+    if (!placed) {
+      console.warn(`Could not optimally place piece ${piece.id} - placing at fallback position`);
+      // Fallback: place at a random available position
+      const fallbackRow = extendedStartRow + Math.floor(random() * 4);
+      const fallbackCol = Math.floor(random() * (maxCols - width));
+      initialPositions[piece.id] = { row: fallbackRow, col: fallbackCol };
+    }
+  }
+
+  return initialPositions;
+};
+
 // Generate a complete mock game following the new process
 export const generateMockGame = (
   category: string,
@@ -2208,8 +2308,15 @@ export const generateMockGame = (
       );
     });
 
-    // Step 6: Generate solution
-    console.log('Step 6: Generating solution positions...');
+    // Step 6: Generate initial piece positions
+    console.log('Step 6: Generating initial piece positions...');
+    const initialPiecePositions = generateInitialPiecePositions(pieces, trimmedGrid, seed);
+    console.log(
+      `Generated initial positions for ${Object.keys(initialPiecePositions).length} pieces`
+    );
+
+    // Step 7: Generate solution
+    console.log('Step 7: Generating solution positions...');
     const solution = generateSolutionPositions(pieces, trimmedGrid);
     console.log(`Generated solutions for ${solution.length} pieces`);
 
@@ -2227,6 +2334,7 @@ export const generateMockGame = (
       rows: trimmedGrid.length,
       cols: trimmedGrid[0]?.length || 0,
       pieces,
+      initialPiecePositions,
       solution,
       solutionHash,
       created_at: new Date().toISOString(),
@@ -2272,7 +2380,19 @@ export const generateSolutionHash = (grid: GridCell[][]): string => {
 // Fallback game with a simpler layout
 const generateFallbackGame = (category: string, phrase: string): LetteredGameData => {
   const grid = createEmptyGrid();
-  const words = phrase.toUpperCase().split(' ');
+  const words = phrase
+    .toUpperCase()
+    .split(' ')
+    .filter((word) => word.length > 0);
+
+  // Check for individual words that are too long
+  const maxWordLength = 9;
+  const longWords = words.filter((word) => word.length > maxWordLength);
+  if (longWords.length > 0) {
+    throw new Error(
+      `Words cannot be longer than ${maxWordLength} characters. Found: ${longWords.join(', ')}`
+    );
+  }
 
   // Simple horizontal layout
   const currentRow = 2;
@@ -2305,6 +2425,7 @@ const generateFallbackGame = (category: string, phrase: string): LetteredGameDat
   }
 
   const pieces = generateLetterPieces(grid);
+  const initialPiecePositions = generateInitialPiecePositions(pieces, grid);
   const solution = generateSolutionPositions(pieces, grid);
 
   // Create secure grid and solution hash
@@ -2319,6 +2440,7 @@ const generateFallbackGame = (category: string, phrase: string): LetteredGameDat
     rows: 8,
     cols: 8,
     pieces,
+    initialPiecePositions,
     solution,
     solutionHash,
     created_at: new Date().toISOString(),

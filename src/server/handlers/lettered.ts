@@ -13,9 +13,11 @@ import { recordLeaderboardEntry } from '../lib/leaderboard-helpers';
 import { ensureUserExistsAndGetId } from '../lib/user-helpers';
 import {
   getTodaysLetteredGame,
-  getUserLetteredSessionForToday,
+  getOrCreateUserLetteredSessionForToday,
   createLetteredSession,
   updateLetteredSession,
+  getLetteredSubmissionsForToday,
+  getLatestLetteredSubmissionForToday,
 } from '../database/lettered';
 import { getOrCreateTodaysGame } from '../database/game';
 
@@ -25,14 +27,21 @@ const gridPositionSchema = z.object({
   col: z.number().int().min(0),
 });
 
-const placedPieceSchema = z.object({
-  pieceId: z.string().min(1),
-  position: gridPositionSchema,
-  placedAt: z.string().datetime(),
+const gridCellSchema = z.object({
+  letter: z.string().nullable(),
+  isLetter: z.boolean(),
+  isPreFilled: z.boolean(),
+  isSpace: z.boolean(),
+  isUnused: z.boolean(),
+});
+
+const boardStateSchema = z.object({
+  grid: z.array(z.array(gridCellSchema)),
+  placedPieces: z.record(z.string().min(1), gridPositionSchema),
 });
 
 const letteredSessionPayloadSchema = z.object({
-  placedPieces: z.record(z.string().min(1), placedPieceSchema),
+  boardState: boardStateSchema,
   timestamp: z.number().positive(),
 });
 
@@ -48,74 +57,48 @@ router.get('/api/lettered/game', async (_req, res): Promise<void> => {
     const letteredGame = await getTodaysLetteredGame();
     const dailyGame = await getOrCreateTodaysGame();
 
-    let sessionData: LetteredGameSessionResponse | null = null;
+    // First try to get existing session
+    const existingSession = await getOrCreateUserLetteredSessionForToday(userId);
 
-    // If user is authenticated, get or create their game session
-    if (userId) {
-      try {
-        // First try to get existing session
-        const existingSession = await getUserLetteredSessionForToday(userId);
+    // User has an existing session, get the latest board state submission
+    const latestSubmission = await getLatestLetteredSubmissionForToday(existingSession.id);
+    console.log('latestSubmission', latestSubmission);
 
-        if (existingSession) {
-          // User has an existing session, get submissions and calculate current score
-          const { data: submissions } = await supabase
-            .from('lettered_submissions')
-            .select('piece_id, position, placed_at')
-            .eq('game_session_id', existingSession.id);
+    let currentScore = existingSession.initialScore;
+    let placedPieces: Record<string, { pieceId: string; position: GridPosition }> = {};
 
-          // Calculate current score using same algorithm as client
-          const gameStartTime = new Date(existingSession.startedAt).getTime();
-          const now = Date.now();
-          // TODO: WE NEED TO SYNC THIS CALCULATION WITH THE CLIENT
-          const elapsedSeconds = Math.max(0, (now - gameStartTime) / 1000);
+    if (latestSubmission) {
+      const boardState = latestSubmission.boardState as {
+        grid: GridCell[][];
+        placedPieces: Record<string, GridPosition>;
+      };
 
-          // Count placed pieces for score decay calculation
-          const placedCount = (submissions || []).length;
-
-          // Calculate current score using same algorithm as client
-          const decayMultiplier = Math.pow(1.1, placedCount); // Less aggressive decay for lettered games
-          const scoreDecay = Math.floor(elapsedSeconds * decayMultiplier);
-          const currentScore = Math.max(0, existingSession.initialScore - scoreDecay);
-
-          sessionData = {
-            type: 'lettered_game_session',
-            sessionId: existingSession.id,
-            currentScore: existingSession.isCompleted ? existingSession.finalScore : currentScore,
-            initialScore: existingSession.initialScore,
-            isCompleted: existingSession.isCompleted,
-            pieces: (submissions || []).reduce(
-              (map: Record<string, { pieceId: string; position: GridPosition }>, sub) => {
-                map[sub.piece_id] = {
-                  pieceId: sub.piece_id,
-                  position: sub.position as GridPosition,
-                };
-                return map;
-              },
-              {}
-            ),
+      // Extract placed pieces from the board state
+      placedPieces = Object.entries(boardState.placedPieces).reduce(
+        (map, [pieceId, position]) => {
+          map[pieceId] = {
+            pieceId,
+            position,
           };
-        } else {
-          // No existing session, create a new one
-          try {
-            const newSession = await createLetteredSession(userId);
-            sessionData = {
-              type: 'lettered_game_session',
-              sessionId: newSession.id,
-              currentScore: 5000,
-              initialScore: 5000,
-              isCompleted: false,
-              pieces: {},
-            };
-          } catch (createError) {
-            console.error('Error creating lettered session:', createError);
-            // Continue without session data
-          }
-        }
-      } catch (sessionError) {
-        console.error('Error handling lettered session:', sessionError);
-        // Continue without session data
+          return map;
+        },
+        {} as Record<string, { pieceId: string; position: GridPosition }>
+      );
+
+      // Use the score from the latest submission if game is not completed
+      if (!existingSession.isCompleted) {
+        currentScore = latestSubmission.scoreAtSubmission;
       }
     }
+
+    const sessionData: LetteredGameSessionResponse = {
+      type: 'lettered_game_session',
+      sessionId: existingSession.id,
+      currentScore: existingSession.isCompleted ? existingSession.finalScore : currentScore,
+      initialScore: existingSession.initialScore,
+      isCompleted: existingSession.isCompleted,
+      pieces: placedPieces,
+    };
 
     const response: LetteredDailyGameResponse = {
       type: 'lettered_daily_game',
@@ -128,13 +111,13 @@ router.get('/api/lettered/game', async (_req, res): Promise<void> => {
         rows: letteredGame.rows,
         cols: letteredGame.cols,
         pieces: letteredGame.pieces as LetterPiece[],
-        solution: letteredGame.solution as GridPosition[][],
+        initialPiecePositions: letteredGame.initialPiecePositions || {},
         solutionHash: letteredGame.solutionHash,
         created_at: letteredGame.createdAt,
         updated_at: letteredGame.updatedAt,
       },
       day: dailyGame.day,
-      ...(sessionData && { session: sessionData }),
+      session: sessionData,
     };
 
     res.json(response);
@@ -148,10 +131,14 @@ router.get('/api/lettered/game', async (_req, res): Promise<void> => {
 });
 
 // POST /api/lettered/:gameId/session
-router.post('/api/lettered/:gameId/session', async (req, res): Promise<void> => {
-  console.log('POST /api/lettered/:gameId/session', { gameId: req.params.gameId, body: req.body });
+router.post('/api/lettered/:dailyGameId/session', async (req, res): Promise<void> => {
+  console.log('POST /api/lettered/:dailyGameId/session', {
+    dailyGameId: req.params.dailyGameId,
+    body: req.body,
+    placedPieces: req.body.boardState.placedPieces,
+  });
   try {
-    const { gameId } = req.params;
+    const { dailyGameId } = req.params;
     const userId = await ensureUserExistsAndGetId();
 
     if (!userId) {
@@ -174,7 +161,7 @@ router.post('/api/lettered/:gameId/session', async (req, res): Promise<void> => 
       return;
     }
 
-    const { placedPieces, timestamp } = payloadValidation.data;
+    const { boardState, timestamp } = payloadValidation.data;
 
     // Get today's daily lettered game
     const dailyGame = await getTodaysLetteredGame();
@@ -188,39 +175,7 @@ router.post('/api/lettered/:gameId/session', async (req, res): Promise<void> => 
     }
 
     // Get or create game session
-    let session = null;
-    try {
-      session = await getUserLetteredSessionForToday(userId);
-    } catch (sessionError) {
-      console.error('Error fetching lettered session:', sessionError);
-      res.status(500).json({
-        status: 'error',
-        message: 'Failed to fetch game session',
-      });
-      return;
-    }
-
-    // Create session if it doesn't exist
-    if (!session) {
-      try {
-        session = await createLetteredSession(userId, dailyGame.id);
-      } catch (createError) {
-        console.error('Error creating lettered session:', createError);
-        res.status(500).json({
-          status: 'error',
-          message: 'Failed to create game session',
-        });
-        return;
-      }
-    }
-
-    if (!session) {
-      res.status(500).json({
-        status: 'error',
-        message: 'Failed to create or retrieve game session',
-      });
-      return;
-    }
+    const session = await getOrCreateUserLetteredSessionForToday(userId);
 
     if (session.isCompleted) {
       res.status(400).json({
@@ -230,134 +185,44 @@ router.post('/api/lettered/:gameId/session', async (req, res): Promise<void> => 
       return;
     }
 
-    // Process the placed pieces data and update the database
-    // First, get existing submissions to compare and update
-    const { data: existingSubmissions, error: submissionsError } = await supabase
-      .from('lettered_submissions')
-      .select('piece_id, position')
-      .eq('game_session_id', session.id);
+    // Store the complete board state as a submission
 
-    if (submissionsError) {
-      console.error('Error fetching existing submissions:', submissionsError);
-      res.status(500).json({
-        status: 'error',
-        message: 'Failed to fetch existing submissions',
-      });
-      return;
-    }
-
-    // Create a map of existing submissions for quick lookup
-    const existingPiecesMap = new Map<string, { row: number; col: number }>();
-    (existingSubmissions || []).forEach((sub) => {
-      existingPiecesMap.set(sub.piece_id, sub.position);
-    });
-
-    // Identify new or moved pieces
-    const piecesToInsert: Array<{
-      game_session_id: string;
-      piece_id: string;
-      position: { row: number; col: number };
-      placed_at: string;
-      score_at_placement: number;
-    }> = [];
-
-    const piecesToUpdate: Array<{
-      piece_id: string;
-      position: { row: number; col: number };
-    }> = [];
-
-    // Calculate time-based score decay
+    // Calculate current score for this submission
     const gameStartTime = new Date(session.startedAt).getTime();
     const placementTime = timestamp;
     const elapsedSeconds = Math.max(0, (placementTime - gameStartTime) / 1000);
 
-    // Count existing placements for score decay calculation
-    const placedCount = existingSubmissions?.length || 0;
+    // Count placed pieces for score decay calculation
+    const placedCount = Object.keys(boardState.placedPieces).length;
 
     // Scoring algorithm: Start at 5000, decay over time, faster decay with more pieces placed
     const decayMultiplier = Math.pow(1.1, placedCount);
     const scoreDecay = Math.floor(elapsedSeconds * decayMultiplier);
     const currentScore = Math.max(0, session.initialScore - scoreDecay);
 
-    // Process each placed piece from the map
-    for (const [pieceId, pieceData] of Object.entries(placedPieces) as [
-      string,
-      { pieceId: string; position: GridPosition; placedAt: string },
-    ][]) {
-      const existingPosition = existingPiecesMap.get(pieceId);
+    // Store the complete board state as a single submission
+    const { error: insertError } = await (supabase as any).from('lettered_submissions').insert({
+      game_session_id: session.id,
+      board_state: boardState,
+      submitted_at: new Date(timestamp).toISOString(),
+      score_at_submission: currentScore,
+    });
 
-      if (!existingPosition) {
-        // New piece placement
-        piecesToInsert.push({
-          game_session_id: session.id,
-          piece_id: pieceId,
-          position: pieceData.position,
-          placed_at: pieceData.placedAt,
-          score_at_placement: currentScore,
-        });
-      } else if (
-        existingPosition.row !== pieceData.position.row ||
-        existingPosition.col !== pieceData.position.col
-      ) {
-        // Piece moved to new position
-        piecesToUpdate.push({
-          piece_id: pieceId,
-          position: pieceData.position,
-        });
-      }
-      // If position is the same, no action needed
-    }
-
-    // Execute database operations
-    if (piecesToInsert.length > 0) {
-      const { error: insertError } = await supabase
-        .from('lettered_submissions')
-        .insert(piecesToInsert);
-
-      if (insertError) {
-        console.error('Error inserting new submissions:', insertError);
-        res.status(500).json({
-          status: 'error',
-          message: 'Failed to save piece placements',
-        });
-        return;
-      }
-    }
-
-    // Update moved pieces
-    for (const update of piecesToUpdate) {
-      // Get the placedAt timestamp from the client data
-      const pieceData = (
-        placedPieces as Record<
-          string,
-          { pieceId: string; position: GridPosition; placedAt: string }
-        >
-      )[update.piece_id];
-      const placedAt = pieceData ? pieceData.placedAt : new Date(timestamp).toISOString();
-
-      const { error: updateError } = await supabase
-        .from('lettered_submissions')
-        .update({
-          position: update.position,
-          placed_at: placedAt,
-          score_at_placement: currentScore,
-        })
-        .eq('game_session_id', session.id)
-        .eq('piece_id', update.piece_id);
-
-      if (updateError) {
-        console.error('Error updating piece position:', updateError);
-        // Continue with other updates rather than failing completely
-      }
+    if (insertError) {
+      console.error('Error inserting board state submission:', insertError);
+      res.status(500).json({
+        status: 'error',
+        message: 'Failed to save board state',
+      });
+      return;
     }
 
     const response = {
       sessionId: session.id,
       accepted: true,
       currentScore,
-      placedPieces: Object.keys(placedPieces).length,
-      newPlacements: piecesToInsert.length,
-      updatedPlacements: piecesToUpdate.length,
+      placedPieces: Object.keys(boardState.placedPieces).length,
+      boardStateStored: true,
     };
 
     res.json(response);
@@ -412,7 +277,7 @@ router.get('/api/lettered/:gameId/session', async (req, res): Promise<void> => {
     // Get the user's game session
     let session;
     try {
-      session = await getUserLetteredSessionForToday(userId);
+      session = await getOrCreateUserLetteredSessionForToday(userId);
     } catch (sessionError) {
       console.error('Error fetching lettered session:', sessionError);
       res.status(500).json({
@@ -431,11 +296,13 @@ router.get('/api/lettered/:gameId/session', async (req, res): Promise<void> => {
       return;
     }
 
-    // Get the user's submissions for this session
+    // Get the latest board state submission for this session
     const { data: submissions, error: submissionsError } = await supabase
       .from('lettered_submissions')
-      .select('piece_id, position, placed_at, score_at_placement')
-      .eq('game_session_id', session.id);
+      .select('board_state, submitted_at, score_at_submission')
+      .eq('game_session_id', session.id)
+      .order('submitted_at', { ascending: false })
+      .limit(1);
 
     if (submissionsError) {
       console.error('Error fetching submissions:', submissionsError);
@@ -448,15 +315,31 @@ router.get('/api/lettered/:gameId/session', async (req, res): Promise<void> => {
 
     // Calculate current score if game is not completed
     let currentScore = session.finalScore;
-    if (!session.isCompleted) {
-      const gameStartTime = new Date(session.startedAt).getTime();
-      const now = Date.now();
-      const elapsedSeconds = Math.max(0, (now - gameStartTime) / 1000);
+    let placedPieces: Array<{
+      pieceId: string;
+      position: GridPosition;
+      placedAt: string;
+      scoreAtPlacement: number;
+    }> = [];
 
-      const placedCount = (submissions || []).length;
-      const decayMultiplier = Math.pow(1.1, placedCount);
-      const scoreDecay = Math.floor(elapsedSeconds * decayMultiplier);
-      currentScore = Math.max(0, session.initialScore - scoreDecay);
+    if (!session.isCompleted && submissions && submissions.length > 0) {
+      const latestSubmission = submissions[0];
+      if (latestSubmission && 'board_state' in latestSubmission) {
+        const boardState = (latestSubmission as any).board_state as {
+          grid: GridCell[][];
+          placedPieces: Record<string, GridPosition>;
+        };
+
+        // Extract placed pieces from the board state
+        placedPieces = Object.entries(boardState.placedPieces).map(([pieceId, position]) => ({
+          pieceId,
+          position,
+          placedAt: (latestSubmission as any).submitted_at,
+          scoreAtPlacement: (latestSubmission as any).score_at_submission,
+        }));
+
+        currentScore = (latestSubmission as any).score_at_submission;
+      }
     }
 
     const response = {
@@ -465,19 +348,7 @@ router.get('/api/lettered/:gameId/session', async (req, res): Promise<void> => {
       currentScore,
       initialScore: session.initialScore,
       isCompleted: session.isCompleted,
-      placedPieces: (submissions || []).map(
-        (sub: {
-          piece_id: string;
-          position: { row: number; col: number };
-          placed_at: string;
-          score_at_placement: number;
-        }) => ({
-          pieceId: sub.piece_id,
-          position: sub.position,
-          placedAt: sub.placed_at,
-          scoreAtPlacement: sub.score_at_placement,
-        })
-      ),
+      placedPieces,
     };
 
     res.json(response);
@@ -532,7 +403,7 @@ router.get('/api/lettered/:gameId/postgame', async (req, res): Promise<void> => 
     // Get the user's game session
     let session;
     try {
-      session = await getUserLetteredSessionForToday(userId);
+      session = await getOrCreateUserLetteredSessionForToday(userId);
     } catch (sessionError) {
       console.error('Error fetching lettered session:', sessionError);
       res.status(500).json({
@@ -552,18 +423,19 @@ router.get('/api/lettered/:gameId/postgame', async (req, res): Promise<void> => 
 
     // If not completed, validate and complete the game now
     if (!session.isCompleted) {
-      // Get all piece placements for this session
-      const { data: placements, error: placementsError } = await supabase
+      // Get the latest board state submission for this session
+      const { data: submissions, error: submissionsError } = await supabase
         .from('lettered_submissions')
-        .select('*')
+        .select('board_state, score_at_submission')
         .eq('game_session_id', session.id)
-        .order('placed_at', { ascending: true });
+        .order('submitted_at', { ascending: false })
+        .limit(1);
 
-      if (placementsError) {
-        console.error('Error fetching placements:', placementsError);
+      if (submissionsError) {
+        console.error('Error fetching board state:', submissionsError);
         res.status(500).json({
           status: 'error',
-          message: 'Failed to fetch piece placements',
+          message: 'Failed to fetch board state',
         });
         return;
       }
@@ -573,9 +445,23 @@ router.get('/api/lettered/:gameId/postgame', async (req, res): Promise<void> => 
       const game = dailyGame;
 
       // For lettered games, completion is determined by having placed all pieces
-      // The score is the final score when the last piece is placed
-      const allPiecesPlaced = placements && placements.length === (game as any).pieces?.length;
-      const finalScore = allPiecesPlaced ? placements[placements.length - 1].score_at_placement : 0;
+      // Check if all pieces are placed in the latest board state
+      let allPiecesPlaced = false;
+      let finalScore = 0;
+
+      if (submissions && submissions.length > 0) {
+        const latestSubmission = submissions[0];
+        if (latestSubmission && 'board_state' in latestSubmission) {
+          const boardState = (latestSubmission as any).board_state as {
+            grid: GridCell[][];
+            placedPieces: Record<string, GridPosition>;
+          };
+
+          const placedCount = Object.keys(boardState.placedPieces).length;
+          allPiecesPlaced = placedCount === (game as any).pieces?.length;
+          finalScore = allPiecesPlaced ? (latestSubmission as any).score_at_submission : 0;
+        }
+      }
 
       if (allPiecesPlaced) {
         // Mark session as completed
@@ -617,7 +503,7 @@ router.get('/api/lettered/:gameId/postgame', async (req, res): Promise<void> => 
       // Game already completed, return the stored results
       const response: LetteredGameCompleteResponse = {
         type: 'lettered_game_complete',
-        finalScore: session.final_score,
+        finalScore: session.finalScore,
         isValid: true,
       };
 

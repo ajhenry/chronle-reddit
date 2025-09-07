@@ -7,12 +7,12 @@ import type { UserInsert } from '../../shared/types/supabase';
  * Creates user if they don't exist.
  * @returns User ID if authenticated and user exists/created, null otherwise
  */
-export const ensureUserExistsAndGetId = async (): Promise<string | null> => {
+export const ensureUserExistsAndGetId = async (): Promise<string> => {
   try {
     const reddit = await getRedditProvider();
     const redditUsername = await reddit.getCurrentUsername();
     if (!redditUsername || redditUsername === 'anonymous') {
-      return null;
+      throw new Error('User not authenticated with Reddit');
     }
 
     // Try to get existing user first
@@ -39,15 +39,15 @@ export const ensureUserExistsAndGetId = async (): Promise<string | null> => {
       .single();
 
     if (createError) {
-      console.error('Error creating user:', createError);
-      return null;
+      console.error('Error creating user:', { error: createError });
+      throw createError;
     }
 
     console.log('Created new user:', redditUsername, 'with ID:', newUser.id);
     return newUser.id;
   } catch (error) {
-    console.error('Error in ensureUserExistsAndGetId:', error);
-    return null;
+    console.error('Error in ensureUserExistsAndGetId:', { error });
+    throw error;
   }
 };
 

@@ -7,6 +7,7 @@ CREATE TABLE IF NOT EXISTS public.lettered_games (
     rows INTEGER NOT NULL, -- Number of rows in the grid
     cols INTEGER NOT NULL, -- Number of columns in the grid
     pieces JSONB NOT NULL, -- Array of letter pieces as JSON
+    initial_piece_positions JSONB NOT NULL DEFAULT '{}', -- Initial positions for pieces (pieceId -> position)
     solution JSONB NOT NULL, -- Solution positions for each piece as JSON
     solution_hash TEXT NOT NULL, -- SHA256 hash of the solved grid for verification
     created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL,

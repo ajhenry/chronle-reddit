@@ -12,6 +12,7 @@ export interface LetteredGame {
   rows: number;
   cols: number;
   pieces: LetterPiece[];
+  initialPiecePositions: Record<string, GridPosition>;
   solution: GridPosition[][];
   solutionHash: string;
   createdAt: string;
@@ -32,10 +33,12 @@ export interface LetteredSession {
 export interface LetteredSubmission {
   id: string;
   gameSessionId: string;
-  pieceId: string;
-  position: GridPosition;
-  placedAt: string;
-  scoreAtPlacement: number;
+  boardState: {
+    grid: GridCell[][];
+    placedPieces: Record<string, GridPosition>; // pieceId -> position
+  };
+  submittedAt: string;
+  scoreAtSubmission: number;
 }
 
 const convertLetteredSubmission = (
@@ -44,10 +47,9 @@ const convertLetteredSubmission = (
   return {
     id: submission.id,
     gameSessionId: submission.game_session_id,
-    pieceId: submission.piece_id,
-    position: submission.position as GridPosition,
-    placedAt: submission.placed_at,
-    scoreAtPlacement: submission.score_at_placement,
+    boardState: submission.board_state as LetteredSubmission['boardState'],
+    submittedAt: submission.submitted_at,
+    scoreAtSubmission: submission.score_at_submission,
   };
 };
 
@@ -77,6 +79,7 @@ const convertLetteredGame = (
     rows: game.rows,
     cols: game.cols,
     pieces: game.pieces as LetterPiece[],
+    initialPiecePositions: game.initial_piece_positions as Record<string, GridPosition>,
     solution: game.solution as GridPosition[][],
     solutionHash: game.solution_hash,
     createdAt: game.created_at,
@@ -94,6 +97,7 @@ export const createLetteredGame = async (game: LetteredGame): Promise<LetteredGa
       rows: game.rows,
       cols: game.cols,
       pieces: game.pieces,
+      initial_piece_positions: game.initialPiecePositions,
       solution: game.solution,
       solution_hash: game.solutionHash,
     })
@@ -162,7 +166,9 @@ export const getTodaysLetteredGame = async (): Promise<LetteredGame> => {
   return convertLetteredGame(data.lettered_games);
 };
 
-export const getOrCreateLetteredSession = async (userId: string): Promise<LetteredSession> => {
+export const getOrCreateLetteredSessionForToday = async (
+  userId: string
+): Promise<LetteredSession> => {
   const dailyGame = await getOrCreateTodaysGame();
 
   const { data, error } = await supabase
@@ -183,13 +189,42 @@ export const getOrCreateLetteredSession = async (userId: string): Promise<Letter
   return convertLetteredSession(data);
 };
 
-export const getLetteredSubmissions = async (userId: string): Promise<LetteredSubmission[]> => {
-  const letteredSession = await getOrCreateLetteredSession(userId);
+export const getLatestLetteredSubmissionForToday = async (
+  userId: string
+): Promise<LetteredSubmission | null> => {
+  const letteredSession = await getOrCreateLetteredSessionForToday(userId);
 
   const { data, error } = await supabase
     .from('lettered_submissions')
     .select('*')
-    .eq('game_session_id', letteredSession.id);
+    .eq('game_session_id', letteredSession.id)
+    .order('created_at', { ascending: false })
+    .limit(1);
+
+  if (error) {
+    console.error('Failed to find latest lettered submission:', { error });
+    throw new Error(`Failed to find latest lettered submission: ${error.message}`, {
+      cause: error,
+    });
+  }
+
+  if (data.length === 0) {
+    return null;
+  }
+
+  return convertLetteredSubmission(data[0]!);
+};
+
+export const getLetteredSubmissionsForToday = async (
+  userId: string
+): Promise<LetteredSubmission[]> => {
+  const letteredSession = await getOrCreateLetteredSessionForToday(userId);
+
+  const { data, error } = await supabase
+    .from('lettered_submissions')
+    .select('*')
+    .eq('game_session_id', letteredSession.id)
+    .order('submitted_at', { ascending: true });
 
   if (error) {
     console.error('Failed to find lettered submissions:', { error });
@@ -199,23 +234,22 @@ export const getLetteredSubmissions = async (userId: string): Promise<LetteredSu
   return data.map(convertLetteredSubmission);
 };
 
-export const getUserLetteredSessionForToday = async (
+export const getOrCreateUserLetteredSessionForToday = async (
   userId: string
-): Promise<LetteredSession | null> => {
+): Promise<LetteredSession> => {
   const dailyGame = await getOrCreateTodaysGame();
 
   const { data, error } = await supabase
     .from('lettered_sessions')
     .select('*')
-    .eq('user_id', userId)
     .eq('daily_game_id', dailyGame.id)
     .single();
 
+  if (!data && error.code === 'PGRST116') {
+    return await createLetteredSession(userId);
+  }
+
   if (error) {
-    if (error.code === 'PGRST116') {
-      // No session found for today
-      return null;
-    }
     console.error('Failed to find todays lettered session:', { error });
     throw new Error(`Failed to find todays lettered session: ${error.message}`, { cause: error });
   }
