@@ -1,2 +1,0 @@
--- This file is now empty - seed data moved to proper seed file
--- See supabase/seed.sql for lettered games seed data

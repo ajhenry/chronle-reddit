@@ -220,21 +220,28 @@ router.post('/api/admin/erase-topx-results', async (_req, res): Promise<void> =>
 
     const dailyGame = dailyGameResult[0];
 
-    // Get the user's game session for today
-    const { data: session, error: sessionError } = await supabase
-      .from('game_sessions')
+    // Get the user's game session for today (check both session types)
+    let session = null;
+    const { data: letteredSession, error: letteredError } = await supabase
+      .from('lettered_sessions')
       .select('id')
       .eq('user_id', userId)
       .eq('daily_game_id', dailyGame.id)
       .single();
 
-    if (sessionError && sessionError.code !== 'PGRST116') {
-      console.error('Error fetching game session:', sessionError);
-      res.status(500).json({
-        status: 'error',
-        message: 'Failed to fetch game session',
-      });
-      return;
+    if (!letteredError) {
+      session = letteredSession;
+    } else {
+      const { data: topxSession, error: topxError } = await supabase
+        .from('topx_sessions')
+        .select('id')
+        .eq('user_id', userId)
+        .eq('daily_game_id', dailyGame.id)
+        .single();
+
+      if (!topxError) {
+        session = topxSession;
+      }
     }
 
     if (!session) {
@@ -280,11 +287,22 @@ router.post('/api/admin/erase-topx-results', async (_req, res): Promise<void> =>
       return;
     }
 
-    // Delete the game session itself
-    const { error: sessionDeleteError } = await supabase
-      .from('game_sessions')
+    // Delete the game session itself (try both session types)
+    let sessionDeleteError = null;
+    const { error: letteredDeleteError } = await supabase
+      .from('lettered_sessions')
       .delete()
       .eq('id', session.id);
+
+    if (letteredDeleteError) {
+      const { error: topxDeleteError } = await supabase
+        .from('topx_sessions')
+        .delete()
+        .eq('id', session.id);
+      sessionDeleteError = topxDeleteError;
+    } else {
+      sessionDeleteError = letteredDeleteError;
+    }
 
     if (sessionDeleteError) {
       console.error('Error deleting game session:', sessionDeleteError);

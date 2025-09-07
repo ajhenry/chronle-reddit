@@ -244,6 +244,7 @@ export const LetteredPage = ({ onBack }: { onBack?: () => void }) => {
   const [showDevButtons, setShowDevButtons] = useState(false);
   const [, setShowGoldShimmer] = useState(false);
   const [gameData, setGameData] = useState<LetteredGameData | null>(null);
+  const [dailyGameId, setDailyGameId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -323,8 +324,8 @@ export const LetteredPage = ({ onBack }: { onBack?: () => void }) => {
         category: apiGameData.category,
         phrase: apiGameData.phrase,
         grid: apiGameData.grid,
-        rows: apiGameData.grid.length,
-        cols: apiGameData.grid[0]?.length || 0,
+        rows: apiGameData.rows,
+        cols: apiGameData.cols,
         pieces: apiGameData.pieces,
         solution: apiGameData.solution,
         solutionHash: apiGameData.solutionHash,
@@ -333,17 +334,18 @@ export const LetteredPage = ({ onBack }: { onBack?: () => void }) => {
       };
 
       setGameData(clientGameData);
+      setDailyGameId(gameData.dailyGameId);
 
       // Initialize game state manager with new game
       if (gameStateManagerRef.current) {
         gameStateManagerRef.current.initializeGame(clientGameData);
 
         // If we have session data, restore the placed pieces
-        if (apiSessionData && apiSessionData.placedPieces.length > 0) {
+        if (apiSessionData && Object.keys(apiSessionData.pieces).length > 0) {
           console.log('Restoring session data:', apiSessionData);
 
           // Place pieces from the session data
-          for (const placedPiece of apiSessionData.placedPieces) {
+          for (const placedPiece of Object.values(apiSessionData.pieces)) {
             await gameStateManagerRef.current.placePiece(placedPiece.pieceId, placedPiece.position);
           }
 
@@ -453,8 +455,75 @@ export const LetteredPage = ({ onBack }: { onBack?: () => void }) => {
           gameStateManagerRef.current.removePiece(pieceId);
         }
       }
+
+      // Check if the layout has actually changed
+      let layoutChanged = false;
+
+      // Check for new or moved pieces
+      for (const [pieceId, newPosition] of newPlacedPieces) {
+        const currentPosition = currentPlacedPieces.get(pieceId);
+        if (
+          !currentPosition ||
+          currentPosition.row !== newPosition.row ||
+          currentPosition.col !== newPosition.col
+        ) {
+          layoutChanged = true;
+          break;
+        }
+      }
+
+      // Check for removed pieces
+      if (!layoutChanged) {
+        for (const [pieceId] of currentPlacedPieces) {
+          if (!newPlacedPieces.has(pieceId)) {
+            layoutChanged = true;
+            break;
+          }
+        }
+      }
+
+      // Always save the current session state to server
+      if (dailyGameId) {
+        try {
+          // Send all placed pieces as a map with timestamps
+          const placedPiecesMap: Record<
+            string,
+            { pieceId: string; position: GridPosition; placedAt: string }
+          > = {};
+          const currentTime = new Date().toISOString();
+
+          for (const [pieceId, position] of newPlacedPieces.entries()) {
+            placedPiecesMap[pieceId] = {
+              pieceId,
+              position,
+              placedAt: currentTime,
+            };
+          }
+
+          const response = await apiFetch(`/api/lettered/${dailyGameId}/session`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+              placedPieces: placedPiecesMap,
+              timestamp: Date.now(),
+            }),
+          });
+
+          if (!response.ok) {
+            const errorData = await response.json().catch(() => ({}));
+            console.error('Failed to save game session:', { errorData });
+          } else {
+            const result = await response.json();
+            console.log('Game session saved successfully:', { result });
+          }
+        } catch (error) {
+          console.error('Error saving game session:', error);
+        }
+      }
     },
-    [gameData]
+    [gameData, dailyGameId]
   );
 
   const handleBackToMenu = () => {

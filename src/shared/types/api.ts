@@ -203,18 +203,7 @@ export type LetteredDailyGameResponse = {
   dailyGameId: string;
   game: LetteredGameData;
   day: string; // ISO date string
-  session?: {
-    id: string;
-    startedAt: string;
-    currentScore: number;
-    initialScore: number;
-    isCompleted: boolean;
-    placedPieces: Array<{
-      pieceId: string;
-      position: GridPosition;
-      placedAt: string;
-    }>;
-  };
+  session?: LetteredGameSessionResponse;
 };
 
 export type LetteredSubmissionResponse = {
@@ -227,4 +216,23 @@ export type LetteredGameCompleteResponse = {
   type: 'lettered_game_complete';
   finalScore: number;
   isValid: boolean;
+};
+
+export type LetteredGameSessionResponse = {
+  type: 'lettered_game_session';
+  sessionId: string;
+  currentScore: number;
+  initialScore: number;
+  isCompleted: boolean;
+  pieces: {
+    [pieceId: string]: {
+      pieceId: string;
+      position: GridPosition;
+    };
+  };
+};
+
+export type StatusResponse = {
+  type: 'status';
+  day: string;
 };

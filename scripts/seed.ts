@@ -127,6 +127,7 @@ async function seedLetteredGames() {
             cols: gameData.cols,
             pieces: gameData.pieces,
             solution: gameData.solution,
+            solution_hash: gameData.solutionHash,
           })
           .select()
           .single();

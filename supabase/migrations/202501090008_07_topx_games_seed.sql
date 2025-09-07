@@ -1,7 +1,41 @@
--- Add more seed data for TopX games
-INSERT INTO topx_games (id, prompt, suggestions, category, count, solution) VALUES
+-- Seed data for TopX games
+-- Insert initial seed data
+INSERT INTO topx_games (prompt, suggestions, category, count, solution) VALUES
 (
-  'game_004',
+  'Name the top 3 states that eat the most peanut butter',
+  ARRAY[
+    'Georgia', 'Alabama', 'North Carolina', 'Texas', 'California', 'Florida',
+    'New York', 'Pennsylvania', 'Illinois', 'Ohio', 'Virginia', 'Tennessee',
+    'Louisiana', 'Mississippi', 'Arkansas'
+  ],
+  'states',
+  3,
+  ARRAY['Georgia', 'Alabama', 'North Carolina']
+),
+(
+  'Name the top 5 programming languages by popularity',
+  ARRAY[
+    'JavaScript', 'Python', 'Java', 'C++', 'C#', 'PHP', 'Ruby', 'Swift',
+    'Go', 'Rust', 'TypeScript', 'Kotlin', 'Scala', 'R', 'Dart'
+  ],
+  'programming languages',
+  5,
+  ARRAY['JavaScript', 'Python', 'Java', 'C++', 'C#']
+),
+(
+  'Name the top 4 social media platforms by users',
+  ARRAY[
+    'Facebook', 'YouTube', 'WhatsApp', 'Instagram', 'TikTok', 'WeChat',
+    'Snapchat', 'Twitter', 'LinkedIn', 'Pinterest', 'Reddit', 'Telegram'
+  ],
+  'social media platforms',
+  4,
+  ARRAY['Facebook', 'YouTube', 'WhatsApp', 'Instagram']
+);
+
+-- Insert additional TopX games seed data
+INSERT INTO topx_games (prompt, suggestions, category, count, solution) VALUES
+(
   'Name the top 3 most visited countries in the world',
   ARRAY[
     'France', 'Spain', 'United States', 'China', 'Italy', 'Turkey', 'Mexico',
@@ -13,7 +47,6 @@ INSERT INTO topx_games (id, prompt, suggestions, category, count, solution) VALU
   ARRAY['France', 'Spain', 'United States']
 ),
 (
-  'game_005',
   'Name the top 4 most popular pizza toppings',
   ARRAY[
     'Pepperoni', 'Mushrooms', 'Sausage', 'Cheese', 'Peppers', 'Onions', 'Olives',
@@ -25,7 +58,6 @@ INSERT INTO topx_games (id, prompt, suggestions, category, count, solution) VALU
   ARRAY['Pepperoni', 'Mushrooms', 'Sausage', 'Extra Cheese']
 ),
 (
-  'game_006',
   'Name the top 5 most streamed artists on Spotify',
   ARRAY[
     'Drake', 'Ed Sheeran', 'Post Malone', 'Ariana Grande', 'Eminem', 'Justin Bieber',
@@ -37,7 +69,6 @@ INSERT INTO topx_games (id, prompt, suggestions, category, count, solution) VALU
   ARRAY['Drake', 'Bad Bunny', 'The Weeknd', 'Taylor Swift', 'Ariana Grande']
 ),
 (
-  'game_007',
   'Name the top 3 most popular dog breeds in America',
   ARRAY[
     'Labrador Retriever', 'Golden Retriever', 'German Shepherd', 'French Bulldog',
@@ -49,7 +80,6 @@ INSERT INTO topx_games (id, prompt, suggestions, category, count, solution) VALU
   ARRAY['Labrador Retriever', 'Golden Retriever', 'German Shepherd']
 ),
 (
-  'game_008',
   'Name the top 4 largest tech companies by market cap',
   ARRAY[
     'Apple', 'Microsoft', 'Amazon', 'Google', 'Meta', 'Tesla', 'NVIDIA',
@@ -61,7 +91,6 @@ INSERT INTO topx_games (id, prompt, suggestions, category, count, solution) VALU
   ARRAY['Apple', 'Microsoft', 'Amazon', 'Google']
 ),
 (
-  'game_009',
   'Name the top 3 most popular breakfast cereals',
   ARRAY[
     'Cheerios', 'Frosted Flakes', 'Honey Nut Cheerios', 'Lucky Charms',
@@ -73,7 +102,6 @@ INSERT INTO topx_games (id, prompt, suggestions, category, count, solution) VALU
   ARRAY['Cheerios', 'Frosted Flakes', 'Honey Nut Cheerios']
 ),
 (
-  'game_010',
   'Name the top 5 most popular video game consoles of all time',
   ARRAY[
     'PlayStation 2', 'Nintendo DS', 'Nintendo Switch', 'Game Boy', 'PlayStation 4',
@@ -85,7 +113,6 @@ INSERT INTO topx_games (id, prompt, suggestions, category, count, solution) VALU
   ARRAY['PlayStation 2', 'Nintendo DS', 'Nintendo Switch', 'Game Boy', 'PlayStation 4']
 ),
 (
-  'game_011',
   'Name the top 3 most spoken languages in the world',
   ARRAY[
     'Mandarin Chinese', 'English', 'Hindi', 'Spanish', 'French', 'Standard Arabic',
@@ -97,7 +124,6 @@ INSERT INTO topx_games (id, prompt, suggestions, category, count, solution) VALU
   ARRAY['Mandarin Chinese', 'English', 'Hindi']
 ),
 (
-  'game_012',
   'Name the top 4 most popular ice cream flavors',
   ARRAY[
     'Vanilla', 'Chocolate', 'Strawberry', 'Mint Chip', 'Cookies and Cream',
@@ -109,7 +135,6 @@ INSERT INTO topx_games (id, prompt, suggestions, category, count, solution) VALU
   ARRAY['Vanilla', 'Chocolate', 'Strawberry', 'Mint Chip']
 ),
 (
-  'game_013',
   'Name the top 3 most popular sports in the world',
   ARRAY[
     'Soccer', 'Basketball', 'Cricket', 'Tennis', 'Field Hockey', 'Volleyball',
@@ -121,7 +146,6 @@ INSERT INTO topx_games (id, prompt, suggestions, category, count, solution) VALU
   ARRAY['Soccer', 'Basketball', 'Cricket']
 ),
 (
-  'game_014',
   'Name the top 5 most popular Netflix shows of all time',
   ARRAY[
     'Stranger Things', 'Squid Game', 'Wednesday', 'Bridgerton', 'Money Heist',
@@ -133,7 +157,6 @@ INSERT INTO topx_games (id, prompt, suggestions, category, count, solution) VALU
   ARRAY['Stranger Things', 'Squid Game', 'Wednesday', 'Bridgerton', 'Money Heist']
 ),
 (
-  'game_015',
   'Name the top 3 most valuable cryptocurrencies',
   ARRAY[
     'Bitcoin', 'Ethereum', 'Tether', 'BNB', 'Solana', 'XRP', 'USDC', 'Stablecoin',
@@ -145,7 +168,6 @@ INSERT INTO topx_games (id, prompt, suggestions, category, count, solution) VALU
   ARRAY['Bitcoin', 'Ethereum', 'Tether']
 ),
 (
-  'game_016',
   'Name the top 4 most popular fast food chains in America',
   ARRAY[
     'McDonalds', 'Subway', 'Starbucks', 'KFC', 'Burger King', 'Pizza Hut',
@@ -157,7 +179,6 @@ INSERT INTO topx_games (id, prompt, suggestions, category, count, solution) VALU
   ARRAY['McDonalds', 'Subway', 'Starbucks', 'KFC']
 ),
 (
-  'game_017',
   'Name the top 3 largest oceans in the world',
   ARRAY[
     'Pacific Ocean', 'Atlantic Ocean', 'Indian Ocean', 'Southern Ocean',
@@ -169,7 +190,6 @@ INSERT INTO topx_games (id, prompt, suggestions, category, count, solution) VALU
   ARRAY['Pacific Ocean', 'Atlantic Ocean', 'Indian Ocean']
 ),
 (
-  'game_018',
   'Name the top 5 most popular car brands worldwide',
   ARRAY[
     'Toyota', 'Volkswagen', 'Ford', 'Honda', 'Nissan', 'Chevrolet', 'Hyundai',
@@ -181,7 +201,6 @@ INSERT INTO topx_games (id, prompt, suggestions, category, count, solution) VALU
   ARRAY['Toyota', 'Volkswagen', 'Ford', 'Honda', 'Nissan']
 ),
 (
-  'game_019',
   'Name the top 3 most popular superhero movies of all time',
   ARRAY[
     'Avengers Endgame', 'Avengers Infinity War', 'Spider-Man No Way Home',
@@ -194,7 +213,6 @@ INSERT INTO topx_games (id, prompt, suggestions, category, count, solution) VALU
   ARRAY['Avengers Endgame', 'Avengers Infinity War', 'Spider-Man No Way Home']
 ),
 (
-  'game_020',
   'Name the top 4 most popular coffee drinks',
   ARRAY[
     'Espresso', 'Americano', 'Latte', 'Cappuccino', 'Macchiato', 'Mocha',
@@ -206,7 +224,6 @@ INSERT INTO topx_games (id, prompt, suggestions, category, count, solution) VALU
   ARRAY['Espresso', 'Americano', 'Latte', 'Cappuccino']
 ),
 (
-  'game_021',
   'Name the top 3 most popular board games',
   ARRAY[
     'Monopoly', 'Scrabble', 'Chess', 'Checkers', 'Risk', 'Clue', 'Backgammon',
@@ -218,7 +235,6 @@ INSERT INTO topx_games (id, prompt, suggestions, category, count, solution) VALU
   ARRAY['Monopoly', 'Scrabble', 'Chess']
 ),
 (
-  'game_022',
   'Name the top 5 most popular streaming platforms',
   ARRAY[
     'Netflix', 'YouTube', 'Amazon Prime Video', 'Disney+', 'Hulu', 'HBO Max',
@@ -230,7 +246,6 @@ INSERT INTO topx_games (id, prompt, suggestions, category, count, solution) VALU
   ARRAY['Netflix', 'YouTube', 'Amazon Prime Video', 'Disney+', 'Hulu']
 ),
 (
-  'game_023',
   'Name the top 3 most popular social media apps among teens',
   ARRAY[
     'TikTok', 'Instagram', 'Snapchat', 'YouTube', 'Discord', 'WhatsApp',
@@ -242,7 +257,6 @@ INSERT INTO topx_games (id, prompt, suggestions, category, count, solution) VALU
   ARRAY['TikTok', 'Instagram', 'Snapchat']
 ),
 (
-  'game_024',
   'Name the top 4 most popular holiday destinations',
   ARRAY[
     'Paris', 'London', 'New York', 'Rome', 'Barcelona', 'Tokyo', 'Dubai',
@@ -254,7 +268,6 @@ INSERT INTO topx_games (id, prompt, suggestions, category, count, solution) VALU
   ARRAY['Paris', 'London', 'New York', 'Rome']
 ),
 (
-  'game_025',
   'Name the top 3 most popular mobile games',
   ARRAY[
     'Candy Crush Saga', 'Pokemon GO', 'Fortnite', 'PUBG Mobile', 'Among Us',

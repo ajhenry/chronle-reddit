@@ -3,13 +3,50 @@ import {
   TopXDailyGameResponse,
   TopXSubmissionResponse,
   TopXGameCompleteResponse,
+  StatusResponse,
 } from '../../shared/types/api';
 import { supabase } from '../../shared/supabase-server';
-import { getOrCreateTodaysDailyGame } from '../lib/daily-game-helpers';
+import { checkAndCreateTodaysGames, getTodayEST } from '../lib/status-helpers';
 import { recordLeaderboardEntry } from '../lib/leaderboard-helpers';
 import { ensureUserExistsAndGetId } from '../lib/user-helpers';
+import {
+  getUserTopXSessionForToday,
+  createTopXSession,
+  updateTopXSession,
+  findTopXSessionById,
+} from '../database/topx-sessions';
+import { getOrCreateTodaysGame } from '../database/game';
 
 const router = Router();
+
+// GET /api/status - Checks if games exist for today and creates them if needed
+router.get('/api/status', async (_req, res): Promise<void> => {
+  console.log('GET /api/status');
+  try {
+    const result = await checkAndCreateTodaysGames();
+
+    if (!result.success) {
+      res.status(result.statusCode).json({
+        status: 'error',
+        message: result.error,
+      });
+      return;
+    }
+
+    const response: StatusResponse = {
+      type: 'status',
+      day: result.day,
+    };
+
+    res.json(response);
+  } catch (error) {
+    console.error('Error in /api/status:', error);
+    res.status(500).json({
+      status: 'error',
+      message: 'Failed to check game status',
+    });
+  }
+});
 
 // GET /api/topx/game - Returns the current day's game or results of the game
 router.get('/api/topx/game', async (_req, res): Promise<void> => {
@@ -18,13 +55,18 @@ router.get('/api/topx/game', async (_req, res): Promise<void> => {
     const userId = await ensureUserExistsAndGetId();
     console.log('userId', { userId });
 
-    // Get or create today's daily game using the helper
-    const result = await getOrCreateTodaysDailyGame();
+    try {
+      // Get or create today's daily game using the helper
+      const result = await getOrCreateTodaysGame();
 
-    if (!result.success) {
-      res.status(result.statusCode).json({
+      res.json({
+        success: true,
+      });
+    } catch (error) {
+      console.error("Error getting today's daily game:", error);
+      res.status(500).json({
         status: 'error',
-        message: result.error,
+        message: "Failed to get today's daily game",
       });
       return;
     }
@@ -48,60 +90,37 @@ router.get('/api/topx/game', async (_req, res): Promise<void> => {
 
     // If user is authenticated, get or create their game session
     if (userId) {
-      // First try to get existing session
-      const { data: existingSession } = await supabase
-        .from('game_sessions')
-        .select(
-          `
-          id,
-          started_at,
-          completed_at,
-          initial_score,
-          final_score,
-          is_completed,
-          topx_submissions(
-            answer,
-            submitted_at,
-            is_correct,
-            position,
-            score_at_submission
-          )
-        `
-        )
-        .eq('user_id', userId)
-        .eq('daily_game_id', dailyGame.id)
-        .single();
+      try {
+        // First try to get existing session
+        const existingSession = await getUserTopXSessionForToday(userId);
 
-      if (existingSession) {
-        // User has an existing session, calculate current score
-        const gameStartTime = new Date(existingSession.started_at).getTime();
-        const now = Date.now();
-        const elapsedSeconds = Math.max(0, (now - gameStartTime) / 1000);
+        if (existingSession) {
+          // User has an existing session, get submissions and calculate current score
+          const { data: submissions } = await supabase
+            .from('topx_submissions')
+            .select('answer, submitted_at, is_correct, position, score_at_submission')
+            .eq('game_session_id', existingSession.id);
 
-        // Count incorrect submissions
-        const incorrectCount = (existingSession.topx_submissions || []).filter(
-          (sub: { is_correct: boolean }) => !sub.is_correct
-        ).length;
+          // Calculate current score using same algorithm as client
+          const gameStartTime = new Date(existingSession.startedAt).getTime();
+          const now = Date.now();
+          const elapsedSeconds = Math.max(0, (now - gameStartTime) / 1000);
 
-        // Calculate current score using same algorithm as client
-        const decayMultiplier = Math.pow(1.5, incorrectCount);
-        const scoreDecay = Math.floor(elapsedSeconds * decayMultiplier);
-        const currentScore = Math.max(0, existingSession.initial_score - scoreDecay);
+          // Count incorrect submissions
+          const incorrectCount = (submissions || []).filter((sub) => !sub.is_correct).length;
 
-        sessionData = {
-          id: existingSession.id,
-          startedAt: existingSession.started_at,
-          currentScore: existingSession.is_completed ? existingSession.final_score : currentScore,
-          initialScore: existingSession.initial_score,
-          isCompleted: existingSession.is_completed,
-          submissions: (existingSession.topx_submissions || []).map(
-            (sub: {
-              answer: string;
-              submitted_at: string;
-              is_correct: boolean;
-              position?: number;
-              score_at_submission: number;
-            }) => {
+          // Calculate current score using same algorithm as client
+          const decayMultiplier = Math.pow(1.5, incorrectCount);
+          const scoreDecay = Math.floor(elapsedSeconds * decayMultiplier);
+          const currentScore = Math.max(0, existingSession.initialScore - scoreDecay);
+
+          sessionData = {
+            id: existingSession.id,
+            startedAt: existingSession.startedAt,
+            currentScore: existingSession.isCompleted ? existingSession.finalScore : currentScore,
+            initialScore: existingSession.initialScore,
+            isCompleted: existingSession.isCompleted,
+            submissions: (submissions || []).map((sub) => {
               const result: {
                 answer: string;
                 submittedAt: string;
@@ -118,35 +137,28 @@ router.get('/api/topx/game', async (_req, res): Promise<void> => {
                 result.position = sub.position;
               }
               return result;
-            }
-          ),
-        };
-      } else {
-        // No existing session, create a new one
-        const { data: newSession, error: createError } = await supabase
-          .from('game_sessions')
-          .insert({
-            user_id: userId,
-            daily_game_id: dailyGame.id,
-            initial_score: 5000,
-            final_score: 5000,
-          })
-          .select()
-          .single();
-
-        if (createError) {
-          console.error('Error creating game session:', createError);
-          // Continue without session data
-        } else {
-          sessionData = {
-            id: newSession.id,
-            startedAt: newSession.started_at,
-            currentScore: 5000,
-            initialScore: 5000,
-            isCompleted: false,
-            submissions: [],
+            }),
           };
+        } else {
+          // No existing session, create a new one
+          try {
+            const newSession = await createTopXSession(userId, dailyGame.id);
+            sessionData = {
+              id: newSession.id,
+              startedAt: newSession.startedAt,
+              currentScore: 5000,
+              initialScore: 5000,
+              isCompleted: false,
+              submissions: [],
+            };
+          } catch (createError) {
+            console.error('Error creating topx session:', createError);
+            // Continue without session data
+          }
         }
+      } catch (sessionError) {
+        console.error('Error handling topx session:', sessionError);
+        // Continue without session data
       }
     }
 
@@ -206,15 +218,11 @@ router.post('/api/topx/attempt', async (req, res): Promise<void> => {
     const dailyGame = dailyGameResult[0];
 
     // Get existing game session (should already exist from game load)
-    const { data: sessionData, error: sessionError } = await supabase
-      .from('game_sessions')
-      .select('*')
-      .eq('user_id', userId)
-      .eq('daily_game_id', dailyGame.id)
-      .single();
-
-    if (sessionError || !sessionData) {
-      console.error('Error fetching game session:', sessionError);
+    let session;
+    try {
+      session = await findTopXSessionById(req.body.sessionId);
+    } catch (sessionError) {
+      console.error('Error fetching topx session:', sessionError);
       res.status(404).json({
         status: 'error',
         message: 'Game session not found. Please reload the game.',
@@ -222,9 +230,15 @@ router.post('/api/topx/attempt', async (req, res): Promise<void> => {
       return;
     }
 
-    const session = sessionData;
+    if (!session) {
+      res.status(404).json({
+        status: 'error',
+        message: 'Game session not found. Please reload the game.',
+      });
+      return;
+    }
 
-    if (session.is_completed) {
+    if (session.isCompleted) {
       res.status(400).json({
         status: 'error',
         message: 'Game session is already completed',
@@ -233,7 +247,7 @@ router.post('/api/topx/attempt', async (req, res): Promise<void> => {
     }
 
     // Calculate time-based score decay
-    const gameStartTime = new Date(session.started_at).getTime();
+    const gameStartTime = new Date(session.startedAt).getTime();
     const submissionTime = timestamp;
     const elapsedSeconds = Math.max(0, (submissionTime - gameStartTime) / 1000);
 
@@ -253,7 +267,7 @@ router.post('/api/topx/attempt', async (req, res): Promise<void> => {
     // Scoring algorithm: Start at 5000, decay over time, faster decay with wrong answers
     const decayMultiplier = Math.pow(1.5, incorrectSubmissions);
     const scoreDecay = Math.floor(elapsedSeconds * decayMultiplier);
-    const currentScore = Math.max(0, session.initial_score - scoreDecay);
+    const currentScore = Math.max(0, session.initialScore - scoreDecay);
 
     // Record the submission without validation
     const { data: submission, error: submissionError } = await supabase
@@ -278,7 +292,7 @@ router.post('/api/topx/attempt', async (req, res): Promise<void> => {
     }
 
     // Update session's current score
-    await supabase.from('game_sessions').update({ final_score: currentScore }).eq('id', session.id);
+    await updateTopXSession(session.id, { finalScore: currentScore });
 
     const response: TopXSubmissionResponse = {
       type: 'topx_submission',
@@ -325,24 +339,19 @@ router.get('/api/topx/postgame', async (_req, res): Promise<void> => {
     const dailyGame = dailyGameResult[0];
 
     // Get the user's game session
-    const { data: session, error: sessionError } = await supabase
-      .from('game_sessions')
-      .select(
-        `
-        *,
-        daily_games!inner(
-          id,
-          topx_game_id,
-          topx_games!inner(*)
-        )
-      `
-      )
-      .eq('user_id', userId)
-      .eq('daily_game_id', dailyGame.id)
-      .single();
+    let session;
+    try {
+      session = await getUserTopXSessionForToday(userId);
+    } catch (sessionError) {
+      console.error('Error fetching topx session:', sessionError);
+      res.status(500).json({
+        status: 'error',
+        message: 'Failed to fetch game session',
+      });
+      return;
+    }
 
-    if (sessionError || !session) {
-      console.error('Error fetching game session:', sessionError);
+    if (!session) {
       res.status(404).json({
         status: 'error',
         message: 'No game session found for today',
@@ -351,7 +360,7 @@ router.get('/api/topx/postgame', async (_req, res): Promise<void> => {
     }
 
     // If not completed, validate and complete the game now
-    if (!session.is_completed) {
+    if (!session.isCompleted) {
       // Get all submissions for this session
       const { data: submissions, error: submissionsError } = await supabase
         .from('topx_submissions')
@@ -368,7 +377,23 @@ router.get('/api/topx/postgame', async (_req, res): Promise<void> => {
         return;
       }
 
-      const game = session.daily_games.topx_games;
+      // Get the TopX game data
+      const { data: gameData, error: gameError } = await supabase
+        .from('topx_games')
+        .select('*')
+        .eq('id', dailyGame.topx_game_id)
+        .single();
+
+      if (gameError || !gameData) {
+        console.error('Error fetching topx game:', gameError);
+        res.status(500).json({
+          status: 'error',
+          message: 'Failed to fetch game data',
+        });
+        return;
+      }
+
+      const game = gameData;
       const solution = game.solution.map((s: string) => s.toLowerCase().trim());
 
       // Validate each submission and calculate final score
@@ -404,22 +429,19 @@ router.get('/api/topx/postgame', async (_req, res): Promise<void> => {
       }
 
       // Mark session as completed
-      await supabase
-        .from('game_sessions')
-        .update({
-          is_completed: true,
-          completed_at: new Date().toISOString(),
-          final_score: finalScore,
-          correct_answers: correctAnswers,
-        })
-        .eq('id', session.id);
+      await updateTopXSession(session.id, {
+        isCompleted: true,
+        completedAt: new Date().toISOString(),
+        finalScore,
+      });
 
       // Record the points in the leaderboard
       const leaderboardResult = await recordLeaderboardEntry(
         userId,
         dailyGame.id,
         session.id,
-        finalScore
+        finalScore,
+        'topx'
       );
 
       if (!leaderboardResult.success) {

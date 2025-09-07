@@ -16,37 +16,37 @@ DECLARE
 BEGIN
   -- Get current timestamp (seconds since Unix epoch)
   timestamp_part := EXTRACT(EPOCH FROM NOW())::BIGINT;
-  
+
   -- Generate 16 random bytes
   random_part := gen_random_bytes(16);
-  
+
   -- Combine timestamp (4 bytes) + random (16 bytes) = 20 bytes total
-  ksuid_bytes := 
+  ksuid_bytes :=
     decode(lpad(to_hex(timestamp_part), 8, '0'), 'hex') || random_part;
-  
+
   -- Convert bytes to a large number for base62 encoding
   num := 0;
   FOR i IN 0..19 LOOP
     num := num * 256 + get_byte(ksuid_bytes, i);
   END LOOP;
-  
+
   -- Convert to base62
   WHILE num > 0 LOOP
     remainder := (num % 62)::INTEGER;
     result := substr(alphabet, remainder + 1, 1) || result;
     num := floor(num / 62);
   END LOOP;
-  
+
   -- Pad to 27 characters
   result := lpad(result, 27, '0');
-  
+
   RETURN result;
 END;
 $$ LANGUAGE plpgsql;
 
 -- Create users table
 CREATE TABLE IF NOT EXISTS users (
-  id TEXT DEFAULT generate_ksuid() PRIMARY KEY,
+  id TEXT DEFAULT ('user_' || generate_ksuid()) PRIMARY KEY,
   reddit_id TEXT UNIQUE NOT NULL,
   image_url TEXT,
   handle TEXT UNIQUE NOT NULL,

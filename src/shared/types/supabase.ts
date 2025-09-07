@@ -1,403 +1,574 @@
-// Database table types - customize these based on your Supabase schema
-export interface Database {
+export type Json =
+  | string
+  | number
+  | boolean
+  | null
+  | { [key: string]: Json | undefined }
+  | Json[]
+
+export type Database = {
+  graphql_public: {
+    Tables: {
+      [_ in never]: never
+    }
+    Views: {
+      [_ in never]: never
+    }
+    Functions: {
+      graphql: {
+        Args: {
+          extensions?: Json
+          operationName?: string
+          query?: string
+          variables?: Json
+        }
+        Returns: Json
+      }
+    }
+    Enums: {
+      [_ in never]: never
+    }
+    CompositeTypes: {
+      [_ in never]: never
+    }
+  }
   public: {
     Tables: {
-      // Users table for storing Reddit user information
-      users: {
-        Row: {
-          id: string;
-          reddit_id: string;
-          image_url: string | null;
-          handle: string;
-          created_at: string;
-          updated_at: string;
-        };
-        Insert: {
-          id?: string;
-          reddit_id: string;
-          image_url?: string | null;
-          handle: string;
-          created_at?: string;
-          updated_at?: string;
-        };
-        Update: {
-          id?: string;
-          reddit_id?: string;
-          image_url?: string | null;
-          handle?: string;
-          created_at?: string;
-          updated_at?: string;
-        };
-      };
-      // Example counter table (matching the existing app functionality)
-      counters: {
-        Row: {
-          id: string;
-          post_id: string;
-          count: number;
-          user_id: string;
-          created_at: string;
-          updated_at: string;
-        };
-        Insert: {
-          id?: string;
-          post_id: string;
-          count?: number;
-          user_id: string;
-          created_at?: string;
-          updated_at?: string;
-        };
-        Update: {
-          id?: string;
-          post_id?: string;
-          count?: number;
-          user_id?: string;
-          created_at?: string;
-          updated_at?: string;
-        };
-      };
-      // Seasons table for managing game seasons
-      seasons: {
-        Row: {
-          id: string;
-          name: string;
-          start_date: string;
-          end_date: string;
-          is_active: boolean;
-          game_type: string;
-          created_at: string;
-          updated_at: string;
-        };
-        Insert: {
-          id?: string;
-          name: string;
-          start_date: string;
-          end_date: string;
-          is_active?: boolean;
-          game_type: string;
-          created_at?: string;
-          updated_at?: string;
-        };
-        Update: {
-          id?: string;
-          name?: string;
-          start_date?: string;
-          end_date?: string;
-          is_active?: boolean;
-          game_type?: string;
-          created_at?: string;
-          updated_at?: string;
-        };
-      };
-
-      // TopX games table for storing game data
-      topx_games: {
-        Row: {
-          id: string;
-          prompt: string;
-          suggestions: string[];
-          category: string;
-          count: number;
-          solution: string[];
-          created_at: string;
-          updated_at: string;
-        };
-        Insert: {
-          id?: string;
-          prompt: string;
-          suggestions: string[];
-          category: string;
-          count: number;
-          solution: string[];
-          created_at?: string;
-          updated_at?: string;
-        };
-        Update: {
-          id?: string;
-          prompt?: string;
-          suggestions?: string[];
-          category?: string;
-          count?: number;
-          solution?: string[];
-          created_at?: string;
-          updated_at?: string;
-        };
-      };
-
-      // Daily games table for managing daily TopX games
       daily_games: {
         Row: {
-          id: string;
-          day: string; // Date as ISO string
-          topx_game_id: string;
-          created_at: string;
-          updated_at: string;
-        };
+          created_at: string
+          day: string
+          id: string
+          lettered_game_id: string | null
+          topx_game_id: string | null
+          updated_at: string
+        }
         Insert: {
-          id?: string;
-          day: string;
-          topx_game_id: string;
-          created_at?: string;
-          updated_at?: string;
-        };
+          created_at?: string
+          day: string
+          id?: string
+          lettered_game_id?: string | null
+          topx_game_id?: string | null
+          updated_at?: string
+        }
         Update: {
-          id?: string;
-          day?: string;
-          topx_game_id?: string;
-          created_at?: string;
-          updated_at?: string;
-        };
-      };
-
-      // Game sessions table for tracking user progress and scoring
-      game_sessions: {
-        Row: {
-          id: string;
-          user_id: string;
-          daily_game_id: string;
-          started_at: string;
-          completed_at: string | null;
-          initial_score: number;
-          final_score: number;
-          attempts: any[]; // JSONB array of attempts
-          correct_answers: any[]; // JSONB array of correct answers
-          is_completed: boolean;
-        };
-        Insert: {
-          id?: string;
-          user_id: string;
-          daily_game_id: string;
-          started_at?: string;
-          completed_at?: string | null;
-          initial_score?: number;
-          final_score?: number;
-          attempts?: any[];
-          correct_answers?: any[];
-          is_completed?: boolean;
-        };
-        Update: {
-          id?: string;
-          user_id?: string;
-          daily_game_id?: string;
-          started_at?: string;
-          completed_at?: string | null;
-          initial_score?: number;
-          final_score?: number;
-          attempts?: any[];
-          correct_answers?: any[];
-          is_completed?: boolean;
-        };
-      };
-
-      // TopX submissions table for tracking individual answer submissions
-      topx_submissions: {
-        Row: {
-          id: string;
-          game_session_id: string;
-          answer: string;
-          is_correct: boolean;
-          position: number | null;
-          submitted_at: string;
-          score_at_submission: number;
-          created_at: string;
-        };
-        Insert: {
-          id?: string;
-          game_session_id: string;
-          answer: string;
-          is_correct: boolean;
-          position?: number | null;
-          submitted_at?: string;
-          score_at_submission: number;
-          created_at?: string;
-        };
-        Update: {
-          id?: string;
-          game_session_id?: string;
-          answer?: string;
-          is_correct?: boolean;
-          position?: number | null;
-          submitted_at?: string;
-          score_at_submission?: number;
-          created_at?: string;
-        };
-      };
-
-      // Leaderboard table for tracking user points after game completion
-      leaderboard: {
-        Row: {
-          id: string;
-          user_id: string;
-          daily_game_id: string;
-          game_session_id: string;
-          points_earned: number;
-          completed_at: string;
-          created_at: string;
-          updated_at: string;
-        };
-        Insert: {
-          id?: string;
-          user_id: string;
-          daily_game_id: string;
-          game_session_id: string;
-          points_earned: number;
-          completed_at?: string;
-          created_at?: string;
-          updated_at?: string;
-        };
-        Update: {
-          id?: string;
-          user_id?: string;
-          daily_game_id?: string;
-          game_session_id?: string;
-          points_earned?: number;
-          completed_at?: string;
-          created_at?: string;
-          updated_at?: string;
-        };
-      };
-
-      // Lettered games table for storing lettered game data
+          created_at?: string
+          day?: string
+          id?: string
+          lettered_game_id?: string | null
+          topx_game_id?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "daily_games_lettered_game_id_fkey"
+            columns: ["lettered_game_id"]
+            isOneToOne: false
+            referencedRelation: "lettered_games"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "daily_games_topx_game_id_fkey"
+            columns: ["topx_game_id"]
+            isOneToOne: false
+            referencedRelation: "topx_games"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       lettered_games: {
         Row: {
-          id: string;
-          category: string;
-          phrase: string;
-          grid: any; // JSONB 8x8 grid
-          pieces: any; // JSONB array of letter pieces
-          solution: any; // JSONB solution positions
-          created_at: string;
-          updated_at: string;
-        };
+          category: string
+          cols: number
+          created_at: string
+          grid: Json
+          id: string
+          phrase: string
+          pieces: Json
+          rows: number
+          solution: Json
+          solution_hash: string
+          updated_at: string
+        }
         Insert: {
-          id?: string;
-          category: string;
-          phrase: string;
-          grid: any;
-          pieces: any;
-          solution: any;
-          created_at?: string;
-          updated_at?: string;
-        };
+          category: string
+          cols: number
+          created_at?: string
+          grid: Json
+          id?: string
+          phrase: string
+          pieces: Json
+          rows: number
+          solution: Json
+          solution_hash: string
+          updated_at?: string
+        }
         Update: {
-          id?: string;
-          category?: string;
-          phrase?: string;
-          grid?: any;
-          pieces?: any;
-          solution?: any;
-          created_at?: string;
-          updated_at?: string;
-        };
-      };
-
-      // Lettered submissions table for tracking individual piece placements
+          category?: string
+          cols?: number
+          created_at?: string
+          grid?: Json
+          id?: string
+          phrase?: string
+          pieces?: Json
+          rows?: number
+          solution?: Json
+          solution_hash?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      lettered_sessions: {
+        Row: {
+          completed_at: string | null
+          created_at: string
+          daily_game_id: string
+          final_score: number
+          id: string
+          initial_score: number
+          is_completed: boolean
+          started_at: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          completed_at?: string | null
+          created_at?: string
+          daily_game_id: string
+          final_score?: number
+          id?: string
+          initial_score?: number
+          is_completed?: boolean
+          started_at?: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          completed_at?: string | null
+          created_at?: string
+          daily_game_id?: string
+          final_score?: number
+          id?: string
+          initial_score?: number
+          is_completed?: boolean
+          started_at?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "lettered_sessions_daily_game_id_fkey"
+            columns: ["daily_game_id"]
+            isOneToOne: false
+            referencedRelation: "daily_games"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "lettered_sessions_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       lettered_submissions: {
         Row: {
-          id: string;
-          game_session_id: string;
-          piece_id: string;
-          position: any; // JSONB {row, col} position
-          placed_at: string;
-          score_at_placement: number;
-          created_at: string;
-        };
+          created_at: string
+          game_session_id: string
+          id: string
+          piece_id: string
+          placed_at: string
+          position: Json
+          score_at_placement: number
+        }
         Insert: {
-          id?: string;
-          game_session_id: string;
-          piece_id: string;
-          position: any;
-          placed_at?: string;
-          score_at_placement: number;
-          created_at?: string;
-        };
+          created_at?: string
+          game_session_id: string
+          id?: string
+          piece_id: string
+          placed_at?: string
+          position: Json
+          score_at_placement: number
+        }
         Update: {
-          id?: string;
-          game_session_id?: string;
-          piece_id?: string;
-          position?: any;
-          placed_at?: string;
-          score_at_placement?: number;
-          created_at?: string;
-        };
-      };
-
-      // Add more table types as you create them in Supabase
-    };
+          created_at?: string
+          game_session_id?: string
+          id?: string
+          piece_id?: string
+          placed_at?: string
+          position?: Json
+          score_at_placement?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "lettered_submissions_game_session_id_fkey"
+            columns: ["game_session_id"]
+            isOneToOne: false
+            referencedRelation: "lettered_sessions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      seasons: {
+        Row: {
+          created_at: string
+          end_date: string
+          id: string
+          is_active: boolean | null
+          name: string
+          start_date: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          end_date: string
+          id?: string
+          is_active?: boolean | null
+          name: string
+          start_date: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          end_date?: string
+          id?: string
+          is_active?: boolean | null
+          name?: string
+          start_date?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      topx_games: {
+        Row: {
+          category: string
+          count: number
+          created_at: string
+          id: string
+          prompt: string
+          solution: string[]
+          suggestions: string[]
+          updated_at: string
+        }
+        Insert: {
+          category: string
+          count: number
+          created_at?: string
+          id?: string
+          prompt: string
+          solution: string[]
+          suggestions: string[]
+          updated_at?: string
+        }
+        Update: {
+          category?: string
+          count?: number
+          created_at?: string
+          id?: string
+          prompt?: string
+          solution?: string[]
+          suggestions?: string[]
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      topx_sessions: {
+        Row: {
+          completed_at: string | null
+          created_at: string
+          daily_game_id: string
+          final_score: number
+          id: string
+          initial_score: number
+          is_completed: boolean
+          started_at: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          completed_at?: string | null
+          created_at?: string
+          daily_game_id: string
+          final_score?: number
+          id?: string
+          initial_score?: number
+          is_completed?: boolean
+          started_at?: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          completed_at?: string | null
+          created_at?: string
+          daily_game_id?: string
+          final_score?: number
+          id?: string
+          initial_score?: number
+          is_completed?: boolean
+          started_at?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "topx_sessions_daily_game_id_fkey"
+            columns: ["daily_game_id"]
+            isOneToOne: false
+            referencedRelation: "daily_games"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "topx_sessions_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      topx_submissions: {
+        Row: {
+          answer: string
+          created_at: string
+          game_session_id: string
+          id: string
+          is_correct: boolean
+          position: number | null
+          score_at_submission: number
+          submitted_at: string
+        }
+        Insert: {
+          answer: string
+          created_at?: string
+          game_session_id: string
+          id?: string
+          is_correct: boolean
+          position?: number | null
+          score_at_submission: number
+          submitted_at?: string
+        }
+        Update: {
+          answer?: string
+          created_at?: string
+          game_session_id?: string
+          id?: string
+          is_correct?: boolean
+          position?: number | null
+          score_at_submission?: number
+          submitted_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "topx_submissions_game_session_id_fkey"
+            columns: ["game_session_id"]
+            isOneToOne: false
+            referencedRelation: "topx_sessions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      users: {
+        Row: {
+          created_at: string
+          handle: string
+          id: string
+          image_url: string | null
+          reddit_id: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          handle: string
+          id?: string
+          image_url?: string | null
+          reddit_id: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          handle?: string
+          id?: string
+          image_url?: string | null
+          reddit_id?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
+    }
     Views: {
-      [_ in never]: never;
-    };
+      [_ in never]: never
+    }
     Functions: {
-      [_ in never]: never;
-    };
+      generate_ksuid: {
+        Args: Record<PropertyKey, never>
+        Returns: string
+      }
+      get_todays_daily_game: {
+        Args: Record<PropertyKey, never>
+        Returns: {
+          day: string
+          game_data: Json
+          id: string
+          lettered_game_id: string
+          topx_game_id: string
+        }[]
+      }
+      get_todays_lettered_daily_game: {
+        Args: Record<PropertyKey, never>
+        Returns: {
+          day: string
+          game_data: Json
+          id: string
+          lettered_game_id: string
+        }[]
+      }
+      get_todays_topx_daily_game: {
+        Args: Record<PropertyKey, never>
+        Returns: {
+          day: string
+          game_data: Json
+          id: string
+          topx_game_id: string
+        }[]
+      }
+      manage_season_transitions: {
+        Args: Record<PropertyKey, never>
+        Returns: undefined
+      }
+    }
     Enums: {
-      [_ in never]: never;
-    };
-  };
+      [_ in never]: never
+    }
+    CompositeTypes: {
+      [_ in never]: never
+    }
+  }
 }
 
-// Type helpers for easier usage
-export type User = Database['public']['Tables']['users']['Row'];
-export type UserInsert = Database['public']['Tables']['users']['Insert'];
-export type UserUpdate = Database['public']['Tables']['users']['Update'];
+type DatabaseWithoutInternals = Omit<Database, "__InternalSupabase">
 
-export type Counter = Database['public']['Tables']['counters']['Row'];
-export type CounterInsert = Database['public']['Tables']['counters']['Insert'];
-export type CounterUpdate = Database['public']['Tables']['counters']['Update'];
+type DefaultSchema = DatabaseWithoutInternals[Extract<keyof Database, "public">]
 
-export type Season = Database['public']['Tables']['seasons']['Row'];
-export type SeasonInsert = Database['public']['Tables']['seasons']['Insert'];
-export type SeasonUpdate = Database['public']['Tables']['seasons']['Update'];
-
-export type TopXGame = Database['public']['Tables']['topx_games']['Row'];
-export type TopXGameInsert = Database['public']['Tables']['topx_games']['Insert'];
-export type TopXGameUpdate = Database['public']['Tables']['topx_games']['Update'];
-
-export type DailyGame = Database['public']['Tables']['daily_games']['Row'];
-export type DailyGameInsert = Database['public']['Tables']['daily_games']['Insert'];
-export type DailyGameUpdate = Database['public']['Tables']['daily_games']['Update'];
-
-export type GameSession = Database['public']['Tables']['game_sessions']['Row'];
-export type GameSessionInsert = Database['public']['Tables']['game_sessions']['Insert'];
-export type GameSessionUpdate = Database['public']['Tables']['game_sessions']['Update'];
-
-export type TopXSubmission = Database['public']['Tables']['topx_submissions']['Row'];
-export type TopXSubmissionInsert = Database['public']['Tables']['topx_submissions']['Insert'];
-export type TopXSubmissionUpdate = Database['public']['Tables']['topx_submissions']['Update'];
-
-export type Leaderboard = Database['public']['Tables']['leaderboard']['Row'];
-export type LeaderboardInsert = Database['public']['Tables']['leaderboard']['Insert'];
-export type LeaderboardUpdate = Database['public']['Tables']['leaderboard']['Update'];
-
-export type LetteredGame = Database['public']['Tables']['lettered_games']['Row'];
-export type LetteredGameInsert = Database['public']['Tables']['lettered_games']['Insert'];
-export type LetteredGameUpdate = Database['public']['Tables']['lettered_games']['Update'];
-
-export type LetteredSubmission = Database['public']['Tables']['lettered_submissions']['Row'];
-export type LetteredSubmissionInsert =
-  Database['public']['Tables']['lettered_submissions']['Insert'];
-export type LetteredSubmissionUpdate =
-  Database['public']['Tables']['lettered_submissions']['Update'];
-
-// Auth-related types
-export interface AuthState {
-  user: import('@supabase/supabase-js').User | null;
-  session: import('@supabase/supabase-js').Session | null;
-  loading: boolean;
+export type Tables<
+  DefaultSchemaTableNameOrOptions extends
+    | keyof (DefaultSchema["Tables"] & DefaultSchema["Views"])
+    | { schema: keyof DatabaseWithoutInternals },
+  TableName extends DefaultSchemaTableNameOrOptions extends {
+    schema: keyof DatabaseWithoutInternals
+  }
+    ? keyof (DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"] &
+        DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Views"])
+    : never = never,
+> = DefaultSchemaTableNameOrOptions extends {
+  schema: keyof DatabaseWithoutInternals
 }
+  ? (DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"] &
+      DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Views"])[TableName] extends {
+      Row: infer R
+    }
+    ? R
+    : never
+  : DefaultSchemaTableNameOrOptions extends keyof (DefaultSchema["Tables"] &
+        DefaultSchema["Views"])
+    ? (DefaultSchema["Tables"] &
+        DefaultSchema["Views"])[DefaultSchemaTableNameOrOptions] extends {
+        Row: infer R
+      }
+      ? R
+      : never
+    : never
 
-// Reddit user types
-export interface RedditUser {
-  id: string;
-  reddit_id: string;
-  image_url: string | null;
-  handle: string;
-  created_at: string;
-  updated_at: string;
+export type TablesInsert<
+  DefaultSchemaTableNameOrOptions extends
+    | keyof DefaultSchema["Tables"]
+    | { schema: keyof DatabaseWithoutInternals },
+  TableName extends DefaultSchemaTableNameOrOptions extends {
+    schema: keyof DatabaseWithoutInternals
+  }
+    ? keyof DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"]
+    : never = never,
+> = DefaultSchemaTableNameOrOptions extends {
+  schema: keyof DatabaseWithoutInternals
 }
+  ? DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"][TableName] extends {
+      Insert: infer I
+    }
+    ? I
+    : never
+  : DefaultSchemaTableNameOrOptions extends keyof DefaultSchema["Tables"]
+    ? DefaultSchema["Tables"][DefaultSchemaTableNameOrOptions] extends {
+        Insert: infer I
+      }
+      ? I
+      : never
+    : never
 
-// API response types for Supabase operations
-export interface SupabaseResponse<T> {
-  data: T | null;
-  error: import('@supabase/supabase-js').PostgrestError | null;
+export type TablesUpdate<
+  DefaultSchemaTableNameOrOptions extends
+    | keyof DefaultSchema["Tables"]
+    | { schema: keyof DatabaseWithoutInternals },
+  TableName extends DefaultSchemaTableNameOrOptions extends {
+    schema: keyof DatabaseWithoutInternals
+  }
+    ? keyof DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"]
+    : never = never,
+> = DefaultSchemaTableNameOrOptions extends {
+  schema: keyof DatabaseWithoutInternals
 }
+  ? DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"][TableName] extends {
+      Update: infer U
+    }
+    ? U
+    : never
+  : DefaultSchemaTableNameOrOptions extends keyof DefaultSchema["Tables"]
+    ? DefaultSchema["Tables"][DefaultSchemaTableNameOrOptions] extends {
+        Update: infer U
+      }
+      ? U
+      : never
+    : never
+
+export type Enums<
+  DefaultSchemaEnumNameOrOptions extends
+    | keyof DefaultSchema["Enums"]
+    | { schema: keyof DatabaseWithoutInternals },
+  EnumName extends DefaultSchemaEnumNameOrOptions extends {
+    schema: keyof DatabaseWithoutInternals
+  }
+    ? keyof DatabaseWithoutInternals[DefaultSchemaEnumNameOrOptions["schema"]]["Enums"]
+    : never = never,
+> = DefaultSchemaEnumNameOrOptions extends {
+  schema: keyof DatabaseWithoutInternals
+}
+  ? DatabaseWithoutInternals[DefaultSchemaEnumNameOrOptions["schema"]]["Enums"][EnumName]
+  : DefaultSchemaEnumNameOrOptions extends keyof DefaultSchema["Enums"]
+    ? DefaultSchema["Enums"][DefaultSchemaEnumNameOrOptions]
+    : never
+
+export type CompositeTypes<
+  PublicCompositeTypeNameOrOptions extends
+    | keyof DefaultSchema["CompositeTypes"]
+    | { schema: keyof DatabaseWithoutInternals },
+  CompositeTypeName extends PublicCompositeTypeNameOrOptions extends {
+    schema: keyof DatabaseWithoutInternals
+  }
+    ? keyof DatabaseWithoutInternals[PublicCompositeTypeNameOrOptions["schema"]]["CompositeTypes"]
+    : never = never,
+> = PublicCompositeTypeNameOrOptions extends {
+  schema: keyof DatabaseWithoutInternals
+}
+  ? DatabaseWithoutInternals[PublicCompositeTypeNameOrOptions["schema"]]["CompositeTypes"][CompositeTypeName]
+  : PublicCompositeTypeNameOrOptions extends keyof DefaultSchema["CompositeTypes"]
+    ? DefaultSchema["CompositeTypes"][PublicCompositeTypeNameOrOptions]
+    : never
+
+export const Constants = {
+  graphql_public: {
+    Enums: {},
+  },
+  public: {
+    Enums: {},
+  },
+} as const
+

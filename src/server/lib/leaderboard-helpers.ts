@@ -8,7 +8,8 @@ export async function recordLeaderboardEntry(
   userId: string,
   dailyGameId: string,
   gameSessionId: string,
-  pointsEarned: number
+  pointsEarned: number,
+  sessionType?: 'lettered' | 'topx'
 ): Promise<{ success: boolean; error?: string }> {
   try {
     // Create the leaderboard entry (no running total, just the points earned for this game)
@@ -18,6 +19,7 @@ export async function recordLeaderboardEntry(
       game_session_id: gameSessionId,
       points_earned: pointsEarned,
       completed_at: new Date().toISOString(),
+      session_type: sessionType,
     };
 
     const { error: insertError } = await supabase.from('leaderboard').insert(leaderboardEntry);
@@ -32,6 +34,7 @@ export async function recordLeaderboardEntry(
           .update({
             points_earned: pointsEarned,
             completed_at: new Date().toISOString(),
+            session_type: sessionType,
           })
           .eq('user_id', userId)
           .eq('daily_game_id', dailyGameId);

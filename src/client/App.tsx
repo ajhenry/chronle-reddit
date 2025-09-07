@@ -12,6 +12,7 @@ import { Toaster } from 'sonner';
 import { X, Settings } from 'lucide-react';
 import { isDevelopment } from './lib/dev-utils';
 import { ModeToggle } from './components/mode-toggle';
+import { apiFetch } from './lib/utils';
 
 export const App = () => {
   const navigate = useNavigate();
@@ -56,6 +57,31 @@ export const App = () => {
     };
 
     void fetchCurrentSeason();
+  }, []);
+
+  // Check game status and create games if needed
+  useEffect(() => {
+    const fetchGameStatus = async () => {
+      try {
+        console.log('Checking game status...');
+        const response = await apiFetch('/api/status');
+        if (response.ok) {
+          const data = await response.json();
+          console.log('Game status:', data);
+
+          // Show a toast if games were created
+          if (data.gamesCreated) {
+            console.log('Games were created for today');
+          }
+        } else {
+          console.error('Failed to fetch game status:', response.statusText);
+        }
+      } catch (error) {
+        console.error('Error fetching game status:', error);
+      }
+    };
+
+    void fetchGameStatus();
   }, []);
 
   const dismissWelcome = () => {

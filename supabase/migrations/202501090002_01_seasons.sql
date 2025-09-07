@@ -1,6 +1,6 @@
 -- Create seasons table
 CREATE TABLE IF NOT EXISTS seasons (
-  id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+  id text DEFAULT ('season_' || generate_ksuid()) PRIMARY KEY,
   name TEXT NOT NULL,
   start_date TIMESTAMP WITH TIME ZONE NOT NULL,
   end_date TIMESTAMP WITH TIME ZONE NOT NULL,
@@ -66,7 +66,7 @@ DECLARE
   season_count INTEGER;
 BEGIN
   SELECT COUNT(*) INTO season_count FROM seasons WHERE is_active = true;
-  
+
   IF season_count = 0 THEN
     INSERT INTO seasons (name, start_date, end_date, is_active)
     VALUES (
