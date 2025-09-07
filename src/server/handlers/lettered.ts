@@ -7,6 +7,7 @@ import {
   GridPosition,
   LetterPiece,
   GridCell,
+  LetteredPostGameResponse,
 } from '../../shared/types/api';
 import { calculateDecayedScore } from '../../shared/score-decay';
 import { supabase } from '../../shared/supabase-server';
@@ -17,6 +18,7 @@ import {
   updateLetteredSession,
   getLatestLetteredSubmissionForToday,
   createLetteredSubmission,
+  getTotalLetteredSubmissionsForToday,
 } from '../database/lettered';
 import { getOrCreateTodaysGame } from '../database/game';
 import { recordLeaderboardEntry } from '../lib/leaderboard-helpers';
@@ -105,10 +107,7 @@ router.get('/api/lettered/game', async (_req, res): Promise<void> => {
     let placedPieces: Record<string, { pieceId: string; position: GridPosition }> = {};
 
     if (latestSubmission) {
-      const boardState = latestSubmission.boardState as {
-        grid: GridCell[][];
-        placedPieces: Record<string, GridPosition>;
-      };
+      const boardState = latestSubmission.boardState;
 
       // Extract placed pieces from the board state
       placedPieces = Object.entries(boardState.placedPieces).reduce(
@@ -143,7 +142,7 @@ router.get('/api/lettered/game', async (_req, res): Promise<void> => {
       currentScore: existingSession.isCompleted ? existingSession.finalScore : currentScore,
       initialScore: existingSession.initialScore,
       isCompleted: existingSession.isCompleted,
-      pieces: placedPieces,
+      pieces: latestSubmission?.boardState.placedPieces || {},
     };
 
     const response: LetteredDailyGameResponse = {
@@ -329,103 +328,28 @@ router.get('/api/lettered/:gameId/session', async (req, res): Promise<void> => {
       return;
     }
 
-    // Get today's daily lettered game
-    const { data: dailyGameResult, error: dailyGameError } = await supabase.rpc(
-      'get_todays_lettered_daily_game'
-    );
-
-    if (dailyGameError || !dailyGameResult || dailyGameResult.length === 0) {
-      console.error("Error fetching today's daily lettered game:", dailyGameError);
-      res.status(404).json({
-        status: 'error',
-        message: 'No daily lettered game available for today',
-      });
-      return;
-    }
-
-    const dailyGame = dailyGameResult[0];
+    const dailyGame = await getTodaysLetteredGame();
 
     // Validate that the requested gameId matches today's game
     if (gameId !== dailyGame.id) {
       res.status(400).json({
         status: 'error',
-        message: `Game session id ${gameId} is for ${dailyGame.day} but current game id ${dailyGame.id} for ${dailyGame.day}`,
+        message: `Game session id is invalid for today's game`,
       });
       return;
     }
 
     // Get the user's game session
-    let session;
-    try {
-      session = await getOrCreateUserLetteredSessionForToday(userId);
-    } catch (sessionError) {
-      console.error('Error fetching lettered session:', sessionError);
-      res.status(500).json({
-        status: 'error',
-        message: 'Failed to fetch game session',
-      });
-      return;
-    }
+    const session = await getOrCreateUserLetteredSessionForToday(userId);
+    const latestSubmission = await getLatestLetteredSubmissionForToday(session.id);
 
-    if (!session) {
-      // No session exists yet
-      res.status(404).json({
-        status: 'error',
-        message: 'No game session found for today',
-      });
-      return;
-    }
-
-    // Get the latest board state submission for this session
-    const { data: submissions, error: submissionsError } = await supabase
-      .from('lettered_submissions')
-      .select('board_state, submitted_at, score_at_submission')
-      .eq('game_session_id', session.id)
-      .order('submitted_at', { ascending: false })
-      .limit(1);
-
-    if (submissionsError) {
-      console.error('Error fetching submissions:', submissionsError);
-      res.status(500).json({
-        status: 'error',
-        message: 'Failed to fetch submissions',
-      });
-      return;
-    }
-
-    // Calculate current score if game is not completed
-    let currentScore = session.finalScore;
-    let placedPieces: Array<{
-      pieceId: string;
-      position: GridPosition;
-      placedAt: string;
-      scoreAtPlacement: number;
-    }> = [];
-
-    if (!session.isCompleted && submissions && submissions.length > 0) {
-      const latestSubmission = submissions[0] as DatabaseSubmission;
-      if (latestSubmission && 'board_state' in latestSubmission) {
-        const boardState = latestSubmission.board_state;
-
-        // Extract placed pieces from the board state
-        placedPieces = Object.entries(boardState.placedPieces).map(([pieceId, position]) => ({
-          pieceId,
-          position,
-          placedAt: latestSubmission.submitted_at,
-          scoreAtPlacement: latestSubmission.score_at_submission,
-        }));
-
-        currentScore = latestSubmission.score_at_submission;
-      }
-    }
-
-    const response = {
-      id: session.id,
-      startedAt: session.startedAt,
-      currentScore,
+    const response: LetteredGameSessionResponse = {
+      type: 'lettered_game_session',
+      sessionId: session.id,
+      currentScore: session.isCompleted ? session.finalScore : session.initialScore,
       initialScore: session.initialScore,
       isCompleted: session.isCompleted,
-      placedPieces,
+      pieces: latestSubmission?.boardState.placedPieces || {},
     };
 
     res.json(response);
@@ -452,137 +376,46 @@ router.get('/api/lettered/:gameId/postgame', async (req, res): Promise<void> => 
       return;
     }
 
-    // Get today's daily lettered game
-    const { data: dailyGameResult, error: dailyGameError } = await supabase.rpc(
-      'get_todays_lettered_daily_game'
-    );
+    const dailyGame = await getTodaysLetteredGame();
 
-    if (dailyGameError || !dailyGameResult || dailyGameResult.length === 0) {
-      console.error("Error fetching today's daily lettered game:", dailyGameError);
-      res.status(404).json({
-        status: 'error',
-        message: 'No daily lettered game available for today',
-      });
-      return;
-    }
-
-    const dailyGame = dailyGameResult[0];
-
-    // Validate that the requested gameId matches today's game
     if (gameId !== dailyGame.id) {
       res.status(400).json({
         status: 'error',
-        message: `Game session id ${gameId} is for ${dailyGame.day} but current game id ${dailyGame.id} for ${dailyGame.day}`,
+        message: "Game id is invalid for today's game",
       });
       return;
     }
 
-    // Get the user's game session
-    let session;
-    try {
-      session = await getOrCreateUserLetteredSessionForToday(userId);
-    } catch (sessionError) {
-      console.error('Error fetching lettered session:', sessionError);
-      res.status(500).json({
-        status: 'error',
-        message: 'Failed to fetch game session',
-      });
-      return;
-    }
+    const session = await getOrCreateUserLetteredSessionForToday(userId);
+    const latestSubmission = await getLatestLetteredSubmissionForToday(userId);
+    const submissionsCount = await getTotalLetteredSubmissionsForToday(userId);
 
-    if (!session) {
+    if (!latestSubmission) {
       res.status(404).json({
         status: 'error',
-        message: 'No game session found for today',
+        message: 'No submissions found for today',
       });
       return;
     }
 
-    // If not completed, validate and complete the game now
     if (!session.isCompleted) {
-      // Get the latest board state submission for this session
-      const { data: submissions, error: submissionsError } = await supabase
-        .from('lettered_submissions')
-        .select('board_state, score_at_submission')
-        .eq('game_session_id', session.id)
-        .order('submitted_at', { ascending: false })
-        .limit(1);
-
-      if (submissionsError) {
-        console.error('Error fetching board state:', submissionsError);
-        res.status(500).json({
-          status: 'error',
-          message: 'Failed to fetch board state',
-        });
-        return;
-      }
-
-      // Get the daily game data
-      const dailyGame = await getTodaysLetteredGame();
-      const game = dailyGame;
-
-      // For lettered games, completion is determined by having all pieces in correct positions
-      let hasWon = false;
-      let finalScore = 0;
-
-      if (submissions && submissions.length > 0) {
-        const latestSubmission = submissions[0] as DatabaseSubmission;
-        if (latestSubmission && 'board_state' in latestSubmission) {
-          const boardState = latestSubmission.board_state;
-
-          // Check if player has won by comparing with solution
-          const solution = game.solution as Record<string, GridPosition>;
-          hasWon = checkPlayerHasWon(boardState.placedPieces, solution);
-          finalScore = hasWon ? latestSubmission.score_at_submission : 0;
-        }
-      }
-
-      if (hasWon) {
-        // Mark session as completed
-        await updateLetteredSession(session.id, {
-          isCompleted: true,
-          completedAt: new Date().toISOString(),
-          finalScore,
-        });
-
-        // Record the points in the leaderboard
-        const leaderboardResult = await recordLeaderboardEntry(
-          userId,
-          dailyGame.id,
-          session.id,
-          finalScore,
-          'lettered'
-        );
-
-        if (!leaderboardResult.success) {
-          console.error('Failed to record leaderboard entry:', leaderboardResult.error);
-          // Continue with the response even if leaderboard recording fails
-        }
-
-        const response: LetteredGameCompleteResponse = {
-          type: 'lettered_game_complete',
-          finalScore,
-          isValid: true,
-        };
-
-        res.json(response);
-      } else {
-        // Game not yet completed (pieces not in correct positions)
-        res.status(400).json({
-          status: 'error',
-          message: 'Game not yet completed - pieces must be in correct positions',
-        });
-      }
-    } else {
-      // Game already completed, return the stored results
-      const response: LetteredGameCompleteResponse = {
-        type: 'lettered_game_complete',
-        finalScore: session.finalScore,
-        isValid: true,
-      };
-
-      res.json(response);
+      res.status(400).json({
+        status: 'error',
+        message: 'Game is not completed',
+      });
+      return;
     }
+
+    const response: LetteredPostGameResponse = {
+      type: 'lettered_post_game',
+      dailyGame: dailyGame,
+      finalScore: session.finalScore,
+      isValid: true,
+      pieces: latestSubmission?.boardState.placedPieces || {},
+      movesUsed: submissionsCount,
+    };
+
+    res.json(response);
   } catch (error) {
     console.error('Error getting postgame results:', error);
     res.status(500).json({

@@ -345,3 +345,21 @@ export const createLetteredSubmission = async (
 
   return convertLetteredSubmission(data);
 };
+
+export const getTotalLetteredSubmissionsForToday = async (userId: string): Promise<number> => {
+  const session = await getOrCreateUserLetteredSessionForToday(userId);
+
+  const { count, error } = await supabase
+    .from('lettered_submissions')
+    .select('count', { count: 'exact', head: true })
+    .eq('game_session_id', session.id);
+
+  if (error) {
+    console.error('Failed to find total lettered submissions:', { error });
+    throw new Error(`Failed to find total lettered submissions: ${error.message}`, {
+      cause: error,
+    });
+  }
+
+  return count ?? 0;
+};

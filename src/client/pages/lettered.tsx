@@ -4,13 +4,7 @@ import { GameLayout } from '../components/GameLayout';
 import { toast } from 'sonner';
 import { CardContent } from '../components/ui/card';
 import { Button } from '../components/ui/button';
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogDescription,
-} from '../components/ui/dialog';
+import { Dialog, DialogContent } from '../components/ui/dialog';
 import { LetteredGameData, GridPosition, LetterPiece, GridCell } from '../../shared/types/api';
 import { DEFAULT_INITIAL_SCORE } from '../../shared/score-decay';
 import { isDevelopment } from '../lib/dev-utils';
@@ -20,7 +14,7 @@ import { Grid, DraggableItem } from '../components/tile-grid/tile-grid';
 import { cn } from '@sglara/cn';
 import { LetteredGameStateManager } from '../lib/lettered-game-state';
 import { apiFetch } from '../lib/utils';
-import { LetteredDailyGameResponse } from '../../shared/types/api';
+import { LetteredDailyGameResponse, LetteredPostGameResponse } from '../../shared/types/api';
 
 // API functions for daily Lettered game
 const fetchTodaysGame = async (): Promise<LetteredDailyGameResponse> => {
@@ -32,6 +26,19 @@ const fetchTodaysGame = async (): Promise<LetteredDailyGameResponse> => {
   }
   const data = await response.json();
   console.log('fetchTodaysGame', data);
+  return data;
+};
+
+// API function to fetch postgame stats
+const fetchPostGameStats = async (gameId: string): Promise<LetteredPostGameResponse> => {
+  const response = await apiFetch(`/api/lettered/${gameId}/postgame`, {
+    method: 'GET',
+  });
+  if (!response.ok) {
+    throw new Error('Failed to fetch postgame stats');
+  }
+  const data = await response.json();
+  console.log('fetchPostGameStats', data);
   return data;
 };
 
@@ -213,6 +220,11 @@ export const LetteredPage = ({ onBack }: { onBack?: () => void }) => {
   // Flag to track if this is a reloaded completed game
   const [isReloadedCompletedGame, setIsReloadedCompletedGame] = useState(false);
 
+  // Postgame stats state
+  const [postGameStats, setPostGameStats] = useState<LetteredPostGameResponse | null>(null);
+  const [postGameStatsLoading, setPostGameStatsLoading] = useState(false);
+  const [postGameStatsError, setPostGameStatsError] = useState<string | null>(null);
+
   // Game state manager (core game logic, doesn't cause rerenders)
   const gameStateManagerRef = useRef<LetteredGameStateManager | null>(null);
 
@@ -309,8 +321,8 @@ export const LetteredPage = ({ onBack }: { onBack?: () => void }) => {
         initialPiecePositions: apiGameData.initialPiecePositions || {},
         solution: apiGameData.solution,
         solutionHash: apiGameData.solutionHash,
-        created_at: apiGameData.created_at,
-        updated_at: apiGameData.updated_at,
+        createdAt: apiGameData.createdAt,
+        updatedAt: apiGameData.updatedAt,
       };
 
       setGameData(clientGameData);
@@ -343,8 +355,8 @@ export const LetteredPage = ({ onBack }: { onBack?: () => void }) => {
           }
 
           // Place pieces from the session data
-          for (const placedPiece of Object.values(apiSessionData.pieces)) {
-            await gameStateManagerRef.current.placePiece(placedPiece.pieceId, placedPiece.position);
+          for (const [pieceId, position] of Object.entries(apiSessionData.pieces)) {
+            await gameStateManagerRef.current.placePiece(pieceId, position);
           }
 
           // Update the score to match the session
@@ -415,10 +427,35 @@ export const LetteredPage = ({ onBack }: { onBack?: () => void }) => {
     }
   }, [gameWon, gameComplete, isReloadedCompletedGame]);
 
+  // Function to load postgame stats
+  const loadPostGameStats = useCallback(async () => {
+    if (!dailyGameId) return;
+
+    setPostGameStatsLoading(true);
+    setPostGameStatsError(null);
+
+    try {
+      const stats = await fetchPostGameStats(dailyGameId);
+      setPostGameStats(stats);
+    } catch (error) {
+      console.error('Error loading postgame stats:', error);
+      setPostGameStatsError(error instanceof Error ? error.message : 'Failed to load stats');
+    } finally {
+      setPostGameStatsLoading(false);
+    }
+  }, [dailyGameId]);
+
   // Handle game completion effects when game state changes
   useEffect(() => {
     return handleGameComplete();
   }, [handleGameComplete]);
+
+  // Load postgame stats when modal opens
+  useEffect(() => {
+    if (uiState.showGameOverModal && gameComplete && dailyGameId) {
+      void loadPostGameStats();
+    }
+  }, [uiState.showGameOverModal, gameComplete, dailyGameId, loadPostGameStats]);
 
   // Handle layout changes from the grid
   const handleGridLayoutChange = useCallback(
@@ -797,44 +834,114 @@ export const LetteredPage = ({ onBack }: { onBack?: () => void }) => {
           }
         }}
       >
-        <DialogContent className="sm:max-w-md">
-          <DialogHeader>
-            <DialogTitle className="text-2xl font-bold text-center text-green-600">
-              PUZZLE COMPLETE
-            </DialogTitle>
-            <DialogDescription className="text-base text-center">
-              You solved the puzzle perfectly
-            </DialogDescription>
-          </DialogHeader>
-
-          <div className="space-y-4">
-            {/* Game Stats */}
-            <div className="grid grid-cols-2 gap-4">
-              <div className="text-center">
-                <div className="text-2xl font-bold text-primary">{gameScore}</div>
-                <div className="text-sm text-muted-foreground">Final Score</div>
+        <DialogContent className="p-0 border-4 border-black shadow-2xl bg-card sm:max-w-lg">
+          <div className="relative">
+            {/* Header Banner */}
+            <div className="relative py-6 text-center text-white bg-black">
+              <div className="absolute -top-2 -right-2 z-10 px-3 py-1 text-black border-2 border-black transform rotate-12 bg-primary">
+                <span className="text-sm font-black tracking-wide">COMPLETE</span>
               </div>
-              <div className="text-center">
-                <div className="text-2xl font-bold text-primary">{placedPieces.size}</div>
-                <div className="text-sm text-muted-foreground">Pieces Placed</div>
-              </div>
+              <h1 className="text-4xl font-black tracking-tight text-white">PUZZLE</h1>
+              <h2 className="-mt-1 text-2xl font-black tracking-wider text-white">COMPLETE</h2>
             </div>
 
-            {/* Play Again Button */}
-            <div className="flex justify-center pt-4">
-              <Button
-                onClick={() => {
-                  setUIState((prev) => ({
-                    ...prev,
-                    showGameOverModal: false,
-                    showConfetti: false,
-                  }));
-                  resetGame();
-                }}
-                className="w-full"
-              >
-                PLAY AGAIN
-              </Button>
+            <div className="p-6 space-y-6">
+              {/* Loading State */}
+              {postGameStatsLoading && (
+                <div className="py-8 text-center">
+                  <div className="text-xl font-bold text-card-foreground">Loading stats...</div>
+                </div>
+              )}
+
+              {/* Error State */}
+              {postGameStatsError && (
+                <div className="py-8 text-center">
+                  <div className="text-xl font-bold text-destructive">Failed to load stats</div>
+                  <div className="mt-2 text-sm text-card-foreground">{postGameStatsError}</div>
+                </div>
+              )}
+
+              {/* Game Stats */}
+              {postGameStats && !postGameStatsLoading && !postGameStatsError && (
+                <>
+                  {/* Validation Message */}
+                  <div className="relative p-4 text-center text-white bg-black border-4 border-black">
+                    <div className="mb-1 text-2xl font-black tracking-wide">✓ VALIDATED</div>
+                    <div className="text-sm font-bold tracking-wider">SERVER CONFIRMED</div>
+                  </div>
+
+                  {/* Stats Grid */}
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="p-4 text-center bg-white border-4 border-black shadow-lg">
+                      <div className="mb-1 text-3xl font-black text-black">
+                        {postGameStats.finalScore}
+                      </div>
+                      <div className="text-sm font-bold tracking-wide text-black">SCORE</div>
+                    </div>
+                    <div className="p-4 text-center bg-white border-4 border-black shadow-lg">
+                      <div className="mb-1 text-3xl font-black text-black">
+                        {postGameStats.movesUsed}
+                      </div>
+                      <div className="text-sm font-bold tracking-wide text-black">MOVES</div>
+                    </div>
+                    <div className="p-4 text-center bg-white border-4 border-black shadow-lg">
+                      <div className="mb-1 text-3xl font-black text-black">
+                        {Object.keys(postGameStats.pieces).length}
+                      </div>
+                      <div className="text-sm font-bold tracking-wide text-black">PIECES</div>
+                    </div>
+                    <div className="p-4 text-center bg-white border-4 border-black shadow-lg">
+                      <div className="mb-1 text-sm font-black leading-tight text-black">
+                        {postGameStats.dailyGame.category}
+                      </div>
+                      <div className="text-sm font-bold tracking-wide text-black">CATEGORY</div>
+                    </div>
+                  </div>
+
+                  {/* Theme Display */}
+                  <div className="p-4 text-center border-4 border-black shadow-lg bg-primary">
+                    <div className="mb-1 text-sm font-black tracking-wide text-black">
+                      TODAY'S THEME
+                    </div>
+                    <div className="text-xl font-black leading-tight text-black">
+                      {postGameStats.dailyGame.phrase}
+                    </div>
+                  </div>
+                </>
+              )}
+
+              {/* Fallback Stats (when API fails) */}
+              {!postGameStats && !postGameStatsLoading && !postGameStatsError && (
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="p-4 text-center bg-white border-4 border-black shadow-lg">
+                    <div className="mb-1 text-3xl font-black text-black">{gameScore}</div>
+                    <div className="text-sm font-bold tracking-wide text-black">SCORE</div>
+                  </div>
+                  <div className="p-4 text-center bg-white border-4 border-black shadow-lg">
+                    <div className="mb-1 text-3xl font-black text-black">{placedPieces.size}</div>
+                    <div className="text-sm font-bold tracking-wide text-black">PIECES</div>
+                  </div>
+                </div>
+              )}
+
+              {/* Play Again Button */}
+              <div className="flex justify-center pt-4">
+                <Button
+                  onClick={() => {
+                    setUIState((prev) => ({
+                      ...prev,
+                      showGameOverModal: false,
+                      showConfetti: false,
+                    }));
+                    setPostGameStats(null); // Reset stats when closing
+                    setPostGameStatsError(null);
+                    resetGame();
+                  }}
+                  className="bg-black text-white border-4 border-black font-black text-xl py-4 px-8 shadow-lg hover:shadow-xl transition-all duration-200 hover:translate-x-[-2px] hover:translate-y-[-2px] tracking-wider"
+                >
+                  CLOSE
+                </Button>
+              </div>
             </div>
           </div>
         </DialogContent>

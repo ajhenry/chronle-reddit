@@ -190,8 +190,8 @@ export type LetteredGameData = {
   initialPiecePositions: Record<string, GridPosition>; // initial positions for pieces (pieceId -> position)
   solution?: Record<string, GridPosition>; // where each piece should be placed (pieceId -> correct position)
   solutionHash: string; // SHA256 hash of the solution for secure validation
-  created_at: string;
-  updated_at: string;
+  createdAt: string;
+  updatedAt: string;
 };
 
 export type LetteredGameResponse = {
@@ -225,15 +225,19 @@ export type LetteredGameSessionResponse = {
   currentScore: number;
   initialScore: number;
   isCompleted: boolean;
-  pieces: {
-    [pieceId: string]: {
-      pieceId: string;
-      position: GridPosition;
-    };
-  };
+  pieces: Record<string, GridPosition>;
 };
 
 export type StatusResponse = {
   type: 'status';
   day: string;
+};
+
+export type LetteredPostGameResponse = {
+  type: 'lettered_post_game';
+  dailyGame: LetteredGameData;
+  finalScore: number;
+  isValid: boolean;
+  pieces: Record<string, GridPosition>;
+  movesUsed: number;
 };
