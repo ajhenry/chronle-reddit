@@ -1,5 +1,6 @@
 import React, { createContext, useContext, useState, useCallback, useMemo, ReactNode } from 'react';
 import { cn } from '../../lib/utils';
+import { isDevelopment } from '../../lib/dev-utils';
 
 // Core types for the grid system
 export type GridPosition = {
@@ -202,6 +203,14 @@ function GridProvider({
   React.useEffect(() => {
     if (onLayoutChange) {
       const layout = tileGrid.map((row) => row.map((cell) => cell.occupyingItemId || null));
+
+      // Debug: Log layout changes in development
+      if (process.env.NODE_ENV === 'development') {
+        const occupiedCells = layout.flat().filter((cell) => cell !== null).length;
+        const totalCells = layout.flat().length;
+        console.log(`[Grid Debug] Layout changed: ${occupiedCells}/${totalCells} cells occupied`);
+      }
+
       onLayoutChange(layout);
     }
   }, [tileGrid, onLayoutChange]);
@@ -562,12 +571,19 @@ const GridCell = React.memo(({ x, y, className = '', style }: GridCellProps) => 
   return (
     <div
       id={cellId}
-      className={cn('border transition-colors border-border', combinedClassName)}
+      className={cn('border transition-colors border-border relative', combinedClassName)}
       style={cellStyle}
       data-testid={`grid-cell-${x}-${y}`}
       data-occupied={isOccupied}
       data-item-id={cellData?.occupyingItemId}
-    />
+    >
+      {/* Coordinate labels - only in development mode */}
+      {isDevelopment() && (
+        <div className="absolute top-0 left-0 text-[8px] font-mono text-muted-foreground/60 leading-none p-0.5 pointer-events-none select-none">
+          {x},{y}
+        </div>
+      )}
+    </div>
   );
 });
 

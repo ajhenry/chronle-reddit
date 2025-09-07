@@ -207,6 +207,9 @@ export const LetteredPage = ({ onBack }: { onBack?: () => void }) => {
     isValidPreview: false,
   });
 
+  // Flag to track if this is a reloaded completed game
+  const [isReloadedCompletedGame, setIsReloadedCompletedGame] = useState(false);
+
   // Game state manager (core game logic, doesn't cause rerenders)
   const gameStateManagerRef = useRef<LetteredGameStateManager | null>(null);
 
@@ -257,6 +260,9 @@ export const LetteredPage = ({ onBack }: { onBack?: () => void }) => {
     try {
       setLoading(true);
 
+      // Reset flag for new game load
+      setIsReloadedCompletedGame(false);
+
       // Fetch today's daily game
       const gameData = await fetchTodaysGame();
       console.log('Fetched game data:', gameData);
@@ -293,6 +299,11 @@ export const LetteredPage = ({ onBack }: { onBack?: () => void }) => {
         // If we have session data, restore the placed pieces
         if (apiSessionData && Object.keys(apiSessionData.pieces).length > 0) {
           console.log('Restoring session data:', apiSessionData);
+
+          // Check if this is a reloaded completed game
+          if (apiSessionData.isCompleted) {
+            setIsReloadedCompletedGame(true);
+          }
 
           // Place pieces from the session data
           for (const placedPiece of Object.values(apiSessionData.pieces)) {
@@ -333,7 +344,8 @@ export const LetteredPage = ({ onBack }: { onBack?: () => void }) => {
 
   // Handle game completion effects (UI side)
   const handleGameComplete = useCallback(() => {
-    if (gameWon && gameComplete) {
+    if (gameWon && gameComplete && !isReloadedCompletedGame) {
+      // Only show confetti and modal for NEW completions, not reloaded ones
       toast.success('🎉 Congratulations!', {
         description: 'You completed the puzzle!',
         duration: 1500,
@@ -355,7 +367,7 @@ export const LetteredPage = ({ onBack }: { onBack?: () => void }) => {
         clearTimeout(modalTimer);
       };
     }
-  }, [gameWon, gameComplete]);
+  }, [gameWon, gameComplete, isReloadedCompletedGame]);
 
   // Handle game completion effects when game state changes
   useEffect(() => {
@@ -372,17 +384,72 @@ export const LetteredPage = ({ onBack }: { onBack?: () => void }) => {
       // Convert layout to piece positions
       const newPlacedPieces = new Map<string, GridPosition>();
 
+      // Debug: Check if layout includes tray area
+      const mainGridHeight = gameData.grid.length;
+      const hasTrayMovements = layout.some(
+        (row, rowIndex) => rowIndex >= mainGridHeight && row.some((cell) => cell !== null)
+      );
+
+      if (hasTrayMovements) {
+        console.log('[DEBUG] Tray area movements detected in layout change');
+      }
+
       // Print the grid layout
       console.log('Full layout array:', layout);
 
+      // Process each piece to find its anchor point
+      const processedPieces = new Set<string>();
+
       layout.forEach((row, rowIndex) => {
         row.forEach((itemId, colIndex) => {
-          if (itemId) {
-            // Find the piece that corresponds to this item ID
+          if (itemId && !processedPieces.has(itemId)) {
             const piece = gameData.pieces.find((p: LetterPiece) => p.id === itemId);
-            if (piece && !newPlacedPieces.has(piece.id)) {
-              newPlacedPieces.set(piece.id, { row: rowIndex, col: colIndex });
+            if (!piece) return;
+
+            processedPieces.add(itemId);
+
+            // Use this occupied position to calculate anchor point
+            const occupiedPos = { row: rowIndex, col: colIndex };
+
+            // Find which shape position corresponds to this occupied position
+            // We'll assume this is a valid position and find the matching shape
+            let anchorPoint = occupiedPos; // fallback
+
+            for (const shapePos of piece.shape) {
+              // Check if this occupied position matches any shape position relative to some anchor
+              // We need to find: anchor + shapePos = occupiedPos
+              // So: anchor = occupiedPos - shapePos
+
+              const testAnchor = {
+                row: occupiedPos.row - shapePos.row,
+                col: occupiedPos.col - shapePos.col,
+              };
+
+              // Verify this anchor point works for the piece
+              let allCellsValid = true;
+              for (const testShapePos of piece.shape) {
+                const expectedRow = testAnchor.row + testShapePos.row;
+                const expectedCol = testAnchor.col + testShapePos.col;
+
+                // Check if this expected position is occupied by the same piece
+                const layoutRow = layout[expectedRow];
+                if (!layoutRow || layoutRow[expectedCol] !== itemId) {
+                  allCellsValid = false;
+                  break;
+                }
+              }
+
+              if (allCellsValid) {
+                anchorPoint = testAnchor;
+                break;
+              }
             }
+
+            const isInTray = anchorPoint.row >= mainGridHeight;
+            console.log(
+              `[DEBUG] Piece ${itemId} anchor at (${anchorPoint.row}, ${anchorPoint.col}) ${isInTray ? '(TRAY)' : '(MAIN GRID)'}`
+            );
+            newPlacedPieces.set(itemId, anchorPoint);
           }
         });
       });
@@ -418,26 +485,25 @@ export const LetteredPage = ({ onBack }: { onBack?: () => void }) => {
         }
       }
 
-      // Check if the layout has actually changed by comparing entire layouts
-      const layoutAfterChanges = gameStateManagerRef.current.getBoardLayout();
-      const layoutChanged = !gameStateManagerRef.current.compareLayouts(
-        layoutBeforeChanges,
-        layoutAfterChanges
-      );
-      console.log(
-        'layoutChanged',
-        gameStateManagerRef.current.compareLayouts(layoutBeforeChanges, layoutAfterChanges)
-      );
-
-      console.log('layout after changes', layoutAfterChanges);
-      console.log('layoutChanged', layoutChanged);
-
       // Always save the current session state to server
       if (dailyGameId) {
         try {
           // Send the complete board state
           const currentBoardLayout = gameStateManagerRef.current.getBoardLayout();
           const currentPlacedPieces = gameStateManagerRef.current.getPlacedPieces();
+
+          // Debug: Check for tray area pieces
+          const mainGridHeight = gameData.grid.length;
+          const trayPieces = Array.from(currentPlacedPieces.entries()).filter(
+            ([, position]) => position.row >= mainGridHeight
+          );
+
+          if (trayPieces.length > 0) {
+            console.log(
+              `[DEBUG] Sending ${trayPieces.length} tray area pieces to server:`,
+              trayPieces
+            );
+          }
 
           // Convert placed pieces Map to record for JSON serialization
           const placedPiecesRecord: Record<string, GridPosition> = {};
@@ -573,7 +639,7 @@ export const LetteredPage = ({ onBack }: { onBack?: () => void }) => {
       gameTitle="Lettered Daily"
       score={gameScore}
       onBack={handleBackToMenu}
-      onLeaderboard={() => console.log('Leaderboard clicked')}
+      onLeaderboard={() => setUIState((prev) => ({ ...prev, showGameOverModal: true }))}
     >
       {/* Development Controls */}
       {isDevelopment() && (
@@ -613,6 +679,27 @@ export const LetteredPage = ({ onBack }: { onBack?: () => void }) => {
       <div className="mb-4 text-center">
         <div className="text-2xl font-black tracking-wide text-foreground">{gameData.category}</div>
       </div>
+
+      {/* Completion Banner for Reloaded Games */}
+      {isReloadedCompletedGame && (
+        <div className="p-4 mb-4 rounded-lg border-2">
+          <div className="flex flex-col gap-3 sm:flex-row sm:justify-between sm:items-center">
+            <div className="flex items-center space-x-3">
+              <div>
+                <div className="font-semibold">Puzzle Solved</div>
+                <div className="text-sm">Check back in tomorrow for a new puzzle</div>
+              </div>
+            </div>
+            <Button
+              onClick={() => setUIState((prev) => ({ ...prev, showGameOverModal: true }))}
+              variant="outline"
+              className="self-start w-full sm:self-auto sm:w-auto"
+            >
+              View Stats
+            </Button>
+          </div>
+        </div>
+      )}
 
       {/* Game Content */}
       <div className="flex justify-center">

@@ -38,14 +38,22 @@ export class LetteredGameStateManager {
   }
 
   private createInitialState(gameData: LetteredGameData | null): GameState {
+    // Initialize placed pieces with initial tray positions for all pieces
+    const placedPieces = new Map<string, GridPosition>();
+    if (gameData?.initialPiecePositions) {
+      Object.entries(gameData.initialPiecePositions).forEach(([pieceId, position]) => {
+        placedPieces.set(pieceId, position);
+      });
+    }
+
     return {
       score: 5000,
       initialScore: 5000,
       gameComplete: false,
       gameWon: false,
       boardLayout: gameData?.grid || [],
-      placedPieces: new Map(),
-      lastValidPositions: new Map(),
+      placedPieces,
+      lastValidPositions: new Map(placedPieces), // Also initialize lastValidPositions
       scoreDecayRate: 3,
       scoreDecayInterval: 250,
       lastScoreUpdate: Date.now(),
@@ -230,18 +238,33 @@ export class LetteredGameStateManager {
       return { valid: false, reason: 'No game data available' };
     }
 
-    // Allow placements outside the main 8x8 grid (extended area for piece storage)
-    // Only validate conflicts and invalid cells for areas within the main game grid
+    // Allow placements both in main grid and extended tray area
+    // Validate conflicts in both areas, but only validate grid validity in main area
 
     // Check bounds and validity for each cell that would be occupied by the piece
     for (const shapePos of piece.shape) {
       const gridRow = position.row + shapePos.row;
       const gridCol = position.col + shapePos.col;
 
-      // If this cell is within the main game grid (NxM), validate it
-      console.log(
-        `[DEBUG] Validating cell (${gridRow}, ${gridCol}) in main game grid (${this.state.gameData.rows}x${this.state.gameData.cols})`
-      );
+      // Check if position conflicts with other placed pieces (both in main grid and tray)
+      for (const [placedPieceId, placedPosition] of this.state.placedPieces.entries()) {
+        if (placedPieceId === piece.id) continue; // Skip self
+
+        const placedPiece = this.state.gameData.pieces.find((p) => p.id === placedPieceId);
+        if (!placedPiece) continue;
+
+        for (const placedShapePos of placedPiece.shape) {
+          const placedGridRow = placedPosition.row + placedShapePos.row;
+          const placedGridCol = placedPosition.col + placedShapePos.col;
+
+          if (placedGridRow === gridRow && placedGridCol === gridCol) {
+            return { valid: false, reason: 'Piece overlaps with another placed piece' };
+          }
+        }
+      }
+
+      // Only validate grid cells that are within the main game area
+      // Tray area positions (outside main grid bounds) are always allowed
       if (
         gridRow >= 0 &&
         gridRow < this.state.gameData.rows &&
@@ -253,25 +276,8 @@ export class LetteredGameStateManager {
         if (!cell) {
           return { valid: false, reason: 'Piece overlaps with invalid or empty grid cells' };
         }
-
-        // Check if position conflicts with other placed pieces in the main game area
-        for (const [placedPieceId, placedPosition] of this.state.placedPieces.entries()) {
-          if (placedPieceId === piece.id) continue; // Skip self
-
-          const placedPiece = this.state.gameData.pieces.find((p) => p.id === placedPieceId);
-          if (!placedPiece) continue;
-
-          for (const placedShapePos of placedPiece.shape) {
-            const placedGridRow = placedPosition.row + placedShapePos.row;
-            const placedGridCol = placedPosition.col + placedShapePos.col;
-
-            if (placedGridRow === gridRow && placedGridCol === gridCol) {
-              // return { valid: false, reason: 'Piece overlaps with another placed piece' };
-            }
-          }
-        }
       }
-      // If outside main grid, allow placement (extended storage area)
+      // If outside main grid bounds (tray area), allow placement without validation
     }
 
     // Additional validation for secure grid mode - only check cells within the main game area
@@ -281,15 +287,26 @@ export class LetteredGameStateManager {
 
       const gridRow = position.row + shapePos.row;
       const gridCol = position.col + shapePos.col;
-      const cell = this.state.gameData.grid[gridRow]?.[gridCol];
 
-      // In secure mode, we allow all
-      if (!cell) {
-        // return {
-        //   valid: false,
-        //   reason: `Piece cannot be placed here - invalid grid cell at (${gridRow}, ${gridCol})`,
-        // };
+      // Only validate grid cells that are within the main game area
+      // Tray area positions (outside main grid bounds) are always allowed
+      if (
+        gridRow >= 0 &&
+        gridRow < this.state.gameData.rows &&
+        gridCol >= 0 &&
+        gridCol < this.state.gameData.cols
+      ) {
+        const cell = this.state.gameData.grid[gridRow]?.[gridCol];
+
+        // In secure mode, we allow all within main grid
+        if (!cell) {
+          return {
+            valid: false,
+            reason: `Piece cannot be placed here - invalid grid cell at (${gridRow}, ${gridCol})`,
+          };
+        }
       }
+      // If outside main grid bounds (tray area), allow placement without validation
     }
     return { valid: true, reason: null }; // Valid placement
   }
@@ -375,6 +392,14 @@ export class LetteredGameStateManager {
       return false;
     }
 
+    console.log('[DEBUG] ===== STARTING HASH VALIDATION =====');
+    console.log('[DEBUG] Game data:', {
+      rows: this.state.gameData.rows,
+      cols: this.state.gameData.cols,
+      piecesPlaced: this.state.placedPieces.size,
+      totalPieces: this.state.gameData.pieces.length,
+    });
+
     console.log('[DEBUG] Creating solution hash from current board state...');
     const currentHash = await this.createSolutionHash();
 
@@ -383,10 +408,9 @@ export class LetteredGameStateManager {
     const isValid = currentHash === expectedHash;
 
     console.log(`[DEBUG] Hash validation: ${isValid ? 'PASS' : 'FAIL'}`);
-    if (!isValid) {
-      console.log(`[DEBUG] Expected: ${expectedHash}`);
-      console.log(`[DEBUG] Got: ${currentHash}`);
-    }
+    console.log(`[DEBUG] Expected: ${expectedHash}`);
+    console.log(`[DEBUG] Got: ${currentHash}`);
+    console.log('[DEBUG] ===== ENDING HASH VALIDATION =====');
 
     return isValid;
   }
@@ -397,21 +421,77 @@ export class LetteredGameStateManager {
       return '';
     }
 
-    // Create solution data structure
-    const solutionData = {
-      grid: this.state.gameData.grid.map((row) =>
-        row.map((cell) => ({
+    // Reconstruct the complete grid by combining secure grid with placed pieces
+    const completeGrid = this.state.gameData.grid.map((row, rowIndex) =>
+      row.map((cell, colIndex) => {
+        // Start with the secure cell data
+        const completeCell = {
+          letter: cell.letter,
           isLetter: cell.isLetter,
           isPreFilled: cell.isPreFilled,
           isSpace: cell.isSpace,
           isUnused: cell.isUnused,
-        }))
-      ),
-      solution: this.state.gameData.solution,
-    };
+        };
 
-    const solutionString = JSON.stringify(solutionData);
-    return await sha256(solutionString);
+        // If this cell doesn't have a pre-filled letter, try to find it from placed pieces
+        if (!cell.isPreFilled && !cell.letter) {
+          // Check if any piece covers this position
+          for (const [pieceId, position] of this.state.placedPieces.entries()) {
+            const piece = this.state.gameData!.pieces.find((p) => p.id === pieceId);
+            if (!piece?.letters?.length) continue;
+
+            // Check if this piece covers the current cell
+            const shape = piece.shape;
+            if (!shape?.length) continue;
+
+            for (let i = 0; i < shape.length; i++) {
+              const shapePos = shape[i];
+              if (!shapePos) continue;
+
+              const pieceRow = position.row + shapePos.row;
+              const pieceCol = position.col + shapePos.col;
+
+              if (pieceRow === rowIndex && pieceCol === colIndex) {
+                completeCell.letter = piece.letters[i] || null;
+                break;
+              }
+            }
+
+            if (completeCell.letter) break; // Found the letter, no need to check more pieces
+          }
+        }
+
+        return completeCell;
+      })
+    );
+
+    // DEBUG: Print the reconstructed grid for comparison
+    console.log('[DEBUG] Client reconstructed grid:');
+    completeGrid.forEach((row, i) => {
+      const rowStr = row.map((cell) => cell.letter || ' ').join('');
+      console.log(`  Row ${i}: ${rowStr || '(empty)'}`);
+    });
+
+    // DEBUG: Print the expected solution if available
+    if (this.state.gameData.solution) {
+      console.log('[DEBUG] Expected solution type:', typeof this.state.gameData.solution);
+      console.log('[DEBUG] Expected solution length:', this.state.gameData.solution.length);
+      console.log(
+        '[DEBUG] Expected solution first item type:',
+        typeof this.state.gameData.solution[0]
+      );
+    }
+
+    // Create the same data structure as the server
+    const gridJson = JSON.stringify(completeGrid);
+    const hash = await sha256(gridJson);
+
+    // DEBUG: Print hash comparison
+    console.log('[DEBUG] Client hash:', hash);
+    console.log('[DEBUG] Expected hash:', this.state.gameData.solutionHash);
+    console.log('[DEBUG] Hash match:', hash === this.state.gameData.solutionHash);
+
+    return hash;
   }
 
   // Extract letters from the current board layout

@@ -13,7 +13,7 @@ export interface LetteredGame {
   cols: number;
   pieces: LetterPiece[];
   initialPiecePositions: Record<string, GridPosition>;
-  solution: GridPosition[][];
+  solution: Record<string, GridPosition>;
   solutionHash: string;
   createdAt: string;
   updatedAt: string;
@@ -80,7 +80,7 @@ const convertLetteredGame = (
     cols: game.cols,
     pieces: game.pieces as LetterPiece[],
     initialPiecePositions: game.initial_piece_positions as Record<string, GridPosition>,
-    solution: game.solution as GridPosition[][],
+    solution: game.solution as Record<string, GridPosition>,
     solutionHash: game.solution_hash,
     createdAt: game.created_at,
     updatedAt: game.updated_at,
@@ -321,4 +321,25 @@ export const findLetteredSessionById = async (sessionId: string): Promise<Letter
   }
 
   return convertLetteredSession(data);
+};
+
+export const createLetteredSubmission = async (
+  submission: Pick<LetteredSubmission, 'gameSessionId' | 'boardState' | 'scoreAtSubmission'>
+): Promise<LetteredSubmission> => {
+  const { data, error } = await supabase
+    .from('lettered_submissions')
+    .insert({
+      game_session_id: submission.gameSessionId,
+      board_state: submission.boardState,
+      score_at_submission: submission.scoreAtSubmission,
+    })
+    .select()
+    .single();
+
+  if (error) {
+    console.error('Failed to create lettered submission:', { error });
+    throw new Error(`Failed to create lettered submission: ${error.message}`, { cause: error });
+  }
+
+  return convertLetteredSubmission(data);
 };

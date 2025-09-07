@@ -9,15 +9,13 @@ import {
   GridCell,
 } from '../../shared/types/api';
 import { supabase } from '../../shared/supabase-server';
-import { recordLeaderboardEntry } from '../lib/leaderboard-helpers';
 import { ensureUserExistsAndGetId } from '../lib/user-helpers';
 import {
   getTodaysLetteredGame,
   getOrCreateUserLetteredSessionForToday,
-  createLetteredSession,
   updateLetteredSession,
-  getLetteredSubmissionsForToday,
   getLatestLetteredSubmissionForToday,
+  createLetteredSubmission,
 } from '../database/lettered';
 import { getOrCreateTodaysGame } from '../database/game';
 
@@ -44,6 +42,45 @@ const letteredSessionPayloadSchema = z.object({
   boardState: boardStateSchema,
   timestamp: z.number().positive(),
 });
+
+// Type for database submission records
+interface DatabaseSubmission {
+  board_state: {
+    grid: GridCell[][];
+    placedPieces: Record<string, GridPosition>;
+  };
+  submitted_at: string;
+  score_at_submission: number;
+}
+
+// Check if player has won by comparing placed pieces with the solution
+const checkPlayerHasWon = (
+  placedPieces: Record<string, GridPosition>,
+  solution: Record<string, GridPosition>
+): boolean => {
+  // Check if all pieces are placed
+  const totalPieces = Object.keys(solution).length;
+  const placedCount = Object.keys(placedPieces).length;
+
+  if (placedCount !== totalPieces) {
+    return false;
+  }
+
+  // Check if each piece is in the correct position
+  for (const [pieceId, correctPosition] of Object.entries(solution)) {
+    const placedPosition = placedPieces[pieceId];
+
+    if (!placedPosition) {
+      return false; // Piece not placed
+    }
+
+    if (placedPosition.row !== correctPosition.row || placedPosition.col !== correctPosition.col) {
+      return false; // Piece in wrong position
+    }
+  }
+
+  return true;
+};
 
 const router = Router();
 
@@ -139,7 +176,6 @@ router.post('/api/lettered/:dailyGameId/session', async (req, res): Promise<void
     placedPieces: req.body.boardState.placedPieces,
   });
   try {
-    const { dailyGameId } = req.params;
     const userId = await ensureUserExistsAndGetId();
 
     if (!userId) {
@@ -178,52 +214,65 @@ router.post('/api/lettered/:dailyGameId/session', async (req, res): Promise<void
     // Get or create game session
     const session = await getOrCreateUserLetteredSessionForToday(userId);
 
+    // Check if player has won
+    const solution = dailyGame.solution;
+    const hasWon = checkPlayerHasWon(boardState.placedPieces, solution);
+
+    let currentScore: number;
+    let placedPieces: number;
+    let boardStateStored: boolean;
+
     if (session.isCompleted) {
-      res.status(400).json({
-        status: 'error',
-        message: 'Game session is already completed',
+      // Game is already complete, don't store anything but return success
+      currentScore = session.finalScore;
+      placedPieces = Object.keys(boardState.placedPieces).length;
+      boardStateStored = false;
+    } else {
+      // Store the complete board state as a submission
+
+      // Calculate current score for this submission
+      const gameStartTime = new Date(session.startedAt).getTime();
+      const placementTime = timestamp;
+      const elapsedSeconds = Math.max(0, (placementTime - gameStartTime) / 1000);
+
+      // Count placed pieces for score decay calculation
+      const placedCount = Object.keys(boardState.placedPieces).length;
+
+      // Scoring algorithm: Start at 5000, decay over time, faster decay with more pieces placed
+      const decayMultiplier = Math.pow(1.1, placedCount);
+      const scoreDecay = Math.floor(elapsedSeconds * decayMultiplier);
+      currentScore = Math.max(0, session.initialScore - scoreDecay);
+
+      // Store the complete board state as a single submission
+      await createLetteredSubmission({
+        gameSessionId: session.id,
+        boardState,
+        scoreAtSubmission: currentScore,
       });
-      return;
-    }
 
-    // Store the complete board state as a submission
+      placedPieces = Object.keys(boardState.placedPieces).length;
+      boardStateStored = true;
 
-    // Calculate current score for this submission
-    const gameStartTime = new Date(session.startedAt).getTime();
-    const placementTime = timestamp;
-    const elapsedSeconds = Math.max(0, (placementTime - gameStartTime) / 1000);
+      // Check if player has won and mark game as completed
+      if (hasWon) {
+        console.log('🎉 Player has won! Marking game as completed.');
+        await updateLetteredSession(session.id, {
+          isCompleted: true,
+          completedAt: new Date(timestamp).toISOString(),
+          finalScore: currentScore,
+        });
 
-    // Count placed pieces for score decay calculation
-    const placedCount = Object.keys(boardState.placedPieces).length;
-
-    // Scoring algorithm: Start at 5000, decay over time, faster decay with more pieces placed
-    const decayMultiplier = Math.pow(1.1, placedCount);
-    const scoreDecay = Math.floor(elapsedSeconds * decayMultiplier);
-    const currentScore = Math.max(0, session.initialScore - scoreDecay);
-
-    // Store the complete board state as a single submission
-    const { error: insertError } = await (supabase as any).from('lettered_submissions').insert({
-      game_session_id: session.id,
-      board_state: boardState,
-      submitted_at: new Date(timestamp).toISOString(),
-      score_at_submission: currentScore,
-    });
-
-    if (insertError) {
-      console.error('Error inserting board state submission:', insertError);
-      res.status(500).json({
-        status: 'error',
-        message: 'Failed to save board state',
-      });
-      return;
+        // TODO: Record the points in the leaderboard
+      }
     }
 
     const response = {
       sessionId: session.id,
       accepted: true,
       currentScore,
-      placedPieces: Object.keys(boardState.placedPieces).length,
-      boardStateStored: true,
+      placedPieces,
+      boardStateStored,
+      hasWon,
     };
 
     res.json(response);
@@ -324,22 +373,19 @@ router.get('/api/lettered/:gameId/session', async (req, res): Promise<void> => {
     }> = [];
 
     if (!session.isCompleted && submissions && submissions.length > 0) {
-      const latestSubmission = submissions[0];
+      const latestSubmission = submissions[0] as DatabaseSubmission;
       if (latestSubmission && 'board_state' in latestSubmission) {
-        const boardState = (latestSubmission as any).board_state as {
-          grid: GridCell[][];
-          placedPieces: Record<string, GridPosition>;
-        };
+        const boardState = latestSubmission.board_state;
 
         // Extract placed pieces from the board state
         placedPieces = Object.entries(boardState.placedPieces).map(([pieceId, position]) => ({
           pieceId,
           position,
-          placedAt: (latestSubmission as any).submitted_at,
-          scoreAtPlacement: (latestSubmission as any).score_at_submission,
+          placedAt: latestSubmission.submitted_at,
+          scoreAtPlacement: latestSubmission.score_at_submission,
         }));
 
-        currentScore = (latestSubmission as any).score_at_submission;
+        currentScore = latestSubmission.score_at_submission;
       }
     }
 
@@ -445,26 +491,23 @@ router.get('/api/lettered/:gameId/postgame', async (req, res): Promise<void> => 
       const dailyGame = await getTodaysLetteredGame();
       const game = dailyGame;
 
-      // For lettered games, completion is determined by having placed all pieces
-      // Check if all pieces are placed in the latest board state
-      let allPiecesPlaced = false;
+      // For lettered games, completion is determined by having all pieces in correct positions
+      let hasWon = false;
       let finalScore = 0;
 
       if (submissions && submissions.length > 0) {
-        const latestSubmission = submissions[0];
+        const latestSubmission = submissions[0] as DatabaseSubmission;
         if (latestSubmission && 'board_state' in latestSubmission) {
-          const boardState = (latestSubmission as any).board_state as {
-            grid: GridCell[][];
-            placedPieces: Record<string, GridPosition>;
-          };
+          const boardState = latestSubmission.board_state;
 
-          const placedCount = Object.keys(boardState.placedPieces).length;
-          allPiecesPlaced = placedCount === (game as any).pieces?.length;
-          finalScore = allPiecesPlaced ? (latestSubmission as any).score_at_submission : 0;
+          // Check if player has won by comparing with solution
+          const solution = game.solution as Record<string, GridPosition>;
+          hasWon = checkPlayerHasWon(boardState.placedPieces, solution);
+          finalScore = hasWon ? latestSubmission.score_at_submission : 0;
         }
       }
 
-      if (allPiecesPlaced) {
+      if (hasWon) {
         // Mark session as completed
         await updateLetteredSession(session.id, {
           isCompleted: true,
@@ -494,10 +537,10 @@ router.get('/api/lettered/:gameId/postgame', async (req, res): Promise<void> => 
 
         res.json(response);
       } else {
-        // Game not yet completed
+        // Game not yet completed (pieces not in correct positions)
         res.status(400).json({
           status: 'error',
-          message: 'Game not yet completed',
+          message: 'Game not yet completed - pieces must be in correct positions',
         });
       }
     } else {

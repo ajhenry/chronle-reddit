@@ -2109,25 +2109,35 @@ const validateConnectivity = (grid: GridCell[][]): boolean => {
 export const generateSolutionPositions = (
   pieces: LetterPiece[],
   grid: GridCell[][]
-): GridPosition[][] => {
-  const solutions: GridPosition[][] = [];
+): Record<string, GridPosition> => {
+  const solutions: Record<string, GridPosition> = {};
 
   for (const piece of pieces) {
-    const pieceSolutions: GridPosition[] = [];
-
-    // Try every possible position on the grid
-    for (let row = 0; row < grid.length; row++) {
-      for (let col = 0; col < grid[row]!.length; col++) {
-        if (isValidPiecePlacement(piece, { row, col }, grid)) {
-          pieceSolutions.push({ row, col });
-        }
-      }
+    // Find the single correct position for this piece
+    const correctPosition = findCorrectPiecePosition(piece, grid);
+    if (correctPosition) {
+      solutions[piece.id] = correctPosition;
     }
-
-    solutions.push(pieceSolutions);
   }
 
   return solutions;
+};
+
+// Find the correct position for a piece on the grid (where it was originally placed)
+const findCorrectPiecePosition = (piece: LetterPiece, grid: GridCell[][]): GridPosition | null => {
+  // Try every possible position on the grid
+  for (let row = 0; row < grid.length; row++) {
+    for (let col = 0; col < grid[row]!.length; col++) {
+      if (isValidPiecePlacement(piece, { row, col }, grid)) {
+        return { row, col };
+      }
+    }
+  }
+
+  console.warn(
+    `Could not find correct position for piece ${piece.id} with letters "${piece.letters.join('')}"`
+  );
+  return null;
 };
 
 // Check if a piece can be placed at a specific position and matches the grid letters
@@ -2318,7 +2328,7 @@ export const generateMockGame = (
     // Step 7: Generate solution
     console.log('Step 7: Generating solution positions...');
     const solution = generateSolutionPositions(pieces, trimmedGrid);
-    console.log(`Generated solutions for ${solution.length} pieces`);
+    console.log(`Generated solutions for ${Object.keys(solution).length} pieces`);
 
     console.log('\n✅ Game generation complete!\n');
 
