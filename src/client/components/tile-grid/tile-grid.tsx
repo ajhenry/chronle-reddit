@@ -573,13 +573,16 @@ const GridCell = React.memo(({ x, y, className = '', style }: GridCellProps) => 
   return (
     <div
       id={cellId}
-      className={cn('relative border transition-colors border-border', combinedClassName)}
+      className={cn(
+        'relative border transition-colors border-border dark:border-transparent',
+        combinedClassName
+      )}
       style={cellStyle}
       data-testid={`grid-cell-${x}-${y}`}
       data-occupied={isOccupied}
       data-item-id={cellData?.occupyingItemId}
     >
-      {/* Coordinate labels - only in development mode */}
+      {/* Coordinate labels - disabled */}
       {isDevelopment() && (
         <div className="absolute top-0 left-0 text-[8px] font-mono text-muted-foreground/60 leading-none p-0.5 pointer-events-none select-none">
           {x},{y}
@@ -833,7 +836,7 @@ const DraggableItemComponent = React.memo(
           <div
             key={`cell-${index}`}
             className={cn(
-              'border border-border flex justify-center items-center',
+              'border border-border dark:border-transparent flex justify-center items-center overflow-y-hidden',
               item.color || 'bg-primary',
               isDragging ? 'opacity-70' : 'opacity-100',
               item.className || defaultClassName || ''
@@ -961,7 +964,7 @@ const DragPreviewComponent = React.memo(
           <div
             key={`preview-cell-${index}`}
             className={cn(
-              'border-2 border-dashed flex justify-center items-center',
+              'border-2 border-dashed dark:border-transparent flex justify-center items-center',
               item.color || 'bg-primary',
               item.className || defaultClassName || '',
               customDraggingClassName || '' // Add custom dragging class

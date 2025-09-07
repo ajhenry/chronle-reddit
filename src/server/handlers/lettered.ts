@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import { z } from 'zod';
+import { createHash } from 'crypto';
 import {
   LetteredDailyGameResponse,
   LetteredGameCompleteResponse,
@@ -47,43 +48,89 @@ const letteredSessionPayloadSchema = z.object({
   timestamp: z.number().positive(),
 });
 
-// Type for database submission records
-interface DatabaseSubmission {
-  board_state: {
-    grid: GridCell[][];
-    placedPieces: Record<string, GridPosition>;
-  };
-  submitted_at: string;
-  score_at_submission: number;
-}
+// Create SHA256 hash of the board state for validation (matches client implementation)
+const createBoardHash = (
+  grid: GridCell[][],
+  placedPieces: Record<string, GridPosition>,
+  pieces: LetterPiece[]
+): string => {
+  // Reconstruct the complete grid by combining secure grid with placed pieces
+  const completeGrid = grid.map((row, rowIndex) =>
+    row.map((cell, colIndex) => {
+      // Start with the secure cell data
+      const completeCell = {
+        letter: cell.letter,
+        isLetter: cell.isLetter,
+        isPreFilled: cell.isPreFilled,
+        isSpace: cell.isSpace,
+        isUnused: cell.isUnused,
+      };
 
-// Check if player has won by comparing placed pieces with the solution
+      // If this cell doesn't have a pre-filled letter, try to find it from placed pieces
+      if (!cell.isPreFilled && !cell.letter) {
+        // Check if any piece covers this position
+        for (const [pieceId, position] of Object.entries(placedPieces)) {
+          const piece = pieces.find((p) => p.id === pieceId);
+          if (!piece?.letters?.length) continue;
+
+          // Check if this piece covers the current cell
+          const shape = piece.shape;
+          if (!shape?.length) continue;
+
+          for (let i = 0; i < shape.length; i++) {
+            const shapePos = shape[i];
+            if (!shapePos) continue;
+
+            const pieceRow = position.row + shapePos.row;
+            const pieceCol = position.col + shapePos.col;
+
+            if (pieceRow === rowIndex && pieceCol === colIndex) {
+              completeCell.letter = piece.letters[i] || null;
+              break;
+            }
+          }
+
+          if (completeCell.letter) break; // Found the letter, no need to check more pieces
+        }
+      }
+
+      return completeCell;
+    })
+  );
+
+  // Create hash of the complete grid
+  const gridJson = JSON.stringify(completeGrid);
+  const hash = createHash('sha256').update(gridJson).digest('hex');
+
+  return hash;
+};
+
+// Check if player has won by validating the board state against the solution hash
 const checkPlayerHasWon = (
   placedPieces: Record<string, GridPosition>,
-  solution: Record<string, GridPosition>
+  gameGrid: GridCell[][],
+  pieces: LetterPiece[],
+  solutionHash: string
 ): boolean => {
   // Check if all pieces are placed
-  const totalPieces = Object.keys(solution).length;
+  const totalPieces = pieces.length;
   const placedCount = Object.keys(placedPieces).length;
 
   if (placedCount !== totalPieces) {
     return false;
   }
 
-  // Check if each piece is in the correct position
-  for (const [pieceId, correctPosition] of Object.entries(solution)) {
-    const placedPosition = placedPieces[pieceId];
+  // Create hash of current board state and compare with solution hash
+  const currentHash = createBoardHash(gameGrid, placedPieces, pieces);
+  const isValid = currentHash === solutionHash;
 
-    if (!placedPosition) {
-      return false; // Piece not placed
-    }
+  console.log('Board validation:', {
+    currentHash: currentHash.substring(0, 16) + '...',
+    solutionHash: solutionHash.substring(0, 16) + '...',
+    isValid,
+  });
 
-    if (placedPosition.row !== correctPosition.row || placedPosition.col !== correctPosition.col) {
-      return false; // Piece in wrong position
-    }
-  }
-
-  return true;
+  return isValid;
 };
 
 const router = Router();
@@ -159,8 +206,8 @@ router.get('/api/lettered/game', async (_req, res): Promise<void> => {
         initialPiecePositions: letteredGame.initialPiecePositions || {},
         solutionHash: letteredGame.solutionHash,
         solution: letteredGame.solution || [],
-        created_at: letteredGame.createdAt,
-        updated_at: letteredGame.updatedAt,
+        createdAt: letteredGame.createdAt,
+        updatedAt: letteredGame.updatedAt,
       },
       day: dailyGame.day,
       session: sessionData,
@@ -187,6 +234,7 @@ router.post('/api/lettered/:dailyGameId/session', async (req, res): Promise<void
     const userId = await ensureUserExistsAndGetId();
 
     if (!userId) {
+      console.log('User not authenticated with Reddit');
       res.status(401).json({
         status: 'error',
         message: 'User not authenticated with Reddit',
@@ -197,7 +245,7 @@ router.post('/api/lettered/:dailyGameId/session', async (req, res): Promise<void
     // Validate payload with Zod
     const payloadValidation = letteredSessionPayloadSchema.safeParse(req.body);
     if (!payloadValidation.success) {
-      console.error('Payload validation failed:', payloadValidation.error);
+      console.error('Payload validation failed:', { error: payloadValidation.error });
       res.status(400).json({
         status: 'error',
         message: 'Invalid payload structure',
@@ -211,20 +259,17 @@ router.post('/api/lettered/:dailyGameId/session', async (req, res): Promise<void
     // Get today's daily lettered game
     const dailyLetterGame = await getTodaysLetteredGame();
 
-    if (!dailyLetterGame) {
-      res.status(404).json({
-        status: 'error',
-        message: 'No daily lettered game available for today',
-      });
-      return;
-    }
-
     // Get or create game session
     const session = await getOrCreateUserLetteredSessionForToday(userId);
 
     // Check if player has won
-    const solution = dailyLetterGame.solution;
-    const hasWon = checkPlayerHasWon(boardState.placedPieces, solution);
+    const hasWon = checkPlayerHasWon(
+      boardState.placedPieces,
+      dailyLetterGame.grid,
+      dailyLetterGame.pieces,
+      dailyLetterGame.solutionHash
+    );
+    console.log('Board validation result:', hasWon);
 
     let placedPieces: number;
     let boardStateStored: boolean;
@@ -364,11 +409,15 @@ router.get('/api/lettered/:gameId/session', async (req, res): Promise<void> => {
 
 // GET /api/lettered/:gameId/postgame - Returns the results that were validated on the server
 router.get('/api/lettered/:gameId/postgame', async (req, res): Promise<void> => {
+  console.log('GET /api/lettered/:gameId/postgame', {
+    gameId: req.params.gameId,
+  });
   try {
     const { gameId } = req.params;
     const userId = await ensureUserExistsAndGetId();
 
     if (!userId) {
+      console.log('User not authenticated with Reddit');
       res.status(401).json({
         status: 'error',
         message: 'User not authenticated with Reddit',
@@ -391,6 +440,7 @@ router.get('/api/lettered/:gameId/postgame', async (req, res): Promise<void> => 
     const submissionsCount = await getTotalLetteredSubmissionsForToday(userId);
 
     if (!latestSubmission) {
+      console.log('No submissions found for today');
       res.status(404).json({
         status: 'error',
         message: 'No submissions found for today',
@@ -399,6 +449,7 @@ router.get('/api/lettered/:gameId/postgame', async (req, res): Promise<void> => 
     }
 
     if (!session.isCompleted) {
+      console.log('Game is not completed');
       res.status(400).json({
         status: 'error',
         message: 'Game is not completed',
@@ -417,7 +468,7 @@ router.get('/api/lettered/:gameId/postgame', async (req, res): Promise<void> => 
 
     res.json(response);
   } catch (error) {
-    console.error('Error getting postgame results:', error);
+    console.error('Error getting postgame results:', { error });
     res.status(500).json({
       status: 'error',
       message: 'Failed to get postgame results',

@@ -30,7 +30,7 @@ export interface DecayConfig {
 export const DEFAULT_DECAY_CONFIGS: Record<string, DecayConfig> = {
   lettered: {
     gameType: 'lettered',
-    letteredBaseDecayRate: 3,
+    letteredBaseDecayRate: 6,
     letteredPieceMultiplier: 1.1,
   },
   topx: {

@@ -4,7 +4,8 @@ import { GameLayout } from '../components/GameLayout';
 import { toast } from 'sonner';
 import { CardContent } from '../components/ui/card';
 import { Button } from '../components/ui/button';
-import { Dialog, DialogContent } from '../components/ui/dialog';
+import { Dialog, DialogContent, DialogClose } from '../components/ui/dialog';
+import { Skeleton } from '../components/ui/skeleton';
 import { LetteredGameData, GridPosition, LetterPiece, GridCell } from '../../shared/types/api';
 import { DEFAULT_INITIAL_SCORE } from '../../shared/score-decay';
 import { isDevelopment } from '../lib/dev-utils';
@@ -134,7 +135,7 @@ const convertGridDataToItems = ({
           },
           className: getTileClassName
             ? getTileClassName(anchorPiece)
-            : 'bg-black text-white border border-white/30',
+            : 'bg-foreground text-background border border-muted',
         });
       }
     }
@@ -457,6 +458,20 @@ export const LetteredPage = ({ onBack }: { onBack?: () => void }) => {
     }
   }, [uiState.showGameOverModal, gameComplete, dailyGameId, loadPostGameStats]);
 
+  // Always refetch stats when modal becomes visible
+  const prevModalState = useRef(false);
+  useEffect(() => {
+    const modalJustOpened = uiState.showGameOverModal && !prevModalState.current;
+    prevModalState.current = uiState.showGameOverModal;
+
+    if (modalJustOpened && gameComplete && dailyGameId) {
+      // Force refetch by clearing existing stats first
+      setPostGameStats(null);
+      setPostGameStatsError(null);
+      void loadPostGameStats();
+    }
+  }, [uiState.showGameOverModal, gameComplete, dailyGameId, loadPostGameStats]);
+
   // Handle layout changes from the grid
   const handleGridLayoutChange = useCallback(
     async (layout: (string | null)[][]) => {
@@ -650,25 +665,25 @@ export const LetteredPage = ({ onBack }: { onBack?: () => void }) => {
       if (y >= (gameData?.grid.length ?? 0)) {
         return 'bg-transparent border-none hover:bg-transparent'; // Make extended area squares invisible
       }
-      return 'bg-muted'; // Main board
+      return 'bg-gray-700'; // Main board
     }
 
     // Don't style cells that have pre-filled anchor letters (they're rendered as pieces)
     if (cell.isPreFilled) {
-      return cn(baseClass, 'bg-background');
+      return cn(baseClass, 'bg-gray-200');
     }
 
-    // Make unoccupied spaces use theme-aware muted colors
+    // Make unoccupied spaces gray-700
     if (cell.isUnused || cell.isSpace) {
-      return cn(baseClass, 'border-2 border-border bg-muted');
+      return cn(baseClass, 'border-2 border-border bg-gray-700');
     }
 
-    // For cells with letters that will be filled by pieces, use transparent
-    return cn(baseClass, 'bg-background');
+    // For cells with letters that will be filled by pieces, use gray-200
+    return cn(baseClass, 'bg-gray-200');
   };
 
   const pieceTileClass = (piece: LetterPiece) => {
-    const baseClass = 'text-card-foreground transition-colors';
+    const baseClass = 'text-primary-foreground transition-colors';
     return cn(baseClass, piece.color);
   };
 
@@ -689,9 +704,14 @@ export const LetteredPage = ({ onBack }: { onBack?: () => void }) => {
   // Show loading state
   if (loading) {
     return (
-      <GameLayout gameTitle="Lettered Daily" score={0} onBack={handleBackToMenu}>
+      <GameLayout
+        gameTitle="Lettered Daily"
+        score={0}
+        onBack={handleBackToMenu}
+        logoSrc="/lettered-logo.png"
+      >
         <CardContent className="flex justify-center items-center p-8">
-          <div className="text-lg font-medium text-card-foreground">Loading today's puzzle...</div>
+          <div className="text-lg font-medium text-foreground">Loading today's puzzle...</div>
         </CardContent>
       </GameLayout>
     );
@@ -700,7 +720,12 @@ export const LetteredPage = ({ onBack }: { onBack?: () => void }) => {
   // Show error state
   if (error || !gameData) {
     return (
-      <GameLayout gameTitle="Lettered Daily" score={0} onBack={handleBackToMenu}>
+      <GameLayout
+        gameTitle="Lettered Daily"
+        score={0}
+        onBack={handleBackToMenu}
+        logoSrc="/lettered-logo.png"
+      >
         <CardContent className="flex flex-col justify-center items-center p-8 space-y-4">
           <div className="text-lg font-medium text-center text-destructive">
             {error || "Failed to load today's puzzle"}
@@ -717,6 +742,7 @@ export const LetteredPage = ({ onBack }: { onBack?: () => void }) => {
       score={gameScore}
       onBack={handleBackToMenu}
       onLeaderboard={() => setUIState((prev) => ({ ...prev, showGameOverModal: true }))}
+      logoSrc="/lettered-logo.png"
     >
       {/* Development Controls */}
       {isDevelopment() && (
@@ -754,17 +780,21 @@ export const LetteredPage = ({ onBack }: { onBack?: () => void }) => {
 
       {/* Category Display */}
       <div className="mb-4 text-center">
-        <div className="text-2xl font-black tracking-wide text-foreground">{gameData.category}</div>
+        <div className="text-2xl font-black tracking-wide uppercase text-foreground">
+          {gameData.category}
+        </div>
       </div>
 
       {/* Completion Banner for Reloaded Games */}
       {isReloadedCompletedGame && (
-        <div className="p-4 mb-4 rounded-lg border-2">
+        <div className="p-4 mb-4 rounded-lg border-2 border-foreground">
           <div className="flex flex-col gap-3 sm:flex-row sm:justify-between sm:items-center">
             <div className="flex items-center space-x-3">
               <div>
-                <div className="font-semibold">Puzzle Solved</div>
-                <div className="text-sm">Check back in tomorrow for a new puzzle</div>
+                <div className="font-semibold text-foreground">Puzzle Solved</div>
+                <div className="text-sm text-muted-foreground">
+                  Check back in tomorrow for a new puzzle
+                </div>
               </div>
             </div>
             <Button
@@ -834,11 +864,22 @@ export const LetteredPage = ({ onBack }: { onBack?: () => void }) => {
           }
         }}
       >
-        <DialogContent className="p-0 border-4 border-black shadow-2xl bg-card sm:max-w-lg">
+        <DialogContent className="p-0 border-4 border-black bg-card sm:max-w-lg" hideCloseButton>
+          <DialogClose className="absolute top-4 right-4 z-20 text-white rounded-sm transition-colors hover:text-white/80 focus:outline-none focus:ring-2 focus:ring-white focus:ring-offset-2 focus:ring-offset-black disabled:pointer-events-none">
+            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M6 18L18 6M6 6l12 12"
+              />
+            </svg>
+            <span className="sr-only">Close</span>
+          </DialogClose>
           <div className="relative">
             {/* Header Banner */}
             <div className="relative py-6 text-center text-white bg-black">
-              <div className="absolute -top-2 -right-2 z-10 px-3 py-1 text-black border-2 border-black transform rotate-12 bg-primary">
+              <div className="absolute -top-2 -left-2 z-10 px-3 py-1 text-black border-2 border-black transform -rotate-12 bg-primary">
                 <span className="text-sm font-black tracking-wide">COMPLETE</span>
               </div>
               <h1 className="text-4xl font-black tracking-tight text-white">PUZZLE</h1>
@@ -846,83 +887,85 @@ export const LetteredPage = ({ onBack }: { onBack?: () => void }) => {
             </div>
 
             <div className="p-6 space-y-6">
-              {/* Loading State */}
-              {postGameStatsLoading && (
-                <div className="py-8 text-center">
-                  <div className="text-xl font-bold text-card-foreground">Loading stats...</div>
-                </div>
-              )}
-
               {/* Error State */}
               {postGameStatsError && (
                 <div className="py-8 text-center">
                   <div className="text-xl font-bold text-destructive">Failed to load stats</div>
-                  <div className="mt-2 text-sm text-card-foreground">{postGameStatsError}</div>
+                  <div className="mt-2 text-sm text-muted-foreground">{postGameStatsError}</div>
                 </div>
               )}
 
-              {/* Game Stats */}
-              {postGameStats && !postGameStatsLoading && !postGameStatsError && (
-                <>
-                  {/* Validation Message */}
-                  <div className="relative p-4 text-center text-white bg-black border-4 border-black">
-                    <div className="mb-1 text-2xl font-black tracking-wide">✓ VALIDATED</div>
-                    <div className="text-sm font-bold tracking-wider">SERVER CONFIRMED</div>
-                  </div>
+              {/* Validation Message */}
+              <div className="relative p-4 text-center text-white bg-black border-4 border-black">
+                <div className="mb-1 text-2xl font-black tracking-wide">
+                  {postGameStatsLoading ? (
+                    <Skeleton className="mx-auto w-32 h-8 bg-gray-600" />
+                  ) : (
+                    'VALIDATED'
+                  )}
+                </div>
+                <div className="text-sm font-bold tracking-wider">
+                  {postGameStatsLoading ? (
+                    <Skeleton className="mx-auto w-40 h-4 bg-gray-600" />
+                  ) : (
+                    'SERVER CONFIRMED'
+                  )}
+                </div>
+              </div>
 
-                  {/* Stats Grid */}
-                  <div className="grid grid-cols-2 gap-4">
-                    <div className="p-4 text-center bg-white border-4 border-black shadow-lg">
-                      <div className="mb-1 text-3xl font-black text-black">
-                        {postGameStats.finalScore}
-                      </div>
-                      <div className="text-sm font-bold tracking-wide text-black">SCORE</div>
-                    </div>
-                    <div className="p-4 text-center bg-white border-4 border-black shadow-lg">
-                      <div className="mb-1 text-3xl font-black text-black">
-                        {postGameStats.movesUsed}
-                      </div>
-                      <div className="text-sm font-bold tracking-wide text-black">MOVES</div>
-                    </div>
-                    <div className="p-4 text-center bg-white border-4 border-black shadow-lg">
-                      <div className="mb-1 text-3xl font-black text-black">
-                        {Object.keys(postGameStats.pieces).length}
-                      </div>
-                      <div className="text-sm font-bold tracking-wide text-black">PIECES</div>
-                    </div>
-                    <div className="p-4 text-center bg-white border-4 border-black shadow-lg">
-                      <div className="mb-1 text-sm font-black leading-tight text-black">
-                        {postGameStats.dailyGame.category}
-                      </div>
-                      <div className="text-sm font-bold tracking-wide text-black">CATEGORY</div>
-                    </div>
+              {/* Stats Grid */}
+              <div className="grid grid-cols-2 gap-4">
+                <div className="p-4 text-center bg-white border-4 border-black shadow-lg">
+                  <div className="mb-1 text-3xl font-black text-black">
+                    {postGameStatsLoading ? (
+                      <Skeleton className="mx-auto w-16 h-9 bg-gray-300" />
+                    ) : (
+                      (postGameStats?.finalScore ?? gameScore)
+                    )}
                   </div>
-
-                  {/* Theme Display */}
-                  <div className="p-4 text-center border-4 border-black shadow-lg bg-primary">
-                    <div className="mb-1 text-sm font-black tracking-wide text-black">
-                      TODAY'S THEME
-                    </div>
-                    <div className="text-xl font-black leading-tight text-black">
-                      {postGameStats.dailyGame.phrase}
-                    </div>
-                  </div>
-                </>
-              )}
-
-              {/* Fallback Stats (when API fails) */}
-              {!postGameStats && !postGameStatsLoading && !postGameStatsError && (
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="p-4 text-center bg-white border-4 border-black shadow-lg">
-                    <div className="mb-1 text-3xl font-black text-black">{gameScore}</div>
-                    <div className="text-sm font-bold tracking-wide text-black">SCORE</div>
-                  </div>
-                  <div className="p-4 text-center bg-white border-4 border-black shadow-lg">
-                    <div className="mb-1 text-3xl font-black text-black">{placedPieces.size}</div>
-                    <div className="text-sm font-bold tracking-wide text-black">PIECES</div>
+                  <div className="text-sm font-bold tracking-wide text-black">
+                    {postGameStatsLoading ? (
+                      <Skeleton className="mx-auto w-12 h-4 bg-gray-300" />
+                    ) : (
+                      'SCORE'
+                    )}
                   </div>
                 </div>
-              )}
+                <div className="p-4 text-center bg-white border-4 border-black shadow-lg">
+                  <div className="mb-1 text-3xl font-black text-black">
+                    {postGameStatsLoading ? (
+                      <Skeleton className="mx-auto w-8 h-9 bg-gray-300" />
+                    ) : (
+                      (postGameStats?.movesUsed ?? placedPieces.size)
+                    )}
+                  </div>
+                  <div className="text-sm font-bold tracking-wide text-black">
+                    {postGameStatsLoading ? (
+                      <Skeleton className="mx-auto w-12 h-4 bg-gray-300" />
+                    ) : (
+                      'MOVES'
+                    )}
+                  </div>
+                </div>
+              </div>
+
+              {/* Theme Display */}
+              <div className="p-4 text-center border-4 border-black shadow-lg bg-primary">
+                <div className="mb-1 text-sm font-black tracking-wide text-black">
+                  {postGameStatsLoading ? (
+                    <Skeleton className="mx-auto w-28 h-4 bg-gray-600" />
+                  ) : (
+                    "TODAY'S THEME"
+                  )}
+                </div>
+                <div className="text-xl font-black leading-tight text-black">
+                  {postGameStatsLoading ? (
+                    <Skeleton className="mx-auto w-48 h-7 bg-gray-600" />
+                  ) : (
+                    (postGameStats?.dailyGame.phrase ?? 'Loading...')
+                  )}
+                </div>
+              </div>
 
               {/* Play Again Button */}
               <div className="flex justify-center pt-4">
@@ -937,7 +980,7 @@ export const LetteredPage = ({ onBack }: { onBack?: () => void }) => {
                     setPostGameStatsError(null);
                     resetGame();
                   }}
-                  className="bg-black text-white border-4 border-black font-black text-xl py-4 px-8 shadow-lg hover:shadow-xl transition-all duration-200 hover:translate-x-[-2px] hover:translate-y-[-2px] tracking-wider"
+                  className="bg-foreground text-background border-4 border-foreground font-black text-xl py-4 px-8 shadow-lg hover:shadow-xl transition-all duration-200 hover:translate-x-[-2px] hover:translate-y-[-2px] tracking-wider"
                 >
                   CLOSE
                 </Button>

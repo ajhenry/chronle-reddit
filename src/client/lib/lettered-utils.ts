@@ -2,12 +2,24 @@ import { GridCell, GridPosition, LetterPiece } from '../../shared/types/api';
 import { Breakpoint } from '../hooks/useViewport';
 
 // Responsive cell size map for different breakpoints
-export const RESPONSIVE_CELL_SIZES: Record<Breakpoint, { width: number; height: number }> = {
-  xs: { width: 40, height: 40 },
-  sm: { width: 40, height: 40 },
-  md: { width: 48, height: 48 },
-  lg: { width: 50, height: 50 },
-  xl: { width: 56, height: 56 },
+export const RESPONSIVE_CELL_SIZES: Record<
+  number,
+  Record<Breakpoint, { width: number; height: number }> | undefined
+> = {
+  9: {
+    xs: { width: 36, height: 36 },
+    sm: { width: 48, height: 48 },
+    md: { width: 52, height: 52 },
+    lg: { width: 64, height: 64 },
+    xl: { width: 64, height: 64 },
+  },
+  8: {
+    xs: { width: 40, height: 40 },
+    sm: { width: 52, height: 52 },
+    md: { width: 64, height: 64 },
+    lg: { width: 80, height: 80 },
+    xl: { width: 80, height: 80 },
+  },
 };
 
 export const RESPONSIVE_CELL_SPACING: Record<Breakpoint, number> = {
@@ -24,13 +36,8 @@ export const getResponsiveCellSize = (
   _gridRows?: number,
   gridCols?: number
 ): { width: number; height: number } => {
-  // Special case: use size 36 when the grid width is 9
-  if (gridCols === 9) {
-    return { width: 36, height: 36 };
-  }
-
   // Otherwise use responsive sizing
-  return RESPONSIVE_CELL_SIZES[breakpoint];
+  return RESPONSIVE_CELL_SIZES[gridCols ?? 9]?.[breakpoint] ?? { width: 40, height: 40 };
 };
 
 // Get responsive cell spacing based on current breakpoint

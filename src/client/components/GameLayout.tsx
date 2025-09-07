@@ -12,6 +12,7 @@ interface GameLayoutProps {
   children: ReactNode;
   onBack: () => void;
   onLeaderboard?: () => void;
+  logoSrc?: string;
 }
 
 const AnimatedNumber = ({ value }: { value: number }) => {
@@ -89,6 +90,7 @@ export const GameLayout = ({
   children,
   onBack,
   onLeaderboard,
+  logoSrc = '/top-x-logo.png',
 }: GameLayoutProps) => {
   const [showHelpModal, setShowHelpModal] = useState(false);
 
@@ -100,7 +102,7 @@ export const GameLayout = ({
           {/* Logo */}
           <div className="flex gap-3 items-center">
             <Button variant="ghost" size="icon" onClick={onBack}>
-              <img src="/top-x-logo.png" alt="Top X Logo" className="object-contain w-12 h-12" />
+              <img src={logoSrc} alt="Game Logo" className="object-contain w-12 h-12" />
             </Button>
             <h1 className="hidden text-2xl font-semibold text-foreground md:block">{gameTitle}</h1>
           </div>
@@ -124,7 +126,6 @@ export const GameLayout = ({
                 fill="none"
                 stroke="currentColor"
                 strokeWidth="2"
-                className="text-foreground"
               >
                 <path d="M3 3v18h18" />
                 <path d="M18 17V9" />
@@ -142,7 +143,6 @@ export const GameLayout = ({
                 fill="none"
                 stroke="currentColor"
                 strokeWidth="2"
-                className="text-foreground"
               >
                 <circle cx="12" cy="12" r="10" />
                 <path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3" />

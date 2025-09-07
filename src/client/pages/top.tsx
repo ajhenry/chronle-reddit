@@ -525,6 +525,7 @@ export const TopPage = ({ onBack }: { onBack?: () => void }) => {
         attempts={1}
         maxAttempts={5}
         onBack={handleBackToMenu}
+        logoSrc="/top-x-logo.png"
       >
         <CardContent className="flex items-center justify-center p-8">
           <div className="text-lg font-medium text-card-foreground">Loading today's game...</div>
@@ -542,6 +543,7 @@ export const TopPage = ({ onBack }: { onBack?: () => void }) => {
         attempts={1}
         maxAttempts={5}
         onBack={handleBackToMenu}
+        logoSrc="/top-x-logo.png"
       >
         <CardContent className="flex flex-col items-center justify-center p-8 space-y-4">
           <div className="text-lg font-medium text-destructive text-center">
@@ -561,6 +563,7 @@ export const TopPage = ({ onBack }: { onBack?: () => void }) => {
       maxAttempts={gameState.maxAttempts}
       onBack={handleBackToMenu}
       onLeaderboard={() => console.log('Leaderboard clicked')}
+      logoSrc="/top-x-logo.png"
     >
       {/* Development Controls */}
       {isDevelopment() && (
