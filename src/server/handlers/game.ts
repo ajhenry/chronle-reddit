@@ -5,6 +5,7 @@ import {
   TopXGameCompleteResponse,
   StatusResponse,
 } from '../../shared/types/api';
+import { calculateDecayedScore, DEFAULT_INITIAL_SCORE } from '../../shared/score-decay';
 import { supabase } from '../../shared/supabase-server';
 import { checkAndCreateTodaysGames, getTodayEST } from '../lib/status-helpers';
 import { recordLeaderboardEntry } from '../lib/leaderboard-helpers';
@@ -110,9 +111,12 @@ router.get('/api/topx/game', async (_req, res): Promise<void> => {
           const incorrectCount = (submissions || []).filter((sub) => !sub.is_correct).length;
 
           // Calculate current score using same algorithm as client
-          const decayMultiplier = Math.pow(1.5, incorrectCount);
-          const scoreDecay = Math.floor(elapsedSeconds * decayMultiplier);
-          const currentScore = Math.max(0, existingSession.initialScore - scoreDecay);
+          const currentScore = calculateDecayedScore({
+            initialScore: existingSession.initialScore,
+            elapsedSeconds,
+            gameType: 'topx',
+            incorrectCount,
+          });
 
           sessionData = {
             id: existingSession.id,
@@ -146,8 +150,8 @@ router.get('/api/topx/game', async (_req, res): Promise<void> => {
             sessionData = {
               id: newSession.id,
               startedAt: newSession.startedAt,
-              currentScore: 5000,
-              initialScore: 5000,
+              currentScore: DEFAULT_INITIAL_SCORE,
+              initialScore: DEFAULT_INITIAL_SCORE,
               isCompleted: false,
               submissions: [],
             };
@@ -265,9 +269,12 @@ router.post('/api/topx/attempt', async (req, res): Promise<void> => {
     const incorrectSubmissions = incorrectCount || 0;
 
     // Scoring algorithm: Start at 5000, decay over time, faster decay with wrong answers
-    const decayMultiplier = Math.pow(1.5, incorrectSubmissions);
-    const scoreDecay = Math.floor(elapsedSeconds * decayMultiplier);
-    const currentScore = Math.max(0, session.initialScore - scoreDecay);
+    const currentScore = calculateDecayedScore({
+      initialScore: session.initialScore,
+      elapsedSeconds,
+      gameType: 'topx',
+      incorrectCount: incorrectSubmissions,
+    });
 
     // Record the submission without validation
     const { data: submission, error: submissionError } = await supabase

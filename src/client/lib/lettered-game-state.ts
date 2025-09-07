@@ -1,4 +1,9 @@
 import { LetteredGameData, GridPosition, LetterPiece, GridCell } from '../../shared/types/api';
+import {
+  calculateDecayAmount,
+  getDecayRate,
+  DEFAULT_INITIAL_SCORE,
+} from '../../shared/score-decay';
 
 // SHA256 hash function for client-side validation
 const sha256 = async (message: string): Promise<string> => {
@@ -9,6 +14,7 @@ const sha256 = async (message: string): Promise<string> => {
 };
 
 export type GameStateUpdateCallback = (updates: Partial<GameState>) => void;
+export type ScoreSyncCallback = (serverScore: number) => void;
 
 export interface GameState {
   score: number;
@@ -18,7 +24,6 @@ export interface GameState {
   boardLayout: GridCell[][]; // Current state of the board
   placedPieces: Map<string, GridPosition>; // piece ID -> position
   lastValidPositions: Map<string, GridPosition>; // For undo functionality
-  scoreDecayRate: number; // Points lost per second
   scoreDecayInterval: number; // Milliseconds between decay
   lastScoreUpdate: number; // Timestamp of last score update
   gameStartTime: number;
@@ -30,14 +35,25 @@ export class LetteredGameStateManager {
   private state: GameState;
   private scoreDecayTimer: ReturnType<typeof setTimeout> | null = null;
   private updateCallbacks: GameStateUpdateCallback[] = [];
+  private scoreSyncCallback: ScoreSyncCallback | null = null;
+  private lastScoreSync: number = 0;
+  private readonly SCORE_SYNC_INTERVAL = 30000; // Sync every 30 seconds
 
-  constructor(gameData: LetteredGameData | null = null) {
-    this.state = this.createInitialState(gameData);
-    this.startScoreDecay();
+  constructor(
+    gameData: LetteredGameData | null = null,
+    initialScore?: number,
+    gameStartTime?: number
+  ) {
+    this.state = this.createInitialState(gameData, initialScore, gameStartTime);
+    // Don't start score decay immediately - wait for explicit call
     this.notifyUpdates(this.state);
   }
 
-  private createInitialState(gameData: LetteredGameData | null): GameState {
+  private createInitialState(
+    gameData: LetteredGameData | null,
+    initialScore?: number,
+    gameStartTime?: number
+  ): GameState {
     // Initialize placed pieces with initial tray positions for all pieces
     const placedPieces = new Map<string, GridPosition>();
     if (gameData?.initialPiecePositions) {
@@ -46,20 +62,23 @@ export class LetteredGameStateManager {
       });
     }
 
+    const defaultScore = DEFAULT_INITIAL_SCORE;
+    const score = initialScore ?? defaultScore;
+    const startTime = gameStartTime ?? Date.now();
+
     return {
-      score: 5000,
-      initialScore: 5000,
+      score,
+      initialScore: score, // Use the restored score as the initial score for decay calculations
       gameComplete: false,
       gameWon: false,
       boardLayout: gameData?.grid || [],
       placedPieces,
       lastValidPositions: new Map(placedPieces), // Also initialize lastValidPositions
-      scoreDecayRate: 3,
       scoreDecayInterval: 250,
-      lastScoreUpdate: Date.now(),
-      gameStartTime: Date.now(),
+      lastScoreUpdate: startTime,
+      gameStartTime: startTime,
       gameData,
-      timerDisabled: true,
+      timerDisabled: false,
     };
   }
 
@@ -74,6 +93,11 @@ export class LetteredGameStateManager {
     };
   }
 
+  // Set callback for score synchronization with server
+  setScoreSyncCallback(callback: ScoreSyncCallback | null): void {
+    this.scoreSyncCallback = callback;
+  }
+
   // Notify all subscribers of state changes
   private notifyUpdates(updates: Partial<GameState>): void {
     this.updateCallbacks.forEach((callback) => callback(updates));
@@ -85,10 +109,10 @@ export class LetteredGameStateManager {
   }
 
   // Initialize game with new data
-  initializeGame(gameData: LetteredGameData): void {
+  initializeGame(gameData: LetteredGameData, initialScore?: number, gameStartTime?: number): void {
     this.stopScoreDecay();
-    this.state = this.createInitialState(gameData);
-    this.startScoreDecay();
+    this.state = this.createInitialState(gameData, initialScore, gameStartTime);
+    // Don't start score decay immediately - wait for explicit call
     this.notifyUpdates(this.state);
   }
 
@@ -107,13 +131,22 @@ export class LetteredGameStateManager {
       if (!this.state.gameComplete) {
         const now = Date.now();
         const timeDiff = now - this.state.lastScoreUpdate;
-        const decayAmount = Math.floor((timeDiff / 1000) * this.state.scoreDecayRate);
+        const elapsedSeconds = timeDiff / 1000;
+        const placedPieces = this.state.placedPieces.size;
+        const decayAmount = calculateDecayAmount('lettered', elapsedSeconds, placedPieces);
 
         if (decayAmount > 0) {
           this.state.score = Math.max(0, this.state.score - decayAmount);
           this.state.lastScoreUpdate = now;
 
           this.notifyUpdates({ score: this.state.score });
+        }
+
+        // Periodically sync score with server
+        if (this.scoreSyncCallback && now - this.lastScoreSync > this.SCORE_SYNC_INTERVAL) {
+          this.lastScoreSync = now;
+          // Trigger score sync callback (will be handled by the component)
+          this.scoreSyncCallback(this.state.score);
         }
       }
     }, this.state.scoreDecayInterval);
@@ -127,12 +160,10 @@ export class LetteredGameStateManager {
     }
   }
 
-  // Set score decay rate
-  setScoreDecayRate(rate: number): void {
-    this.state.scoreDecayRate = rate;
-    // Restart decay with new rate
-    this.stopScoreDecay();
-    this.startScoreDecay();
+  // Get current decay rate (for debugging/UI purposes)
+  getDecayRate(): number {
+    const placedPieces = this.state.placedPieces.size;
+    return getDecayRate('lettered', placedPieces);
   }
 
   // Enable/disable timer
@@ -152,37 +183,25 @@ export class LetteredGameStateManager {
 
   // Place a piece on the board
   async placePiece(pieceId: string, position: GridPosition): Promise<boolean> {
-    console.log(`[DEBUG] Placing piece ${pieceId} at (${position.row}, ${position.col})`);
-
     // Prevent piece movement when game is complete
     if (this.state.gameComplete) {
-      console.log('[DEBUG] Cannot move pieces - game is complete');
       return false;
     }
 
     if (!this.state.gameData) {
-      console.log('[DEBUG] No game data');
       return false;
     }
 
     const piece = this.state.gameData.pieces.find((p) => p.id === pieceId);
     if (!piece) {
-      console.log(`[DEBUG] Piece ${pieceId} not found`);
       return false;
     }
 
     // Check if position is valid
     const validationResult = this.isValidPiecePlacement(piece, position);
     if (!validationResult.valid) {
-      console.log(
-        `[DEBUG] Invalid placement for piece ${pieceId} at (${position.row}, ${position.col}): ${validationResult.reason}`
-      );
       return false;
     }
-
-    console.log(
-      `[DEBUG] Placing ${piece.letters.join('')} (${pieceId}) at (${position.row}, ${position.col})`
-    );
 
     // Save current state for undo if needed
     this.state.lastValidPositions.set(pieceId, position);
@@ -210,7 +229,6 @@ export class LetteredGameStateManager {
   removePiece(pieceId: string): boolean {
     // Prevent piece movement when game is complete
     if (this.state.gameComplete) {
-      console.log('[DEBUG] Cannot remove pieces - game is complete');
       return false;
     }
 
@@ -344,10 +362,7 @@ export class LetteredGameStateManager {
 
   // Check if the game is complete
   private async checkGameCompletion(): Promise<void> {
-    console.log('[DEBUG] Checking game completion...');
-
     if (!this.state.gameData || this.state.gameComplete) {
-      console.log('[DEBUG] Skipping - no game data or already complete');
       return;
     }
 
@@ -356,22 +371,14 @@ export class LetteredGameStateManager {
       this.state.placedPieces.has(piece.id)
     );
 
-    console.log(
-      `[DEBUG] Pieces placed: ${this.state.placedPieces.size}/${this.state.gameData.pieces.length}`
-    );
-
     if (!allPiecesPlaced) {
-      console.log('[DEBUG] Not all pieces placed yet');
       return;
     }
-
-    console.log('[DEBUG] All pieces placed - validating solution...');
 
     // Validate by comparing board layout to solution hash
     const isSolutionCorrect = await this.validateBoardAgainstPhrase();
 
     if (isSolutionCorrect) {
-      console.log('[DEBUG] WIN CONDITION MET!');
       this.state.gameComplete = true;
       this.state.gameWon = true;
       this.stopScoreDecay();
@@ -380,37 +387,18 @@ export class LetteredGameStateManager {
         gameComplete: true,
         gameWon: true,
       });
-    } else {
-      console.log('[DEBUG] Solution validation failed');
     }
   }
 
   // Validate by comparing board layout to solution hash
   private async validateBoardAgainstPhrase(): Promise<boolean> {
     if (!this.state.gameData) {
-      console.log('[DEBUG] No game data for validation');
       return false;
     }
 
-    console.log('[DEBUG] ===== STARTING HASH VALIDATION =====');
-    console.log('[DEBUG] Game data:', {
-      rows: this.state.gameData.rows,
-      cols: this.state.gameData.cols,
-      piecesPlaced: this.state.placedPieces.size,
-      totalPieces: this.state.gameData.pieces.length,
-    });
-
-    console.log('[DEBUG] Creating solution hash from current board state...');
     const currentHash = await this.createSolutionHash();
-
-    console.log('[DEBUG] Comparing hashes...');
     const expectedHash = this.state.gameData.solutionHash;
     const isValid = currentHash === expectedHash;
-
-    console.log(`[DEBUG] Hash validation: ${isValid ? 'PASS' : 'FAIL'}`);
-    console.log(`[DEBUG] Expected: ${expectedHash}`);
-    console.log(`[DEBUG] Got: ${currentHash}`);
-    console.log('[DEBUG] ===== ENDING HASH VALIDATION =====');
 
     return isValid;
   }
@@ -465,157 +453,38 @@ export class LetteredGameStateManager {
       })
     );
 
-    // DEBUG: Print the reconstructed grid for comparison
-    console.log('[DEBUG] Client reconstructed grid:');
-    completeGrid.forEach((row, i) => {
-      const rowStr = row.map((cell) => cell.letter || ' ').join('');
-      console.log(`  Row ${i}: ${rowStr || '(empty)'}`);
-    });
-
-    // DEBUG: Print the expected solution if available
-    if (this.state.gameData.solution) {
-      console.log('[DEBUG] Expected solution type:', typeof this.state.gameData.solution);
-      console.log('[DEBUG] Expected solution length:', this.state.gameData.solution.length);
-      console.log(
-        '[DEBUG] Expected solution first item type:',
-        typeof this.state.gameData.solution[0]
-      );
-    }
-
     // Create the same data structure as the server
     const gridJson = JSON.stringify(completeGrid);
     const hash = await sha256(gridJson);
 
-    // DEBUG: Print hash comparison
-    console.log('[DEBUG] Client hash:', hash);
-    console.log('[DEBUG] Expected hash:', this.state.gameData.solutionHash);
-    console.log('[DEBUG] Hash match:', hash === this.state.gameData.solutionHash);
-
     return hash;
-  }
-
-  // Extract letters from the current board layout
-  private extractLettersFromBoard(): string[][] {
-    const letters: string[][] = [];
-
-    for (let row = 0; row < 8; row++) {
-      const rowLetters: string[] = [];
-      for (let col = 0; col < 8; col++) {
-        const cell = this.state.boardLayout[row]?.[col];
-        if (cell && !cell.isUnused && !cell.isSpace && cell.letter) {
-          rowLetters.push(cell.letter);
-        } else {
-          rowLetters.push(' ');
-        }
-      }
-      letters.push(rowLetters);
-    }
-
-    console.log('[DEBUG] Current board letters:');
-    letters.forEach((row, i) => {
-      console.log(`  Row ${i}: ${row.join('').trim() || '(empty)'}`);
-    });
-
-    return letters;
-  }
-
-  // Get the expected phrase layout as a 2D array
-  private getExpectedPhraseLayout(): string[][] {
-    if (!this.state.gameData) return [];
-
-    // The expected layout should match how the phrase was originally placed on the grid
-    // We'll recreate the same layout algorithm that was used during grid generation
-    const expectedGrid = this.recreateOriginalGridLayout();
-
-    console.log('[DEBUG] Expected phrase layout:');
-    expectedGrid.forEach((row, i) => {
-      console.log(`  Row ${i}: ${row.join('').trim() || '(empty)'}`);
-    });
-
-    return expectedGrid;
-  }
-
-  // Recreate the original grid layout from the phrase
-  private recreateOriginalGridLayout(): string[][] {
-    if (!this.state.gameData) return [];
-
-    // Create empty 8x8 grid
-    const grid: string[][] = Array(8)
-      .fill(null)
-      .map(() => Array(8).fill(' '));
-
-    // Use the same algorithm as placePhraseOnGrid
-    const words = this.state.gameData.phrase.toUpperCase().split(' ');
-    const longestWordLength = Math.max(...words.map((word) => word.length));
-
-    const gridSize = 8;
-    const margin = 1;
-    const totalCharsWithSpaces = words.join(' ').length;
-    const estimatedRows = Math.ceil(totalCharsWithSpaces / longestWordLength);
-
-    const startRow = Math.max(margin, Math.floor((gridSize - estimatedRows) / 2));
-    const startCol = margin;
-
-    let currentRow = startRow;
-    let currentCol = startCol;
-    let currentRowText = '';
-
-    for (let wordIndex = 0; wordIndex < words.length; wordIndex++) {
-      const word = words[wordIndex];
-      if (!word) continue;
-
-      const potentialRowText = currentRowText.length === 0 ? word : currentRowText + ' ' + word;
-
-      if (
-        currentRowText.length === 0 ||
-        (potentialRowText.length <= longestWordLength + 2 &&
-          startCol + potentialRowText.length <= gridSize - margin)
-      ) {
-        // Place word in current row
-        if (currentRowText.length > 0) {
-          // Add space
-          if (
-            currentRow >= 0 &&
-            currentRow < gridSize &&
-            currentCol >= 0 &&
-            currentCol < gridSize
-          ) {
-            grid[currentRow]![currentCol] = ' ';
-          }
-          currentCol++;
-        }
-
-        // Place word letters
-        for (let i = 0; i < word.length; i++) {
-          if (
-            currentRow >= 0 &&
-            currentRow < gridSize &&
-            currentCol >= 0 &&
-            currentCol < gridSize
-          ) {
-            grid[currentRow]![currentCol] = word[i] || '';
-          }
-          currentCol++;
-        }
-
-        currentRowText = potentialRowText;
-      } else {
-        // Move to next row
-        currentRow++;
-        currentCol = startCol;
-        currentRowText = '';
-
-        // Retry placing this word in the new row
-        wordIndex--;
-      }
-    }
-
-    return grid;
   }
 
   // Get current score
   getScore(): number {
     return this.state.score;
+  }
+
+  // Set current score (for server synchronization) - smoothly adjust to server value
+  setScore(serverScore: number): void {
+    const currentLocalScore = this.getScore();
+
+    // If the difference is significant (> 50 points), adjust the initial score to calibrate
+    // This prevents jarring jumps while keeping the decay rate consistent
+    const difference = serverScore - currentLocalScore;
+    if (Math.abs(difference) > 50) {
+      // Adjust initialScore to account for the difference
+      // This calibrates the decay calculation to match the server
+      this.state.initialScore += difference;
+      console.log(
+        `[DEBUG] Calibrated score by ${difference} points (server: ${serverScore}, local: ${currentLocalScore})`
+      );
+    } else {
+      // For small differences, just set the score directly for accuracy
+      this.state.score = serverScore;
+    }
+
+    this.notifyUpdates({ score: this.state.score });
   }
 
   // Get placed pieces

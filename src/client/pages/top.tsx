@@ -3,6 +3,7 @@ import pluralize from 'pluralize';
 import Confetti from 'react-confetti';
 import { GameLayout } from '../components/GameLayout';
 import { toast } from 'sonner';
+import { calculateDecayedScore, DEFAULT_INITIAL_SCORE } from '../../shared/score-decay';
 
 import { Card, CardContent } from '../components/ui/card';
 import { Button } from '../components/ui/button';
@@ -100,8 +101,8 @@ export const TopPage = ({ onBack }: { onBack?: () => void }) => {
   const [scoreUpdateTimer, setScoreUpdateTimer] = useState<NodeJS.Timeout | null>(null);
 
   const [gameState, setGameState] = useState<GameState>({
-    score: 5000,
-    initialScore: 5000,
+    score: DEFAULT_INITIAL_SCORE,
+    initialScore: DEFAULT_INITIAL_SCORE,
     attempts: 1,
     maxAttempts: 5,
     guessedAnswers: [],
@@ -139,9 +140,12 @@ export const TopPage = ({ onBack }: { onBack?: () => void }) => {
         const now = Date.now();
         const elapsedSeconds = (now - gameState.gameStartTime!) / 1000;
         const incorrectCount = gameState.incorrectAnswers.length;
-        const decayMultiplier = Math.pow(1.5, incorrectCount);
-        const scoreDecay = Math.floor(elapsedSeconds * decayMultiplier);
-        const currentScore = Math.max(0, gameState.initialScore - scoreDecay);
+        const currentScore = calculateDecayedScore({
+          initialScore: gameState.initialScore,
+          elapsedSeconds,
+          gameType: 'topx',
+          incorrectCount,
+        });
 
         setGameState((prev) => ({ ...prev, score: currentScore }));
       }, 100); // Update every 100ms for smooth score decay
@@ -179,8 +183,8 @@ export const TopPage = ({ onBack }: { onBack?: () => void }) => {
 
         // Set up initial game state - restore from session if available
         let startTime = Date.now();
-        let score = 5000;
-        let initialScore = 5000;
+        let score = DEFAULT_INITIAL_SCORE;
+        let initialScore = DEFAULT_INITIAL_SCORE;
         let gameComplete = false;
         let guessedAnswers: GuessedAnswer[] = [];
         let incorrectAnswers: string[] = [];

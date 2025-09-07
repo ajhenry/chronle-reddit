@@ -8,6 +8,7 @@ import {
   LetterPiece,
   GridCell,
 } from '../../shared/types/api';
+import { calculateDecayedScore } from '../../shared/score-decay';
 import { supabase } from '../../shared/supabase-server';
 import { ensureUserExistsAndGetId } from '../lib/user-helpers';
 import {
@@ -18,6 +19,7 @@ import {
   createLetteredSubmission,
 } from '../database/lettered';
 import { getOrCreateTodaysGame } from '../database/game';
+import { recordLeaderboardEntry } from '../lib/leaderboard-helpers';
 
 // Zod schema for validating the payload
 const gridPositionSchema = z.object({
@@ -86,7 +88,6 @@ const router = Router();
 
 // GET /api/lettered/game - Returns the current day's lettered game and the user's game session
 router.get('/api/lettered/game', async (_req, res): Promise<void> => {
-  console.log('GET /api/lettered/game');
   try {
     const userId = await ensureUserExistsAndGetId();
 
@@ -99,7 +100,6 @@ router.get('/api/lettered/game', async (_req, res): Promise<void> => {
 
     // User has an existing session, get the latest board state submission
     const latestSubmission = await getLatestLetteredSubmissionForToday(existingSession.id);
-    console.log('latestSubmission', latestSubmission);
 
     let currentScore = existingSession.initialScore;
     let placedPieces: Record<string, { pieceId: string; position: GridPosition }> = {};
@@ -124,7 +124,16 @@ router.get('/api/lettered/game', async (_req, res): Promise<void> => {
 
       // Use the score from the latest submission if game is not completed
       if (!existingSession.isCompleted) {
-        currentScore = latestSubmission.scoreAtSubmission;
+        const elapsedSeconds = Math.max(
+          0,
+          (new Date().getTime() - new Date(existingSession.startedAt).getTime()) / 1000
+        );
+        currentScore = calculateDecayedScore({
+          initialScore: existingSession.initialScore,
+          elapsedSeconds: elapsedSeconds,
+          gameType: 'lettered',
+          placedPieces: Object.keys(placedPieces).length,
+        });
       }
     }
 
@@ -201,9 +210,9 @@ router.post('/api/lettered/:dailyGameId/session', async (req, res): Promise<void
     const { boardState, timestamp } = payloadValidation.data;
 
     // Get today's daily lettered game
-    const dailyGame = await getTodaysLetteredGame();
+    const dailyLetterGame = await getTodaysLetteredGame();
 
-    if (!dailyGame) {
+    if (!dailyLetterGame) {
       res.status(404).json({
         status: 'error',
         message: 'No daily lettered game available for today',
@@ -215,55 +224,76 @@ router.post('/api/lettered/:dailyGameId/session', async (req, res): Promise<void
     const session = await getOrCreateUserLetteredSessionForToday(userId);
 
     // Check if player has won
-    const solution = dailyGame.solution;
+    const solution = dailyLetterGame.solution;
     const hasWon = checkPlayerHasWon(boardState.placedPieces, solution);
 
-    let currentScore: number;
     let placedPieces: number;
     let boardStateStored: boolean;
 
     if (session.isCompleted) {
+      console.log("Game is already complete, don't store anything but return success");
       // Game is already complete, don't store anything but return success
-      currentScore = session.finalScore;
+      const currentScore = session.finalScore;
       placedPieces = Object.keys(boardState.placedPieces).length;
       boardStateStored = false;
-    } else {
-      // Store the complete board state as a submission
 
-      // Calculate current score for this submission
-      const gameStartTime = new Date(session.startedAt).getTime();
-      const placementTime = timestamp;
-      const elapsedSeconds = Math.max(0, (placementTime - gameStartTime) / 1000);
+      res.json({
+        sessionId: session.id,
+        accepted: true,
+        currentScore,
+        placedPieces,
+        boardStateStored,
+        hasWon,
+      });
+      return;
+    }
 
-      // Count placed pieces for score decay calculation
-      const placedCount = Object.keys(boardState.placedPieces).length;
+    // Store the complete board state as a submission
 
-      // Scoring algorithm: Start at 5000, decay over time, faster decay with more pieces placed
-      const decayMultiplier = Math.pow(1.1, placedCount);
-      const scoreDecay = Math.floor(elapsedSeconds * decayMultiplier);
-      currentScore = Math.max(0, session.initialScore - scoreDecay);
+    // Calculate current score for this submission
+    const gameStartTime = new Date(session.startedAt).getTime();
+    const placementTime = new Date().getTime();
+    const elapsedSeconds = Math.max(0, (placementTime - gameStartTime) / 1000);
 
-      // Store the complete board state as a single submission
-      await createLetteredSubmission({
-        gameSessionId: session.id,
-        boardState,
-        scoreAtSubmission: currentScore,
+    console.log('Calculating current score for submission', {
+      initialScore: session.initialScore,
+      gameStartTime,
+      placementTime,
+      elapsedSeconds,
+    });
+
+    // Count placed pieces for score decay calculation
+    const placedCount = Object.keys(boardState.placedPieces).length;
+
+    // Use shared decay calculation for submissions
+    const currentScore = calculateDecayedScore({
+      initialScore: session.initialScore,
+      elapsedSeconds,
+      gameType: 'lettered',
+      placedPieces: placedCount,
+    });
+
+    console.log('Current score for submission', currentScore);
+    // Store the complete board state as a single submission
+    const submission = await createLetteredSubmission({
+      gameSessionId: session.id,
+      boardState,
+      scoreAtSubmission: currentScore,
+    });
+
+    console.log('Stored submission', submission);
+
+    placedPieces = Object.keys(boardState.placedPieces).length;
+
+    // Check if player has won and mark game as completed
+    if (hasWon) {
+      await updateLetteredSession(session.id, {
+        isCompleted: true,
+        completedAt: new Date(timestamp).toISOString(),
+        finalScore: currentScore,
       });
 
-      placedPieces = Object.keys(boardState.placedPieces).length;
-      boardStateStored = true;
-
-      // Check if player has won and mark game as completed
-      if (hasWon) {
-        console.log('🎉 Player has won! Marking game as completed.');
-        await updateLetteredSession(session.id, {
-          isCompleted: true,
-          completedAt: new Date(timestamp).toISOString(),
-          finalScore: currentScore,
-        });
-
-        // TODO: Record the points in the leaderboard
-      }
+      // TODO: Record the points in the leaderboard
     }
 
     const response = {
@@ -271,7 +301,7 @@ router.post('/api/lettered/:dailyGameId/session', async (req, res): Promise<void
       accepted: true,
       currentScore,
       placedPieces,
-      boardStateStored,
+      boardStateStored: true,
       hasWon,
     };
 

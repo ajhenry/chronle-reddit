@@ -1,6 +1,7 @@
 import { Database } from '../../shared/types/supabase';
 import { supabase } from '../../shared/supabase-server';
 import { GridCell, GridPosition, LetterPiece } from '../../shared/types/api';
+import { DEFAULT_INITIAL_SCORE } from '../../shared/score-decay';
 import { getTodayEST } from '../lib/time';
 import { getOrCreateTodaysGame } from './game';
 
@@ -263,6 +264,7 @@ export const createLetteredSession = async (userId: string): Promise<LetteredSes
   const { data, error } = await supabase
     .from('lettered_sessions')
     .insert({
+      initial_score: DEFAULT_INITIAL_SCORE,
       user_id: userId,
       daily_game_id: dailyGame.id,
     })

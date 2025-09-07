@@ -12,6 +12,7 @@ import {
   DialogDescription,
 } from '../components/ui/dialog';
 import { LetteredGameData, GridPosition, LetterPiece, GridCell } from '../../shared/types/api';
+import { DEFAULT_INITIAL_SCORE } from '../../shared/score-decay';
 import { isDevelopment } from '../lib/dev-utils';
 import { getResponsiveCellSize, getResponsiveCellSpacing } from '../lib/lettered-utils';
 import { useViewport } from '../hooks/useViewport';
@@ -29,7 +30,9 @@ const fetchTodaysGame = async (): Promise<LetteredDailyGameResponse> => {
   if (!response.ok) {
     throw new Error("Failed to fetch today's game");
   }
-  return await response.json();
+  const data = await response.json();
+  console.log('fetchTodaysGame', data);
+  return data;
 };
 
 // Conversion functions for Grid component
@@ -213,8 +216,27 @@ export const LetteredPage = ({ onBack }: { onBack?: () => void }) => {
   // Game state manager (core game logic, doesn't cause rerenders)
   const gameStateManagerRef = useRef<LetteredGameStateManager | null>(null);
 
+  // Function to sync score with server
+  const syncScoreWithServer = useCallback(async () => {
+    if (!dailyGameId) return;
+
+    try {
+      console.log('[DEBUG] Syncing score with server...');
+      const response = await apiFetch(`/api/lettered/${dailyGameId}/session`);
+      if (response.ok) {
+        const sessionData = await response.json();
+        if (sessionData.currentScore !== undefined && gameStateManagerRef.current) {
+          gameStateManagerRef.current.setScore(sessionData.currentScore);
+          console.log('[DEBUG] Synced score from server:', sessionData.currentScore);
+        }
+      }
+    } catch (error) {
+      console.error('[DEBUG] Failed to sync score with server:', error);
+    }
+  }, [dailyGameId]);
+
   // State for UI updates from game state manager
-  const [gameScore, setGameScore] = useState(5000);
+  const [gameScore, setGameScore] = useState(DEFAULT_INITIAL_SCORE);
   const [placedPieces, setPlacedPieces] = useState<Map<string, GridPosition>>(new Map());
   const [gameComplete, setGameComplete] = useState(false);
   const [gameWon, setGameWon] = useState(false);
@@ -229,7 +251,10 @@ export const LetteredPage = ({ onBack }: { onBack?: () => void }) => {
   // Initialize game state manager and set up callbacks
   useEffect(() => {
     if (!gameStateManagerRef.current) {
+      // Start with default values, will be updated when game loads
       gameStateManagerRef.current = new LetteredGameStateManager();
+      // Disable timer initially to prevent decay before restoration
+      gameStateManagerRef.current.setTimerEnabled(false);
 
       // Set up callback to receive game state updates
       const unsubscribe = gameStateManagerRef.current.onUpdate((updates) => {
@@ -265,7 +290,6 @@ export const LetteredPage = ({ onBack }: { onBack?: () => void }) => {
 
       // Fetch today's daily game
       const gameData = await fetchTodaysGame();
-      console.log('Fetched game data:', gameData);
 
       if (gameData.type !== 'lettered_daily_game') {
         throw new Error('Invalid game response format');
@@ -292,14 +316,27 @@ export const LetteredPage = ({ onBack }: { onBack?: () => void }) => {
       setGameData(clientGameData);
       setDailyGameId(gameData.dailyGameId);
 
-      // Initialize game state manager with new game
+      // Prepare session restoration data
+      let initialScoreForManager: number | undefined;
+      let gameStartTime: number | undefined;
+
+      if (apiSessionData && Object.keys(apiSessionData.pieces).length > 0) {
+        // Use the current score from server and set game start time to now
+        // This ensures decay continues properly from the restored score
+        initialScoreForManager = apiSessionData.currentScore;
+        gameStartTime = Date.now();
+      }
+
+      // Initialize game state manager with new game and session data
       if (gameStateManagerRef.current) {
-        gameStateManagerRef.current.initializeGame(clientGameData);
+        gameStateManagerRef.current.initializeGame(
+          clientGameData,
+          initialScoreForManager,
+          gameStartTime
+        );
 
         // If we have session data, restore the placed pieces
         if (apiSessionData && Object.keys(apiSessionData.pieces).length > 0) {
-          console.log('Restoring session data:', apiSessionData);
-
           // Check if this is a reloaded completed game
           if (apiSessionData.isCompleted) {
             setIsReloadedCompletedGame(true);
@@ -313,6 +350,15 @@ export const LetteredPage = ({ onBack }: { onBack?: () => void }) => {
           // Update the score to match the session
           setGameScore(apiSessionData.currentScore);
         }
+
+        // Enable client-side decay for visual feedback, but sync with server values
+        gameStateManagerRef.current.setTimerEnabled(true);
+        gameStateManagerRef.current.startScoreDecay();
+
+        // Set up score sync callback for periodic server synchronization
+        gameStateManagerRef.current.setScoreSyncCallback(() => {
+          void syncScoreWithServer();
+        });
       }
 
       // Reset UI state for new game
@@ -332,7 +378,7 @@ export const LetteredPage = ({ onBack }: { onBack?: () => void }) => {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [syncScoreWithServer]);
 
   useEffect(() => {
     const initializeGame = async () => {
@@ -384,18 +430,8 @@ export const LetteredPage = ({ onBack }: { onBack?: () => void }) => {
       // Convert layout to piece positions
       const newPlacedPieces = new Map<string, GridPosition>();
 
-      // Debug: Check if layout includes tray area
-      const mainGridHeight = gameData.grid.length;
-      const hasTrayMovements = layout.some(
-        (row, rowIndex) => rowIndex >= mainGridHeight && row.some((cell) => cell !== null)
-      );
-
-      if (hasTrayMovements) {
-        console.log('[DEBUG] Tray area movements detected in layout change');
-      }
-
-      // Print the grid layout
-      console.log('Full layout array:', layout);
+      // Process tray movements if any
+      // Layout processing continues below
 
       // Process each piece to find its anchor point
       const processedPieces = new Set<string>();
@@ -445,36 +481,24 @@ export const LetteredPage = ({ onBack }: { onBack?: () => void }) => {
               }
             }
 
-            const isInTray = anchorPoint.row >= mainGridHeight;
-            console.log(
-              `[DEBUG] Piece ${itemId} anchor at (${anchorPoint.row}, ${anchorPoint.col}) ${isInTray ? '(TRAY)' : '(MAIN GRID)'}`
-            );
             newPlacedPieces.set(itemId, anchorPoint);
           }
         });
       });
 
-      console.log('newPlacedPieces', newPlacedPieces);
-
-      // Store the layout state before making changes to compare later
-      const layoutBeforeChanges = gameStateManagerRef.current.getBoardLayout();
-      console.log('layout before changes', layoutBeforeChanges);
-
       // Update game state manager with new piece positions
       const currentPlacedPieces = gameStateManagerRef.current.getPlacedPieces();
-      console.log('currentPlacedPieces', currentPlacedPieces);
+      let hasAnyPieceMoved = false;
 
       for (const [pieceId, newPosition] of newPlacedPieces) {
         const currentPosition = currentPlacedPieces.get(pieceId);
-        console.log('currentPosition', currentPosition);
-        console.log('newPosition', newPosition);
         if (
           !currentPosition ||
           currentPosition.row !== newPosition.row ||
           currentPosition.col !== newPosition.col
         ) {
-          console.log('placing piece', pieceId, newPosition);
           await gameStateManagerRef.current.placePiece(pieceId, newPosition);
+          hasAnyPieceMoved = true;
         }
       }
 
@@ -482,11 +506,20 @@ export const LetteredPage = ({ onBack }: { onBack?: () => void }) => {
       for (const [pieceId] of currentPlacedPieces) {
         if (!newPlacedPieces.has(pieceId)) {
           // gameStateManagerRef.current.removePiece(pieceId);
+          hasAnyPieceMoved = true; // Consider removal as a movement
         }
       }
 
-      // Always save the current session state to server
-      if (dailyGameId) {
+      // Check if any pieces were added
+      for (const [pieceId] of newPlacedPieces) {
+        if (!currentPlacedPieces.has(pieceId)) {
+          hasAnyPieceMoved = true;
+          break;
+        }
+      }
+
+      // Only save to server if pieces actually moved or layout changed
+      if (hasAnyPieceMoved && dailyGameId) {
         try {
           // Send the complete board state
           const currentBoardLayout = gameStateManagerRef.current.getBoardLayout();
@@ -498,12 +531,9 @@ export const LetteredPage = ({ onBack }: { onBack?: () => void }) => {
             ([, position]) => position.row >= mainGridHeight
           );
 
-          if (trayPieces.length > 0) {
-            console.log(
-              `[DEBUG] Sending ${trayPieces.length} tray area pieces to server:`,
-              trayPieces
-            );
-          }
+          console.log(
+            `[DEBUG] Piece movement detected, sending to server. Tray pieces: ${trayPieces.length}`
+          );
 
           // Convert placed pieces Map to record for JSON serialization
           const placedPiecesRecord: Record<string, GridPosition> = {};
@@ -531,10 +561,20 @@ export const LetteredPage = ({ onBack }: { onBack?: () => void }) => {
           } else {
             const result = await response.json();
             console.log('Game session saved successfully:', { result });
+
+            // Update the score to match the server's calculation
+            if (result.currentScore !== undefined && gameStateManagerRef.current) {
+              gameStateManagerRef.current.setScore(result.currentScore);
+              console.log('[DEBUG] Updated score from server:', result.currentScore);
+            } else if (result.currentScore === undefined) {
+              console.warn('[DEBUG] Server response missing currentScore');
+            }
           }
         } catch (error) {
           console.error('Error saving game session:', error);
         }
+      } else {
+        console.log('[DEBUG] No piece movement detected, skipping server update');
       }
     },
     [gameData, dailyGameId]
