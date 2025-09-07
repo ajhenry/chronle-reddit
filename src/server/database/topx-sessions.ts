@@ -13,7 +13,9 @@ export interface TopXSession {
   isCompleted: boolean;
 }
 
-const convertTopXSession = (session: Database['public']['Tables']['topx_sessions']['Row']): TopXSession => {
+const convertTopXSession = (
+  session: Database['public']['Tables']['topx_sessions']['Row']
+): TopXSession => {
   return {
     id: session.id,
     userId: session.user_id,
@@ -31,17 +33,14 @@ export const getUserTopXSessionForToday = async (userId: string): Promise<TopXSe
     .from('topx_sessions')
     .select('*')
     .eq('user_id', userId)
-    .eq('daily_game_id', (
-      await supabase
-        .from('daily_games')
-        .select('id')
-        .eq('day', getTodayEST())
-        .single()
-    ).data?.id)
+    .eq(
+      'daily_game_id',
+      (await supabase.from('daily_games').select('id').eq('day', getTodayEST()).single()).data?.id
+    )
     .single();
 
   if (error) {
-    if (error.code === 'PGRST116') {
+    if (error.message.includes('PGRST116')) {
       // No session found for today
       return null;
     }
@@ -52,7 +51,10 @@ export const getUserTopXSessionForToday = async (userId: string): Promise<TopXSe
   return convertTopXSession(data);
 };
 
-export const createTopXSession = async (userId: string, dailyGameId: string): Promise<TopXSession> => {
+export const createTopXSession = async (
+  userId: string,
+  dailyGameId: string
+): Promise<TopXSession> => {
   const { data, error } = await supabase
     .from('topx_sessions')
     .insert({

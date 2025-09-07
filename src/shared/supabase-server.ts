@@ -1,5 +1,6 @@
 import { createClient } from '@supabase/supabase-js';
 import { Database } from './types/supabase';
+import { isDevelopment } from './utils';
 
 /**
  * Creates a Supabase client for the server
@@ -24,7 +25,9 @@ const supabaseServer = (supabaseUrl: string, supabaseServiceKey: string) => {
 
 // Supabase service key - this should ideally come from environment variables
 const supabaseServiceKey =
-  'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZS1kZW1vIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImV4cCI6MTk4MzgxMjk5Nn0.EGIM96RAZx35lJzdJsyH-qQwv8Hdp7fsn3W0YpN81IU';
-const supabaseUrl = 'http://127.0.0.1:54321';
+  'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imd3bndzcXRmdmtnY2lobXdncnNqIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc1NjY2NzY0NCwiZXhwIjoyMDcyMjQzNjQ0fQ.Ya8OJnhoeHC4LJK7TFuf94L4Z_3rIhTxZtnt2foAgYA';
+const supabaseUrl = isDevelopment()
+  ? 'http://127.0.0.1:54321'
+  : 'https://gwnwsqtfvkgcihmwgrsj.supabase.co';
 
 export const supabase = supabaseServer(supabaseUrl, supabaseServiceKey);

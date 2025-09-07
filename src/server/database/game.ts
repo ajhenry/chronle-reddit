@@ -45,12 +45,12 @@ export const getOrCreateTodaysGame = async (): Promise<DailyGame> => {
   const { data, error } = await supabase.from('daily_games').select('*').eq('day', today).single();
 
   // If the daily game doesn't exist, create it
-  if (!data && error.code === 'PGRST116') {
+  if (!data && error.message.includes('PGRST116')) {
     return await createDailyGame();
   }
 
   if (error) {
-    console.error('Failed to get todays game:', { today, error });
+    console.error('Failed to get todays game:', { today, error, code: error.code });
     throw new Error(`Failed to get today's game: ${error.message}`, { cause: error });
   }
 

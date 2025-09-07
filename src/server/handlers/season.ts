@@ -35,7 +35,7 @@ router.get('/api/season/current', async (_req, res): Promise<void> => {
       .eq('is_active', true)
       .single();
 
-    if (error && error.code !== 'PGRST116') {
+    if (error && !error.message.includes('PGRST116')) {
       console.error('Error fetching current season:', error);
       res.status(500).json({
         status: 'error',

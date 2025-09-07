@@ -1,7 +1,7 @@
 #!/usr/bin/env tsx
 
 import { generateMockGame } from '../src/server/lib/lettered-game-generator';
-import { createClient } from '@supabase/supabase-js';
+import { supabase } from '../src/shared/supabase-server';
 
 // Game categories and phrases for seeding
 const GAME_DATA = [
@@ -228,18 +228,6 @@ const GAME_DATA = [
 
 async function seedLetteredGames() {
   console.log('🚀 Starting lettered games seeding process...');
-
-  // Initialize Supabase client (same config as server)
-  const supabaseUrl = 'http://127.0.0.1:54321';
-  const supabaseServiceKey =
-    'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZS1kZW1vIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImV4cCI6MTk4MzgxMjk5Nn0.EGIM96RAZx35lJzdJsyH-qQwv8Hdp7fsn3W0YpN81IU';
-
-  const supabase = createClient(supabaseUrl, supabaseServiceKey, {
-    auth: {
-      autoRefreshToken: false,
-      persistSession: false,
-    },
-  });
 
   console.log('📊 Connected to Supabase');
 

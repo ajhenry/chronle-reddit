@@ -55,7 +55,7 @@ export const createDailyGame = async (
       .eq('day', day)
       .single();
 
-    if (existingError && existingError.code !== 'PGRST116') {
+    if (existingError && !existingError.message.includes('PGRST116')) {
       console.error('Error checking for existing daily game:', existingError);
       return {
         success: false,

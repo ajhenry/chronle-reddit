@@ -178,7 +178,7 @@ export const getOrCreateLetteredSessionForToday = async (
     .eq('daily_game_id', dailyGame.id)
     .single();
 
-  if (!data && error.code === 'PGRST116') {
+  if (!data && error.message.includes('PGRST116')) {
     return await createLetteredSession(userId);
   }
 
@@ -246,7 +246,7 @@ export const getOrCreateUserLetteredSessionForToday = async (
     .eq('daily_game_id', dailyGame.id)
     .single();
 
-  if (!data && error.code === 'PGRST116') {
+  if (!data && error.message.includes('PGRST116')) {
     return await createLetteredSession(userId);
   }
 

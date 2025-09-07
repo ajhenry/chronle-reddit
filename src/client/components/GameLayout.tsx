@@ -172,31 +172,33 @@ export const GameLayout = ({
       {/* Help Modal */}
       {showHelpModal && (
         <div className="flex fixed inset-0 z-50 justify-center items-center p-4 bg-black/50">
-          <Card className="p-6 w-full max-w-md">
-            <div className="flex justify-between items-center mb-4">
-              <h2 className="text-xl font-semibold text-card-foreground">HOW TO PLAY</h2>
-              <Button
-                variant="ghost"
-                size="icon"
-                onClick={() => setShowHelpModal(false)}
-                className="text-xl font-semibold text-card-foreground"
-              >
-                ×
-              </Button>
-            </div>
-            <CardContent>
-              <div className="space-y-3 text-sm text-card-foreground">
-                <p>1. Read the prompt carefully</p>
-                <p>2. Type your answer in the input field</p>
-                <p>3. Press Enter to submit your answer</p>
-                <p>4. Get all correct answers to win!</p>
-                {maxAttempts && <p>5. You have {maxAttempts} attempts total</p>}
+          <div className="w-full max-w-md max-h-full overflow-y-auto">
+            <Card className="p-6 w-full">
+              <div className="flex justify-between items-center mb-4">
+                <h2 className="text-xl font-semibold text-card-foreground">HOW TO PLAY</h2>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  onClick={() => setShowHelpModal(false)}
+                  className="text-xl font-semibold text-card-foreground"
+                >
+                  ×
+                </Button>
               </div>
-              <Button onClick={() => setShowHelpModal(false)} className="mt-6 w-full">
-                GOT IT
-              </Button>
-            </CardContent>
-          </Card>
+              <CardContent>
+                <div className="space-y-3 text-sm text-card-foreground">
+                  <p>1. Read the prompt carefully</p>
+                  <p>2. Type your answer in the input field</p>
+                  <p>3. Press Enter to submit your answer</p>
+                  <p>4. Get all correct answers to win!</p>
+                  {maxAttempts && <p>5. You have {maxAttempts} attempts total</p>}
+                </div>
+                <Button onClick={() => setShowHelpModal(false)} className="mt-6 w-full">
+                  GOT IT
+                </Button>
+              </CardContent>
+            </Card>
+          </div>
         </div>
       )}
     </div>
