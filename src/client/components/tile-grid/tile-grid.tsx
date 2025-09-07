@@ -205,7 +205,7 @@ function GridProvider({
       const layout = tileGrid.map((row) => row.map((cell) => cell.occupyingItemId || null));
 
       // Debug: Log layout changes in development
-      if (process.env.NODE_ENV === 'development') {
+      if (isDevelopment()) {
         const occupiedCells = layout.flat().filter((cell) => cell !== null).length;
         const totalCells = layout.flat().length;
         console.log(`[Grid Debug] Layout changed: ${occupiedCells}/${totalCells} cells occupied`);
@@ -352,7 +352,9 @@ function GridProvider({
   // Global pointer up handler for drop
   const handleGlobalPointerUp = useCallback(
     (e: MouseEvent | TouchEvent) => {
-      if (!draggedItemId || !gridBounds || !grabOffset) {
+      const currentDraggedItemId = draggedItemId;
+
+      if (!currentDraggedItemId || !gridBounds || !grabOffset) {
         return;
       }
 
@@ -371,7 +373,7 @@ function GridProvider({
         cellX >= 0 && cellX < gridSize.width && cellY >= 0 && cellY < gridSize.height;
 
       if (isWithinBounds) {
-        const draggedItem = items.find((item) => item.id === draggedItemId);
+        const draggedItem = items.find((item) => item.id === currentDraggedItemId);
 
         if (!draggedItem) {
           return;
@@ -386,7 +388,7 @@ function GridProvider({
         const isValid = isPositionValid(draggedItem, dropPosition, draggedItem.id);
 
         if (isValid) {
-          moveItem(draggedItemId, dropPosition);
+          moveItem(currentDraggedItemId, dropPosition);
         }
       }
 
@@ -571,7 +573,7 @@ const GridCell = React.memo(({ x, y, className = '', style }: GridCellProps) => 
   return (
     <div
       id={cellId}
-      className={cn('border transition-colors border-border relative', combinedClassName)}
+      className={cn('relative border transition-colors border-border', combinedClassName)}
       style={cellStyle}
       data-testid={`grid-cell-${x}-${y}`}
       data-occupied={isOccupied}
@@ -747,7 +749,6 @@ const DraggableItemComponent = React.memo(
         }
 
         e.preventDefault();
-        setIsDragging(true);
 
         // Calculate grab offset - where on the piece the user clicked/touched
         const grabOffset: GridPosition = {
