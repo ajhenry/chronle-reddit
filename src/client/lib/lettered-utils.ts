@@ -18,10 +18,18 @@ export const RESPONSIVE_CELL_SPACING: Record<Breakpoint, number> = {
   xl: 8,
 };
 
-// Get responsive cell size based on current breakpoint
+// Get responsive cell size based on current breakpoint and grid size
 export const getResponsiveCellSize = (
-  breakpoint: Breakpoint
+  breakpoint: Breakpoint,
+  _gridRows?: number,
+  gridCols?: number
 ): { width: number; height: number } => {
+  // Special case: use size 36 when the grid width is 9
+  if (gridCols === 9) {
+    return { width: 36, height: 36 };
+  }
+
+  // Otherwise use responsive sizing
   return RESPONSIVE_CELL_SIZES[breakpoint];
 };
 

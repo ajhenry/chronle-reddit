@@ -113,6 +113,7 @@ router.get('/api/lettered/game', async (_req, res): Promise<void> => {
         pieces: letteredGame.pieces as LetterPiece[],
         initialPiecePositions: letteredGame.initialPiecePositions || {},
         solutionHash: letteredGame.solutionHash,
+        solution: letteredGame.solution || [],
         created_at: letteredGame.createdAt,
         updated_at: letteredGame.updatedAt,
       },

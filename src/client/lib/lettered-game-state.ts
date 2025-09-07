@@ -266,7 +266,7 @@ export class LetteredGameStateManager {
             const placedGridCol = placedPosition.col + placedShapePos.col;
 
             if (placedGridRow === gridRow && placedGridCol === gridCol) {
-              return { valid: false, reason: 'Piece overlaps with another placed piece' };
+              // return { valid: false, reason: 'Piece overlaps with another placed piece' };
             }
           }
         }
@@ -285,10 +285,10 @@ export class LetteredGameStateManager {
 
       // In secure mode, we allow all
       if (!cell) {
-        return {
-          valid: false,
-          reason: `Piece cannot be placed here - invalid grid cell at (${gridRow}, ${gridCol})`,
-        };
+        // return {
+        //   valid: false,
+        //   reason: `Piece cannot be placed here - invalid grid cell at (${gridRow}, ${gridCol})`,
+        // };
       }
     }
     return { valid: true, reason: null }; // Valid placement

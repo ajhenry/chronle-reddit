@@ -218,7 +218,7 @@ export const LetteredPage = ({ onBack }: { onBack?: () => void }) => {
 
   // Get responsive viewport information
   const { breakpoint } = useViewport();
-  const responsiveCellSize = getResponsiveCellSize(breakpoint);
+  const responsiveCellSize = getResponsiveCellSize(breakpoint, gameData?.rows, gameData?.cols);
   const responsiveCellSpacing = getResponsiveCellSpacing(breakpoint);
 
   // Touch scroll prevention is handled via CSS touch-none and event handlers
@@ -505,7 +505,7 @@ export const LetteredPage = ({ onBack }: { onBack?: () => void }) => {
     if (!cell) {
       // Check if we're in the extended area (below the main board)
       if (y >= (gameData?.grid.length ?? 0)) {
-        return cn(baseClass, 'bg-background'); // Letter pieces area
+        return 'bg-transparent border-none hover:bg-transparent'; // Make extended area squares invisible
       }
       return 'bg-muted'; // Main board
     }
