@@ -71,6 +71,8 @@ export interface TopXSession {
   isCompleted: boolean;
   attemptsLeft: number;
   submissions: TopXSubmission[];
+  correctSolutionMap?: (string | null)[]; // Array where index is position-1, value is correct answer or null
+  incorrectAnswers?: string[]; // Array of answers that were submitted but are incorrect
 }
 
 export type TopXDailyGameResponse = {

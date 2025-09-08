@@ -52,4 +52,33 @@ export async function generateSolutionHashMap(
   return hashMap;
 }
 
+/**
+ * Generates a correct solution map showing which positions the user has correctly guessed.
+ * For solution ["A", "B", "C", "D"] and correct submissions with positions [1, 3],
+ * returns ["A", null, "C", null]
+ */
+export function generateCorrectSolutionMap(
+  solution: string[],
+  correctSubmissions: Array<{ answer: string; position: number }>
+): (string | null)[] {
+  // Initialize the map with nulls
+  const solutionMap: (string | null)[] = new Array(solution.length).fill(null);
+
+  // Fill in the correct answers at their positions
+  for (const submission of correctSubmissions) {
+    if (submission.position >= 1 && submission.position <= solution.length) {
+      // Verify the answer matches the solution at that position
+      const expectedAnswer = solution[submission.position - 1]; // Convert to 0-indexed
+      if (
+        expectedAnswer &&
+        expectedAnswer.toLowerCase().trim() === submission.answer.toLowerCase().trim()
+      ) {
+        solutionMap[submission.position - 1] = expectedAnswer;
+      }
+    }
+  }
+
+  return solutionMap;
+}
+
 export { isDevelopment };

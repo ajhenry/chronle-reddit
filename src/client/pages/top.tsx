@@ -221,18 +221,35 @@ export const TopPage = ({ onBack }: { onBack?: () => void }) => {
             locallyCorrect: sub.isCorrect,
           }));
 
-          // Rebuild guessed answers and incorrect answers from submissions
-          for (const sub of dailyGame.session.submissions) {
-            if (sub.isCorrect) {
-              // For now, assign temporary positions based on order
-              // The server will provide correct positions in postgame results
-              const position = guessedAnswers.length + 1;
-              guessedAnswers.push({
-                answer: sub.answer,
-                position: position,
-              });
-            } else {
-              incorrectAnswers.push(sub.answer);
+          // Use server's authoritative data when available
+          if (dailyGame.session.correctSolutionMap && dailyGame.session.incorrectAnswers) {
+            // Use correctSolutionMap to build guessedAnswers with correct positions
+            for (let i = 0; i < dailyGame.session.correctSolutionMap.length; i++) {
+              const answer = dailyGame.session.correctSolutionMap[i];
+              if (answer !== null) {
+                guessedAnswers.push({
+                  answer: answer as string,
+                  position: i + 1, // Convert to 1-indexed
+                });
+              }
+            }
+
+            // Use server's incorrectAnswers directly
+            incorrectAnswers.push(...dailyGame.session.incorrectAnswers);
+          } else {
+            // Fallback: rebuild from submissions using correctness flags
+            for (const sub of dailyGame.session.submissions) {
+              if (sub.isCorrect) {
+                const position = sub.position;
+                if (position) {
+                  guessedAnswers.push({
+                    answer: sub.answer,
+                    position: position,
+                  });
+                }
+              } else if (!incorrectAnswers.includes(sub.answer)) {
+                incorrectAnswers.push(sub.answer);
+              }
             }
           }
         }
@@ -240,10 +257,24 @@ export const TopPage = ({ onBack }: { onBack?: () => void }) => {
         // Initialize current answer state with empty strings for all positions
         const currentAnswerState = new Array(dailyGame.game.count).fill('');
 
-        // If we have guessed answers, update the current answer state
-        for (const guessed of guessedAnswers) {
-          if (guessed.position <= currentAnswerState.length) {
-            currentAnswerState[guessed.position - 1] = guessed.answer;
+        // If we have a correct solution map from the server, use it
+        if (dailyGame.session?.correctSolutionMap) {
+          for (
+            let i = 0;
+            i < Math.min(dailyGame.session.correctSolutionMap.length, currentAnswerState.length);
+            i++
+          ) {
+            const correctAnswer = dailyGame.session.correctSolutionMap[i];
+            if (correctAnswer !== null) {
+              currentAnswerState[i] = correctAnswer;
+            }
+          }
+        } else {
+          // Fallback: If we have guessed answers, update the current answer state
+          for (const guessed of guessedAnswers) {
+            if (guessed.position >= 1 && guessed.position <= currentAnswerState.length) {
+              currentAnswerState[guessed.position - 1] = guessed.answer;
+            }
           }
         }
 

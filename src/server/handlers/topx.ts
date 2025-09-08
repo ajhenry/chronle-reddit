@@ -58,16 +58,6 @@ router.get('/api/topx/game', async (_req, res): Promise<void> => {
       incorrectCount: incorrectSubmissionCount,
     });
 
-    const sessionData = {
-      id: existingSession.id,
-      startedAt: existingSession.startedAt,
-      currentScore: existingSession.isCompleted ? existingSession.finalScore : currentScore,
-      initialScore: existingSession.initialScore,
-      isCompleted: existingSession.isCompleted,
-      attemptsLeft: existingSession.attemptsLeft,
-      submissions: existingSession.submissions,
-    };
-
     const response: TopXDailyGameResponse = {
       type: 'topx_daily_game',
       dailyGameId: dailyGame.id,
@@ -86,12 +76,8 @@ router.get('/api/topx/game', async (_req, res): Promise<void> => {
       },
       day: dailyGame.day,
       session: {
-        ...sessionData,
-        userId: existingSession.userId,
-        dailyGameId: existingSession.dailyGameId,
-        completedAt: existingSession.completedAt,
-        finalScore: existingSession.finalScore,
-        attemptsLeft: existingSession.attemptsLeft,
+        ...existingSession,
+        currentScore: existingSession.isCompleted ? existingSession.finalScore : currentScore,
       },
     };
 

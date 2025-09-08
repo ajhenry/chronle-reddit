@@ -2,7 +2,7 @@ import { DEFAULT_INITIAL_SCORE } from '../../shared/score-decay';
 import { supabase } from '../../shared/supabase-server';
 import { TopXGame, TopXSubmission } from '../../shared/types/api';
 import { Database } from '../../shared/types/supabase';
-import { generateSolutionHashMap } from '../../shared/utils';
+import { generateSolutionHashMap, generateCorrectSolutionMap } from '../../shared/utils';
 import { getOrCreateTodaysGame, updateDailyGame } from './game';
 
 // Update in shared/types/api.ts if you change this
@@ -17,6 +17,8 @@ export interface TopXSession {
   isCompleted: boolean;
   attemptsLeft: number;
   submissions: TopXSubmission[];
+  correctSolutionMap?: (string | null)[]; // Array where index is position-1, value is correct answer or null
+  incorrectAnswers?: string[]; // Array of answers that were submitted but are incorrect
 }
 
 const convertTopXSubmission = (
@@ -40,9 +42,10 @@ const convertTopXSubmission = (
 
 const convertTopXSession = (
   session: Database['public']['Tables']['topx_sessions']['Row'],
-  submissions: TopXSubmission[]
+  submissions: TopXSubmission[],
+  solution?: string[]
 ): TopXSession => {
-  return {
+  const result: TopXSession = {
     id: session.id,
     userId: session.user_id,
     dailyGameId: session.daily_game_id,
@@ -54,6 +57,31 @@ const convertTopXSession = (
     attemptsLeft: session.attempts_left,
     submissions,
   };
+
+  if (solution) {
+    // Get only correct submissions with positions
+    const correctSubmissions = submissions
+      .filter((s) => s.isCorrect && s.position)
+      .map((s) => ({ answer: s.answer, position: s.position! }));
+
+    result.correctSolutionMap = generateCorrectSolutionMap(solution, correctSubmissions);
+
+    // Build set of correct answers for determining incorrect ones
+    const correctAnswers = new Set(solution.map((s) => s.toLowerCase().trim()));
+
+    // Find all unique incorrect answers
+    const incorrectAnswersSet = new Set<string>();
+    for (const submission of submissions) {
+      const normalizedAnswer = submission.answer.toLowerCase().trim();
+      if (!correctAnswers.has(normalizedAnswer)) {
+        incorrectAnswersSet.add(submission.answer);
+      }
+    }
+
+    result.incorrectAnswers = Array.from(incorrectAnswersSet);
+  }
+
+  return result;
 };
 
 const convertTopXGame = (game: Database['public']['Tables']['topx_games']['Row']): TopXGame => {
@@ -211,7 +239,8 @@ export const getOrCreateTodaysTopXSession = async (userId: string): Promise<TopX
     });
   }
 
-  return convertTopXSession(data, submissions.map(convertTopXSubmission));
+  const todaysGame = await getTodaysTopXGame();
+  return convertTopXSession(data, submissions.map(convertTopXSubmission), todaysGame.solution);
 };
 
 export const createTopXSession = async (
@@ -246,7 +275,8 @@ export const createTopXSession = async (
     });
   }
 
-  return convertTopXSession(data, submissions.map(convertTopXSubmission));
+  const todaysGame = await getTodaysTopXGame();
+  return convertTopXSession(data, submissions.map(convertTopXSubmission), todaysGame.solution);
 };
 
 export const updateTopXSession = async (
@@ -292,7 +322,8 @@ export const updateTopXSession = async (
     });
   }
 
-  return convertTopXSession(data, submissions.map(convertTopXSubmission));
+  const todaysGame = await getTodaysTopXGame();
+  return convertTopXSession(data, submissions.map(convertTopXSubmission), todaysGame.solution);
 };
 
 export const getUserTopXSessionForToday = async (userId: string): Promise<TopXSession> => {
@@ -311,8 +342,9 @@ export const getUserTopXSessionForToday = async (userId: string): Promise<TopXSe
   }
 
   const submissions = await getTopXSubmissionsForToday(userId);
+  const todaysGame = await getTodaysTopXGame();
 
-  return convertTopXSession(data, submissions);
+  return convertTopXSession(data, submissions, todaysGame.solution);
 };
 
 export const findTopXSessionById = async (sessionId: string): Promise<TopXSession> => {
@@ -329,7 +361,20 @@ export const findTopXSessionById = async (sessionId: string): Promise<TopXSessio
 
   const submissions = await getTopXSubmissionsForToday(data.user_id);
 
-  return convertTopXSession(data, submissions);
+  // Get the game data for this session to provide solution context
+  const { data: dailyGameData, error: dailyGameError } = await supabase
+    .from('daily_games')
+    .select('topx_game_id')
+    .eq('id', data.daily_game_id)
+    .single();
+
+  let solution: string[] | undefined;
+  if (!dailyGameError && dailyGameData?.topx_game_id) {
+    const gameData = await findTopXGameById(dailyGameData.topx_game_id);
+    solution = gameData.solution;
+  }
+
+  return convertTopXSession(data, submissions, solution);
 };
 
 export const getTopXSubmissionsForToday = async (userId: string): Promise<TopXSubmission[]> => {
