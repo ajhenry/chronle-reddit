@@ -1,1 +1,0 @@
-export const TOTAL_NUM_SOLUTIONS_5x5 = 854;

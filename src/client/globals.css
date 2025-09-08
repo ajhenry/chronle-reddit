@@ -285,3 +285,24 @@ body {
 .piece-color-pink {
   background-color: #ec4899;
 }
+
+/* Mobile touch handling improvements */
+body.no-scroll {
+  overflow: hidden;
+}
+
+/* Improve touch handling on mobile devices */
+* {
+  -webkit-touch-callout: none;
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* Ensure draggable elements don't interfere with scrolling */
+.dragging-active {
+  overflow: hidden;
+}
+
+/* Specific touch handling for grid elements */
+[data-grid] {
+  overscroll-behavior: contain;
+}

@@ -289,6 +289,7 @@ function GridProvider({
       // Prevent default touch behavior (scrolling) during drag
       if (e.type.startsWith('touch')) {
         e.preventDefault();
+        e.stopPropagation();
       }
 
       const coords = getGlobalEventCoordinates(e);
@@ -415,6 +416,9 @@ function GridProvider({
   // Set up global event listeners during drag
   React.useEffect(() => {
     if (draggedItemId) {
+      // Add dragging class to body to prevent scrolling
+      document.body.classList.add('dragging-active');
+
       const handlePointerMove = (e: MouseEvent | TouchEvent) => handleGlobalPointerMove(e);
       const handlePointerUp = (e: MouseEvent | TouchEvent) => handleGlobalPointerUp(e);
 
@@ -427,6 +431,9 @@ function GridProvider({
       document.addEventListener('touchend', handlePointerUp, { passive: false });
 
       return () => {
+        // Remove dragging class from body
+        document.body.classList.remove('dragging-active');
+
         // Mouse events
         document.removeEventListener('mousemove', handlePointerMove);
         document.removeEventListener('mouseup', handlePointerUp);
@@ -670,6 +677,12 @@ const DraggableItemComponent = React.memo(
           return;
         }
 
+        // Immediately prevent default behavior for touch events to stop scrolling
+        if ('touches' in e) {
+          e.preventDefault();
+          e.stopPropagation();
+        }
+
         const coords = getEventCoordinates(e);
 
         // Calculate which cell within the bounding box was clicked
@@ -751,6 +764,7 @@ const DraggableItemComponent = React.memo(
           return; // Don't process this click in the current piece
         }
 
+        // Prevent default for all events that reach this point to ensure no scrolling
         e.preventDefault();
 
         // Calculate grab offset - where on the piece the user clicked/touched
@@ -878,6 +892,11 @@ const DraggableItemComponent = React.memo(
           ...itemStyle,
           cursor: cursorType,
           touchAction: 'none', // Prevent default touch behaviors like scrolling
+          pointerEvents: 'auto', // Ensure draggable items are always interactive
+          userSelect: 'none', // Prevent text selection
+          WebkitUserSelect: 'none', // Prevent text selection on Safari
+          WebkitTouchCallout: 'none', // Disable callout on iOS Safari
+          WebkitTapHighlightColor: 'transparent', // Remove tap highlight on mobile
         }}
         onMouseDown={handlePointerDown}
         onTouchStart={handlePointerDown}
@@ -1188,7 +1207,7 @@ function GridContent({
 
   return (
     <div className={cn('inline-block', className)}>
-      <div ref={gridRef} style={gridStyle}>
+      <div ref={gridRef} style={{ ...gridStyle, pointerEvents: dragPreview ? 'none' : 'auto' }}>
         {/* Grid cells as drop zones */}
         {gridCells}
 

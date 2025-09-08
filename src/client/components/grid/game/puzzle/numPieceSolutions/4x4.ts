@@ -1,1 +1,0 @@
-export const TOTAL_NUM_SOLUTIONS_4x4 = 17;

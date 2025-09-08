@@ -369,9 +369,10 @@ export const LetteredPage = ({ onBack }: { onBack?: () => void }) => {
         gameStateManagerRef.current.startScoreDecay();
 
         // Set up score sync callback for periodic server synchronization
-        gameStateManagerRef.current.setScoreSyncCallback(() => {
-          void syncScoreWithServer();
-        });
+        // Disabled periodic syncing as requested
+        // gameStateManagerRef.current.setScoreSyncCallback(() => {
+        //   void syncScoreWithServer();
+        // });
       }
 
       // Reset UI state for new game
@@ -693,7 +694,7 @@ export const LetteredPage = ({ onBack }: { onBack?: () => void }) => {
   };
 
   const pieceTileDraggingClass = (_piece: DraggableItem, valid: boolean) => {
-    const baseClass = 'border-2 border-dashed opacity-100 transition-colors';
+    const baseClass = 'border-2 border-dashed opacity-80 transition-colors';
     if (valid) {
       return cn(baseClass, 'bg-accent/20 border-primary');
     } else {

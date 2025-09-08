@@ -63,15 +63,17 @@ const DraggableGridCell: React.FC<DraggableGridCellProps> = ({
     >
       <div
         className={`m-0 aspect-square ${className}`}
-        style={{ ...style, ...dragStyle, margin: 0, padding: 0, width: '100%', height: '100%' }}
+        style={{
+          ...style,
+          ...dragStyle,
+          margin: 0,
+          padding: 0,
+          width: '100%',
+          height: '100%',
+          pointerEvents: pieceId ? 'auto' : 'inherit',
+        }}
         {...listeners}
         {...attributes}
-        onTouchStart={(e) => {
-          // Ensure single touch for better drag handling
-          if (e.touches.length === 1) {
-            e.preventDefault();
-          }
-        }}
       >
         {letter}
       </div>
@@ -317,7 +319,7 @@ export const LetteredGrid: React.FC<LetteredGridProps> = ({
   });
 
   return (
-    <div className="flex justify-center items-center relative">
+    <div className="flex relative justify-center items-center">
       <div
         ref={setNodeRef}
         data-grid="lettered-grid"
@@ -326,16 +328,7 @@ export const LetteredGrid: React.FC<LetteredGridProps> = ({
           gridTemplateColumns: `repeat(${grid[0]?.length || 0}, 0fr)`,
           gridTemplateRows: `repeat(${grid.length}, 1fr)`,
           gap: '0.25rem',
-        }}
-        onTouchStart={(e) => {
-          // Prevent default touch behaviors that might interfere with drag and drop
-          e.preventDefault();
-        }}
-        onTouchMove={(e) => {
-          // Allow touch move for drag operations but prevent scrolling
-          if (!e.touches || e.touches.length > 1) {
-            e.preventDefault();
-          }
+          pointerEvents: draggingFromGrid ? 'none' : 'auto',
         }}
       >
         {displayGrid.map((row, rowIndex) =>
