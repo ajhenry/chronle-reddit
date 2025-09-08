@@ -11,13 +11,75 @@ const PIECE_COLOR_CLASSES = [
   'piece-color-red',
   'piece-color-orange',
   'piece-color-amber',
+  'piece-color-yellow',
   'piece-color-lime',
+  'piece-color-green',
   'piece-color-emerald',
+  'piece-color-teal',
   'piece-color-cyan',
+  'piece-color-sky',
   'piece-color-blue',
+  'piece-color-indigo',
   'piece-color-violet',
+  'piece-color-purple',
+  'piece-color-fuchsia',
   'piece-color-pink',
+  'piece-color-rose',
+  'piece-color-gray',
+  'piece-color-slate',
+  'piece-color-zinc',
 ];
+
+// Color assignment tracker to ensure no duplicate colors
+class ColorAssigner {
+  private usedColors: Set<string> = new Set();
+  private availableColors: string[] = [...PIECE_COLOR_CLASSES];
+  private random: () => number;
+
+  constructor(randomFunc: () => number = Math.random) {
+    this.random = randomFunc;
+    // Shuffle available colors for better distribution
+    this.shuffleColors();
+  }
+
+  private shuffleColors(): void {
+    for (let i = this.availableColors.length - 1; i > 0; i--) {
+      const j = Math.floor(this.random() * (i + 1));
+      [this.availableColors[i], this.availableColors[j]] = [
+        this.availableColors[j]!,
+        this.availableColors[i]!,
+      ];
+    }
+  }
+
+  getNextColor(): string {
+    // If we've used all colors, reset and reshuffle (for games with many pieces)
+    if (this.usedColors.size >= PIECE_COLOR_CLASSES.length) {
+      console.log('⚠️ All colors used, resetting color pool');
+      this.usedColors.clear();
+      this.shuffleColors();
+    }
+
+    // Find the first unused color
+    let selectedColor = this.availableColors.find((color) => !this.usedColors.has(color));
+
+    // Fallback to random selection if shuffled order doesn't work
+    if (!selectedColor) {
+      selectedColor = PIECE_COLOR_CLASSES[Math.floor(this.random() * PIECE_COLOR_CLASSES.length)]!;
+    }
+
+    this.usedColors.add(selectedColor);
+    console.log(
+      `🎨 Assigned color: ${selectedColor} (${this.usedColors.size}/${PIECE_COLOR_CLASSES.length} colors used)`
+    );
+    return selectedColor;
+  }
+
+  reset(): void {
+    this.usedColors.clear();
+    this.shuffleColors();
+  }
+}
 
 // Create an empty 8x8 grid
 export const createEmptyGrid = (): GridCell[][] => {
@@ -488,6 +550,9 @@ const generatePiecesWithNewAlgorithm = (
   // Initialize seeded random generator
   const random = seed ? seededRandom(seed) : Math.random;
 
+  // Initialize color assigner to ensure unique colors
+  const colorAssigner = new ColorAssigner(random);
+
   const usedLetters = new Set<string>();
   const pieces: LetterPiece[] = [];
 
@@ -522,7 +587,8 @@ const generatePiecesWithNewAlgorithm = (
       pieceSize,
       grid,
       usedLetters,
-      random
+      random,
+      colorAssigner
     );
     if (piece && piece.letters.length >= 2) {
       pieces.push(piece);
@@ -552,11 +618,11 @@ const generatePiecesWithNewAlgorithm = (
   // Step 11a: Try to generate pieces from skipped letters
   if (skippedLetters && skippedLetters.length > 0) {
     console.log(`🔄 Attempting to generate pieces from ${skippedLetters.length} skipped letters`);
-    handleSkippedLetters(pieces, skippedLetters, grid, usedLetters, random);
+    handleSkippedLetters(pieces, skippedLetters, grid, usedLetters, random, colorAssigner);
   }
 
   // Step 11b: Handle any remaining stranded pieces
-  handleStrandedPieces(pieces, grid, usedLetters, random);
+  handleStrandedPieces(pieces, grid, usedLetters, random, colorAssigner);
 
   console.log(
     `🏁 New algorithm complete: ${pieces.length} pieces generated, ${usedLetters.size}/${availableLetters.length} letters used, ${skippedLetters?.length || 0} skipped letters collected`
@@ -631,7 +697,8 @@ const buildPieceWithRandomDirections = (
   targetSize: number,
   grid: GridCell[][],
   usedLetters: Set<string>,
-  random: () => number
+  random: () => number,
+  colorAssigner: ColorAssigner
 ): LetterPiece | null => {
   const pieceLetters: string[] = [];
   const piecePositions: GridPosition[] = [];
@@ -710,8 +777,7 @@ const buildPieceWithRandomDirections = (
     id: `piece-${Date.now()}-${random().toString(36).substr(2, 9)}`,
     letters: pieceLetters,
     shape,
-    color:
-      PIECE_COLOR_CLASSES[Math.floor(random() * PIECE_COLOR_CLASSES.length)] || 'piece-color-red',
+    color: colorAssigner.getNextColor(),
   };
 
   console.log(
@@ -775,7 +841,8 @@ const handleSkippedLetters = (
   skippedLetters: Array<{ letter: string; position: GridPosition }>,
   grid: GenerationGridCell[][],
   usedLetters: Set<string>,
-  random: () => number
+  random: () => number,
+  colorAssigner: ColorAssigner
 ): void => {
   console.log(`🔄 Processing ${skippedLetters.length} skipped letters for piece generation`);
 
@@ -796,7 +863,8 @@ const handleSkippedLetters = (
       Math.floor(random() * 2) + 2, // 2-3 letters for smaller pieces
       grid,
       usedLetters,
-      random
+      random,
+      colorAssigner
     );
 
     if (piece && piece.letters.length >= 2) {
@@ -819,7 +887,8 @@ const handleStrandedPieces = (
   pieces: LetterPiece[],
   grid: GenerationGridCell[][],
   usedLetters: Set<string>,
-  random: () => number
+  random: () => number,
+  colorAssigner: ColorAssigner
 ): void => {
   // Find all stranded letters: unused cells that have letters and aren't pre-filled
   const strandedLetters: Array<{ letter: string; position: GridPosition }> = [];
@@ -1101,9 +1170,7 @@ const handleStrandedPieces = (
         id: `piece-${Date.now()}-${random().toString(36).substr(2, 9)}`,
         letters: [strandedLetter.letter],
         shape: [{ row: 0, col: 0 }],
-        color:
-          PIECE_COLOR_CLASSES[Math.floor(random() * PIECE_COLOR_CLASSES.length)] ||
-          'piece-color-red',
+        color: colorAssigner.getNextColor(),
       };
       pieces.push(singlePiece);
       usedLetters.add(`${strandedLetter.position.row},${strandedLetter.position.col}`);
