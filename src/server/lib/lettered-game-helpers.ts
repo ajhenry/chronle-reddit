@@ -2,8 +2,7 @@ import { supabase } from '../../shared/supabase-server';
 import type { LetteredGameData, LetterPiece } from '../../shared/types/api';
 import type { DailyGame } from '../../shared/types/supabase';
 import { generateMockGame } from './lettered-game-generator';
-
-const isDevelopment = () => process.env.NODE_ENV === 'development';
+import { isDevelopment } from '../../shared/utils';
 
 const removeSolution = (gameData: LetteredGameData): LetteredGameData => {
   if (!isDevelopment()) {

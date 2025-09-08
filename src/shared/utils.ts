@@ -1,2 +1,2 @@
-const isDevelopment = () => process.env.NODE_ENV === 'development';
+const isDevelopment = () => process.env.LOCAL_MODE === 'true';
 export { isDevelopment };

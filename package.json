@@ -16,7 +16,7 @@
     "dev:devvit": "devvit playtest",
     "dev:server": "cd src/server && vite build --watch",
     "dev:vite": "cd src/client && vite --port 7474",
-    "local": "concurrently -k -p \"[{name}]\" -n \"SERVER,VITE\" -c \"green,blue\" \"npm run local:server\" \"npm run dev:vite\"",
+    "local": "LOCAL_MODE=true concurrently -k -p \"[{name}]\" -n \"SERVER,VITE\" -c \"green,blue\" \"npm run local:server\" \"npm run dev:vite\"",
     "local:server": "nodemon",
     "lint": "eslint ./src",
     "lint:fix": "eslint --fix ./src",
