@@ -24,6 +24,7 @@ CREATE TABLE IF NOT EXISTS public.topx_sessions (
     initial_score INTEGER DEFAULT 0 NOT NULL,
     final_score INTEGER DEFAULT 0 NOT NULL,
     is_completed BOOLEAN DEFAULT FALSE NOT NULL,
+    attempts_left INTEGER DEFAULT 3 NOT NULL,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL,
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL
 );

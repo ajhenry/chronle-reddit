@@ -1,9 +1,9 @@
 import { supabase } from '../../shared/supabase-server';
 import type { TopXGame, DailyGame } from '../../shared/types/supabase';
-import type { TopXGameData } from '../../shared/types/api';
+import type { TopXGame } from '../../shared/types/api';
 
 // Helper function to convert database record to API format
-export const convertGameToApiFormat = (dbGame: TopXGame): TopXGameData => ({
+export const convertGameToApiFormat = (dbGame: TopXGame): TopXGame => ({
   id: dbGame.id,
   prompt: dbGame.prompt,
   solution: dbGame.solution,
@@ -26,7 +26,7 @@ export type CreateDailyGameResult =
       data: {
         dailyGame: DailyGame;
         topxGame: TopXGame;
-        gameData: TopXGameData;
+        gameData: TopXGame;
       };
     }
   | {

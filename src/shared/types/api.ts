@@ -17,20 +17,22 @@ export type DecrementResponse = {
   count: number;
 };
 
-export type TopXGameData = {
+export type TopXGame = {
   id: string;
   prompt: string;
-  solution: string[]; // Changed from correctAnswers
-  suggestions: string[]; // Changed from searchSuggestions
+  // Only sent to client in development mode
+  solution?: string[];
   category: string;
-  count: number; // Changed from number
-  created_at: string; // Changed from createdAt
-  updated_at: string; // Added updated_at
+  count: number;
+  suggestions: string[];
+  solutionHash: Record<string, boolean>; // Hash map of valid answer combinations
+  createdAt: string;
+  updatedAt: string;
 };
 
 export type TopXGameResponse = {
   type: 'topx_game';
-  game: TopXGameData;
+  game: TopXGame;
 };
 
 export type TopXValidateResponse = {
@@ -43,34 +45,46 @@ export type TopXValidateResponse = {
 
 export type TopXGamesResponse = {
   type: 'topx_games';
-  games: TopXGameData[];
+  games: TopXGame[];
 };
+
+export interface TopXSubmission {
+  id: string;
+  gameSessionId: string;
+  answer: string;
+  submittedAt: string;
+  isCorrect: boolean;
+  scoreAtSubmission: number;
+  position?: number; // Position where the answer was placed (1-indexed, only for correct answers)
+}
+
+// Update in database/topx.ts if you change this
+export interface TopXSession {
+  id: string;
+  userId: string;
+  dailyGameId: string;
+  startedAt: string;
+  completedAt: string | null;
+  initialScore: number;
+  finalScore: number;
+  currentScore?: number; // Only used in API responses
+  isCompleted: boolean;
+  attemptsLeft: number;
+  submissions: TopXSubmission[];
+}
 
 export type TopXDailyGameResponse = {
   type: 'topx_daily_game';
   dailyGameId: string;
-  game: TopXGameData;
+  game: TopXGame;
   day: string; // ISO date string
-  session?: {
-    id: string;
-    startedAt: string;
-    currentScore: number;
-    initialScore: number;
-    isCompleted: boolean;
-    submissions: Array<{
-      answer: string;
-      submittedAt: string;
-      isCorrect: boolean;
-      position?: number;
-      scoreAtSubmission: number;
-    }>;
-  };
+  session: TopXSession;
 };
 
 export type TopXAttemptRequest = {
-  userId: string;
   answer: string;
   timestamp: number;
+  position?: number; // Position where the client thinks the answer should go
 };
 
 export type TopXSubmissionResponse = {

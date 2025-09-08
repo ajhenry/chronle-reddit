@@ -16,14 +16,14 @@ import {
   DialogDescription,
 } from '../components/ui/dialog';
 import {
-  TopXGameData,
+  TopXGame,
   TopXDailyGameResponse,
   TopXSubmissionResponse,
   TopXGameCompleteResponse,
   Season,
   EraseTopXResultsResponse,
 } from '../../shared/types/api';
-import { apiFetch } from '../lib/utils';
+import { apiFetch, findValidAnswerPosition } from '../lib/utils';
 import { isDevelopment } from '../lib/dev-utils';
 
 // API functions for daily TopX game
@@ -34,18 +34,24 @@ const fetchTodaysGame = async (): Promise<TopXDailyGameResponse> => {
   if (!response.ok) {
     throw new Error("Failed to fetch today's game");
   }
-  return await response.json();
+
+  const data = await response.json();
+  console.log('fetchTodaysGame', data);
+  return data;
 };
 
 const submitAttempt = async (
   answer: string,
-  timestamp: number
+  timestamp: number,
+  gameId: string,
+  position?: number
 ): Promise<TopXSubmissionResponse> => {
-  const response = await apiFetch('/api/topx/attempt', {
+  const response = await apiFetch(`/api/topx/${gameId}/attempt`, {
     method: 'POST',
     body: JSON.stringify({
       answer,
       timestamp,
+      position,
     }),
   });
   if (!response.ok) {
@@ -86,19 +92,24 @@ interface GameState {
     answer: string;
     timestamp: number;
     locallyCorrect?: boolean; // Client-side guess
+    position?: number; // Position where the answer was placed (1-indexed)
   }>;
+  currentAnswerState: string[]; // Current state of answers with empty strings for unfilled positions
 }
 
 export const TopPage = ({ onBack }: { onBack?: () => void }) => {
   const answerListRef = useRef<HTMLDivElement>(null);
   const [showDevButtons, setShowDevButtons] = useState(false);
   const [showGoldShimmer, setShowGoldShimmer] = useState(false);
-  const [gameData, setGameData] = useState<TopXGameData | null>(null);
+  const [gameData, setGameData] = useState<TopXGame | null>(null);
+  const [dailyGameId, setDailyGameId] = useState<string | null>(null);
   const [, setSeason] = useState<Season | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [showGameOverModal, setShowGameOverModal] = useState(false);
-  const [scoreUpdateTimer, setScoreUpdateTimer] = useState<NodeJS.Timeout | null>(null);
+  const [scoreUpdateTimer, setScoreUpdateTimer] = useState<ReturnType<typeof setInterval> | null>(
+    null
+  );
 
   const [gameState, setGameState] = useState<GameState>({
     score: DEFAULT_INITIAL_SCORE,
@@ -114,6 +125,7 @@ export const TopPage = ({ onBack }: { onBack?: () => void }) => {
     showConfetti: false,
     gameStartTime: null,
     submissions: [],
+    currentAnswerState: [], // Will be initialized when game data loads
   });
 
   // Use count and category directly from server data
@@ -180,14 +192,15 @@ export const TopPage = ({ onBack }: { onBack?: () => void }) => {
         // Fetch today's daily game
         const dailyGame = await fetchTodaysGame();
         setGameData(dailyGame.game);
+        setDailyGameId(dailyGame.dailyGameId);
 
         // Set up initial game state - restore from session if available
         let startTime = Date.now();
         let score = DEFAULT_INITIAL_SCORE;
         let initialScore = DEFAULT_INITIAL_SCORE;
         let gameComplete = false;
-        let guessedAnswers: GuessedAnswer[] = [];
-        let incorrectAnswers: string[] = [];
+        const guessedAnswers: GuessedAnswer[] = [];
+        const incorrectAnswers: string[] = [];
         let submissions: Array<{
           answer: string;
           timestamp: number;
@@ -197,7 +210,7 @@ export const TopPage = ({ onBack }: { onBack?: () => void }) => {
         if (dailyGame.session) {
           // Restore from existing session
           startTime = new Date(dailyGame.session.startedAt).getTime();
-          score = dailyGame.session.currentScore;
+          score = dailyGame.session.currentScore ?? DEFAULT_INITIAL_SCORE;
           initialScore = dailyGame.session.initialScore;
           gameComplete = dailyGame.session.isCompleted;
 
@@ -210,14 +223,27 @@ export const TopPage = ({ onBack }: { onBack?: () => void }) => {
 
           // Rebuild guessed answers and incorrect answers from submissions
           for (const sub of dailyGame.session.submissions) {
-            if (sub.isCorrect && sub.position) {
+            if (sub.isCorrect) {
+              // For now, assign temporary positions based on order
+              // The server will provide correct positions in postgame results
+              const position = guessedAnswers.length + 1;
               guessedAnswers.push({
                 answer: sub.answer,
-                position: sub.position,
+                position: position,
               });
             } else {
               incorrectAnswers.push(sub.answer);
             }
+          }
+        }
+
+        // Initialize current answer state with empty strings for all positions
+        const currentAnswerState = new Array(dailyGame.game.count).fill('');
+
+        // If we have guessed answers, update the current answer state
+        for (const guessed of guessedAnswers) {
+          if (guessed.position <= currentAnswerState.length) {
+            currentAnswerState[guessed.position - 1] = guessed.answer;
           }
         }
 
@@ -230,6 +256,7 @@ export const TopPage = ({ onBack }: { onBack?: () => void }) => {
           guessedAnswers,
           incorrectAnswers,
           submissions,
+          currentAnswerState,
           gameWon: gameComplete && guessedAnswers.length === dailyGame.game.count,
         }));
 
@@ -327,13 +354,13 @@ export const TopPage = ({ onBack }: { onBack?: () => void }) => {
   };
 
   const handleAnswerSubmit = async (answer: string) => {
-    if (!gameData || gameState.gameComplete || !answer.trim()) return;
+    if (!gameData || gameState.gameComplete || !answer.trim() || !dailyGameId) return;
 
     const timestamp = Date.now();
 
     try {
       // Submit attempt to server
-      await submitAttempt(answer, timestamp);
+      await submitAttempt(answer, timestamp, dailyGameId);
 
       // Add to submissions for local tracking
       const newSubmission = {
@@ -342,30 +369,48 @@ export const TopPage = ({ onBack }: { onBack?: () => void }) => {
         locallyCorrect: undefined, // Will be determined later
       };
 
-      // Optimistic local validation for UI responsiveness
-      const isLocallyCorrect = gameData.solution
-        .map((s) => s.toLowerCase().trim())
-        .includes(answer.toLowerCase().trim());
+      console.log(`🎯 Attempting to validate answer: "${answer}"`);
+      console.log(`📊 Current answer state: [${gameState.currentAnswerState.join(', ')}]`);
 
-      if (isLocallyCorrect) {
-        // Find position in solution array
-        const position =
-          gameData.solution.findIndex(
-            (s) => s.toLowerCase().trim() === answer.toLowerCase().trim()
-          ) + 1;
+      // Try to find a valid position for this answer using the solution hash
+      const validPosition = await findValidAnswerPosition(
+        answer,
+        gameState.currentAnswerState,
+        gameData.solutionHash
+      );
+
+      if (validPosition !== null) {
+        // Valid answer found! Update the answer state and UI
+        console.log(`🎉 Answer "${answer}" is valid at position ${validPosition}`);
+
+        const newCurrentAnswerState = [...gameState.currentAnswerState];
+        newCurrentAnswerState[validPosition - 1] = answer; // validPosition is 1-indexed
+
         const newGuessedAnswer: GuessedAnswer = {
           answer: answer,
-          position: position,
+          position: validPosition,
         };
 
         const newGuessedAnswers = [...gameState.guessedAnswers, newGuessedAnswer];
         const isGameWon = newGuessedAnswers.length === number;
-        const isGameComplete = isGameWon || gameState.attempts >= 5;
+        const isGameComplete = isGameWon || gameState.attempts >= gameState.maxAttempts;
+
+        // Submit to server for authoritative validation (include position for correct answers)
+        try {
+          await submitAttempt(answer, timestamp, dailyGameId, validPosition);
+        } catch (error) {
+          console.error('Failed to submit answer to server:', error);
+          // Continue with optimistic UI update even if server submission fails
+        }
 
         setGameState((prev) => ({
           ...prev,
           guessedAnswers: newGuessedAnswers,
-          submissions: [...prev.submissions, { ...newSubmission, locallyCorrect: true }],
+          submissions: [
+            ...prev.submissions,
+            { ...newSubmission, locallyCorrect: true, position: validPosition },
+          ],
+          currentAnswerState: newCurrentAnswerState,
           currentInput: '',
           gameWon: isGameWon,
           gameComplete: isGameComplete,
@@ -376,16 +421,30 @@ export const TopPage = ({ onBack }: { onBack?: () => void }) => {
           await handleGameComplete();
         }
       } else {
+        // Invalid answer - add to incorrect answers
+        console.log(`❌ Answer "${answer}" is not valid`);
+
         const newIncorrectAnswers = [...gameState.incorrectAnswers, answer];
         const newAttempts = gameState.attempts + 1;
-        const isGameComplete = newAttempts >= 5;
+        const isGameComplete = newAttempts >= gameState.maxAttempts;
 
-        triggerShake(); // Trigger shake animation for wrong answer
+        triggerShake();
+
+        // Submit to server for validation (even though we know it's wrong)
+        try {
+          await submitAttempt(answer, timestamp, dailyGameId);
+        } catch (error) {
+          console.error('Failed to submit answer to server:', error);
+        }
+
         setGameState((prev) => ({
           ...prev,
           incorrectAnswers: newIncorrectAnswers,
           attempts: newAttempts,
-          submissions: [...prev.submissions, { ...newSubmission, locallyCorrect: false }],
+          submissions: [
+            ...prev.submissions,
+            { ...newSubmission, locallyCorrect: false, position: undefined },
+          ],
           currentInput: '',
           gameComplete: isGameComplete,
         }));
@@ -437,7 +496,7 @@ export const TopPage = ({ onBack }: { onBack?: () => void }) => {
     console.log('🎯 Forcing game win for development testing');
 
     // Fill all correct answers
-    const correctGuessedAnswers = gameData.solution.map((answer, index) => ({
+    const correctGuessedAnswers = (gameData.solution || []).map((answer, index) => ({
       answer: answer,
       position: index + 1,
     }));
@@ -527,7 +586,7 @@ export const TopPage = ({ onBack }: { onBack?: () => void }) => {
         onBack={handleBackToMenu}
         logoSrc="/top-x-logo.png"
       >
-        <CardContent className="flex items-center justify-center p-8">
+        <CardContent className="flex justify-center items-center p-8">
           <div className="text-lg font-medium text-card-foreground">Loading today's game...</div>
         </CardContent>
       </GameLayout>
@@ -545,8 +604,8 @@ export const TopPage = ({ onBack }: { onBack?: () => void }) => {
         onBack={handleBackToMenu}
         logoSrc="/top-x-logo.png"
       >
-        <CardContent className="flex flex-col items-center justify-center p-8 space-y-4">
-          <div className="text-lg font-medium text-destructive text-center">
+        <CardContent className="flex flex-col justify-center items-center p-8 space-y-4">
+          <div className="text-lg font-medium text-center text-destructive">
             {error || "Failed to load today's game"}
           </div>
           <Button onClick={() => window.location.reload()}>Try Again</Button>
@@ -578,7 +637,7 @@ export const TopPage = ({ onBack }: { onBack?: () => void }) => {
           </Button>
 
           {showDevButtons && (
-            <div className="mt-2 flex gap-2 flex-wrap">
+            <div className="flex flex-wrap gap-2 mt-2">
               <Button
                 variant="destructive"
                 size="sm"
@@ -601,7 +660,7 @@ export const TopPage = ({ onBack }: { onBack?: () => void }) => {
                 variant="outline"
                 size="sm"
                 onClick={eraseGameResults}
-                className="text-xs border-orange-500 text-orange-600 hover:bg-orange-50"
+                className="text-xs text-orange-600 border-orange-500 hover:bg-orange-50"
               >
                 🗑️ Erase Results
               </Button>
@@ -613,7 +672,7 @@ export const TopPage = ({ onBack }: { onBack?: () => void }) => {
       {/* Game Content */}
       <div className="space-y-6">
         {/* Prompt */}
-        <h2 className="font-black text-foreground text-3xl tracking-tight text-center">
+        <h2 className="text-3xl font-black tracking-tight text-center text-foreground">
           {gameData.prompt}
         </h2>
 
@@ -633,7 +692,7 @@ export const TopPage = ({ onBack }: { onBack?: () => void }) => {
         )}
 
         {/* Answer List Title */}
-        <h3 className="text-lg font-bold text-foreground mb-4 text-center">
+        <h3 className="mb-4 text-lg font-bold text-center text-foreground">
           Top {number} {pluralize(category, number)}
         </h3>
 
@@ -648,7 +707,7 @@ export const TopPage = ({ onBack }: { onBack?: () => void }) => {
 
             // When game is lost, show all correct answers
             const isGameLost = gameState.gameComplete && !gameState.gameWon;
-            const correctAnswer = isGameLost ? gameData.solution[index] : null;
+            const correctAnswer = isGameLost && gameData.solution ? gameData.solution[index] : null;
             const answerToShow = guessedAnswer?.answer || correctAnswer;
             const wasGuessed = !!guessedAnswer;
 
@@ -660,7 +719,7 @@ export const TopPage = ({ onBack }: { onBack?: () => void }) => {
                 }`}
               >
                 <CardContent className="p-3">
-                  <div className="flex items-center gap-4">
+                  <div className="flex gap-4 items-center">
                     <div
                       className={`w-8 h-8 text-white font-semibold flex items-center justify-center rounded transition-all duration-200 ${
                         guessedAnswer && showGoldShimmer && gameState.gameWon
@@ -686,7 +745,7 @@ export const TopPage = ({ onBack }: { onBack?: () => void }) => {
                       {answerToShow || ''}
                       {guessedAnswer &&
                         (() => {
-                          console.log(`Rendering position ${position}:`, guessedAnswer.answer);
+                          // console.log(`Rendering position ${position}:`, guessedAnswer.answer);
                           return null;
                         })()}
                     </div>
@@ -700,18 +759,18 @@ export const TopPage = ({ onBack }: { onBack?: () => void }) => {
         {/* Incorrect Answers */}
         {gameState.incorrectAnswers.length > 0 && (
           <div className="mt-6">
-            <h4 className="text-base font-semibold text-foreground mb-3 text-center">
+            <h4 className="mb-3 text-base font-semibold text-center text-foreground">
               Incorrect Answers
             </h4>
             <div className="space-y-2">
               {gameState.incorrectAnswers.map((answer, index) => (
                 <Card key={index}>
                   <CardContent className="p-2">
-                    <div className="flex items-center gap-4">
-                      <div className="w-6 h-6 bg-red-600 text-white font-semibold flex items-center justify-center text-sm rounded">
+                    <div className="flex gap-4 items-center">
+                      <div className="flex justify-center items-center w-6 h-6 text-sm font-semibold text-white bg-red-600 rounded">
                         ✗
                       </div>
-                      <div className="text-card-foreground text-sm text-medium">{answer}</div>
+                      <div className="text-sm text-card-foreground text-medium">{answer}</div>
                     </div>
                   </CardContent>
                 </Card>
@@ -764,7 +823,7 @@ export const TopPage = ({ onBack }: { onBack?: () => void }) => {
             >
               {gameState.gameWon ? '🎉 CONGRATULATIONS!' : '💔 GAME OVER'}
             </DialogTitle>
-            <DialogDescription className="text-center text-base">
+            <DialogDescription className="text-base text-center">
               {gameState.gameWon
                 ? `You found all ${number} answers!`
                 : `You used all ${gameState.maxAttempts} attempts`}
@@ -802,7 +861,7 @@ export const TopPage = ({ onBack }: { onBack?: () => void }) => {
             {/* Correct Answers Found */}
             {gameState.guessedAnswers.length > 0 && (
               <div>
-                <h4 className="text-sm font-semibold text-green-700 mb-2">
+                <h4 className="mb-2 text-sm font-semibold text-green-700">
                   ✅ Correct Answers Found:
                 </h4>
                 <div className="space-y-1">
@@ -811,7 +870,7 @@ export const TopPage = ({ onBack }: { onBack?: () => void }) => {
                     .map((guessedAnswer) => (
                       <div
                         key={guessedAnswer.answer}
-                        className="text-sm text-green-600 bg-green-50 px-2 py-1 rounded"
+                        className="px-2 py-1 text-sm text-green-600 bg-green-50 rounded"
                       >
                         {guessedAnswer.position}. {guessedAnswer.answer}
                       </div>
@@ -823,10 +882,10 @@ export const TopPage = ({ onBack }: { onBack?: () => void }) => {
             {/* Incorrect Answers */}
             {gameState.incorrectAnswers.length > 0 && (
               <div>
-                <h4 className="text-sm font-semibold text-red-700 mb-2">❌ Incorrect Guesses:</h4>
+                <h4 className="mb-2 text-sm font-semibold text-red-700">❌ Incorrect Guesses:</h4>
                 <div className="space-y-1">
                   {gameState.incorrectAnswers.map((answer) => (
-                    <div key={answer} className="text-sm text-red-600 bg-red-50 px-2 py-1 rounded">
+                    <div key={answer} className="px-2 py-1 text-sm text-red-600 bg-red-50 rounded">
                       {answer}
                     </div>
                   ))}
@@ -837,20 +896,20 @@ export const TopPage = ({ onBack }: { onBack?: () => void }) => {
             {/* Show missed answers for losses */}
             {!gameState.gameWon && gameData && (
               <div>
-                <h4 className="text-sm font-semibold text-blue-700 mb-2">
+                <h4 className="mb-2 text-sm font-semibold text-blue-700">
                   🎯 Correct Answers You Missed:
                 </h4>
                 <div className="space-y-1">
-                  {gameData.solution
+                  {(gameData.solution || [])
                     .filter(
                       (answer) => !gameState.guessedAnswers.some((ga) => ga.answer === answer)
                     )
                     .map((answer) => {
-                      const position = gameData.solution.indexOf(answer) + 1;
+                      const position = (gameData.solution || []).indexOf(answer) + 1;
                       return (
                         <div
                           key={answer}
-                          className="text-sm text-blue-600 bg-blue-50 px-2 py-1 rounded"
+                          className="px-2 py-1 text-sm text-blue-600 bg-blue-50 rounded"
                         >
                           {position}. {answer}
                         </div>

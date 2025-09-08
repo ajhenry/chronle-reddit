@@ -2,6 +2,7 @@
 
 import { generateMockGame } from '../src/server/lib/lettered-game-generator';
 import { supabase } from '../src/shared/supabase-server';
+import { generateSolutionHashMap } from '../src/shared/utils';
 
 // Game categories and phrases for seeding
 const GAME_DATA = [
@@ -226,6 +227,619 @@ const GAME_DATA = [
   },
 ];
 
+// TopX game data for seeding
+const TOPX_GAME_DATA = [
+  {
+    prompt: 'Name the top 3 states that eat the most peanut butter',
+    suggestions: [
+      'Georgia',
+      'Alabama',
+      'North Carolina',
+      'Texas',
+      'California',
+      'Florida',
+      'New York',
+      'Pennsylvania',
+      'Illinois',
+      'Ohio',
+      'Virginia',
+      'Tennessee',
+      'Louisiana',
+      'Mississippi',
+      'Arkansas',
+    ],
+    category: 'states',
+    count: 3,
+    solution: ['Georgia', 'Alabama', 'North Carolina'],
+  },
+  {
+    prompt: 'Name the top 5 programming languages by popularity',
+    suggestions: [
+      'JavaScript',
+      'Python',
+      'Java',
+      'C++',
+      'C#',
+      'PHP',
+      'Ruby',
+      'Swift',
+      'Go',
+      'Rust',
+      'TypeScript',
+      'Kotlin',
+      'Scala',
+      'R',
+      'Dart',
+    ],
+    category: 'programming languages',
+    count: 5,
+    solution: ['JavaScript', 'Python', 'Java', 'C++', 'C#'],
+  },
+  {
+    prompt: 'Name the top 4 social media platforms by users',
+    suggestions: [
+      'Facebook',
+      'YouTube',
+      'WhatsApp',
+      'Instagram',
+      'TikTok',
+      'WeChat',
+      'Snapchat',
+      'Twitter',
+      'LinkedIn',
+      'Pinterest',
+      'Reddit',
+      'Telegram',
+    ],
+    category: 'social media platforms',
+    count: 4,
+    solution: ['Facebook', 'YouTube', 'WhatsApp', 'Instagram'],
+  },
+  {
+    prompt: 'Name the top 3 most visited countries in the world',
+    suggestions: [
+      'France',
+      'Spain',
+      'United States',
+      'China',
+      'Italy',
+      'Turkey',
+      'Mexico',
+      'Thailand',
+      'Germany',
+      'United Kingdom',
+      'Japan',
+      'Austria',
+      'Greece',
+      'Malaysia',
+      'Russia',
+      'Canada',
+      'Poland',
+      'Netherlands',
+      'Ukraine',
+      'Portugal',
+    ],
+    category: 'countries',
+    count: 3,
+    solution: ['France', 'Spain', 'United States'],
+  },
+  {
+    prompt: 'Name the top 4 most popular pizza toppings',
+    suggestions: [
+      'Pepperoni',
+      'Mushrooms',
+      'Sausage',
+      'Cheese',
+      'Peppers',
+      'Onions',
+      'Olives',
+      'Ham',
+      'Pineapple',
+      'Bacon',
+      'Anchovies',
+      'Spinach',
+      'Tomatoes',
+      'Chicken',
+      'Beef',
+      'Jalapeños',
+      'Garlic',
+      'Basil',
+    ],
+    category: 'food',
+    count: 4,
+    solution: ['Pepperoni', 'Mushrooms', 'Sausage', 'Extra Cheese'],
+  },
+  {
+    prompt: 'Name the top 5 most streamed artists on Spotify',
+    suggestions: [
+      'Drake',
+      'Ed Sheeran',
+      'Post Malone',
+      'Ariana Grande',
+      'Eminem',
+      'Justin Bieber',
+      'The Weeknd',
+      'Billie Eilish',
+      'Taylor Swift',
+      'Bad Bunny',
+      'J Balvin',
+      'Dua Lipa',
+      'Travis Scott',
+      'Khalid',
+      'Rihanna',
+      'Bruno Mars',
+    ],
+    category: 'music artists',
+    count: 5,
+    solution: ['Drake', 'Bad Bunny', 'The Weeknd', 'Taylor Swift', 'Ariana Grande'],
+  },
+  {
+    prompt: 'Name the top 3 most popular dog breeds in America',
+    suggestions: [
+      'Labrador Retriever',
+      'Golden Retriever',
+      'German Shepherd',
+      'French Bulldog',
+      'Bulldog',
+      'Poodle',
+      'Beagle',
+      'Rottweiler',
+      'German Shorthaired Pointer',
+      'Yorkshire Terrier',
+      'Dachshund',
+      'Siberian Husky',
+      'Boxer',
+      'Boston Terrier',
+    ],
+    category: 'dog breeds',
+    count: 3,
+    solution: ['Labrador Retriever', 'Golden Retriever', 'German Shepherd'],
+  },
+  {
+    prompt: 'Name the top 4 largest tech companies by market cap',
+    suggestions: [
+      'Apple',
+      'Microsoft',
+      'Amazon',
+      'Google',
+      'Meta',
+      'Tesla',
+      'NVIDIA',
+      'Samsung',
+      'Taiwan Semiconductor',
+      'Oracle',
+      'Salesforce',
+      'Adobe',
+      'Netflix',
+      'PayPal',
+      'Intel',
+      'Cisco',
+      'IBM',
+      'Sony',
+    ],
+    category: 'tech companies',
+    count: 4,
+    solution: ['Apple', 'Microsoft', 'Amazon', 'Google'],
+  },
+  {
+    prompt: 'Name the top 3 most popular breakfast cereals',
+    suggestions: [
+      'Cheerios',
+      'Frosted Flakes',
+      'Honey Nut Cheerios',
+      'Lucky Charms',
+      'Froot Loops',
+      'Cinnamon Toast Crunch',
+      'Rice Krispies',
+      'Cocoa Puffs',
+      'Trix',
+      'Fruity Pebbles',
+      'Captain Crunch',
+      'Corn Flakes',
+      'Special K',
+    ],
+    category: 'breakfast cereals',
+    count: 3,
+    solution: ['Cheerios', 'Frosted Flakes', 'Honey Nut Cheerios'],
+  },
+  {
+    prompt: 'Name the top 5 most popular video game consoles of all time',
+    suggestions: [
+      'PlayStation 2',
+      'Nintendo DS',
+      'Nintendo Switch',
+      'Game Boy',
+      'PlayStation 4',
+      'PlayStation',
+      'Nintendo Wii',
+      'PlayStation 3',
+      'Xbox 360',
+      'Game Boy Advance',
+      'PlayStation Portable',
+      'Nintendo Entertainment System',
+      'Xbox One',
+      'Super Nintendo',
+    ],
+    category: 'gaming consoles',
+    count: 5,
+    solution: ['PlayStation 2', 'Nintendo DS', 'Nintendo Switch', 'Game Boy', 'PlayStation 4'],
+  },
+  {
+    prompt: 'Name the top 3 most spoken languages in the world',
+    suggestions: [
+      'Mandarin Chinese',
+      'English',
+      'Hindi',
+      'Spanish',
+      'French',
+      'Standard Arabic',
+      'Bengali',
+      'Russian',
+      'Portuguese',
+      'Indonesian',
+      'Urdu',
+      'German',
+      'Japanese',
+      'Swahili',
+      'Marathi',
+      'Telugu',
+      'Turkish',
+      'Korean',
+    ],
+    category: 'languages',
+    count: 3,
+    solution: ['Mandarin Chinese', 'English', 'Hindi'],
+  },
+  {
+    prompt: 'Name the top 4 most popular ice cream flavors',
+    suggestions: [
+      'Vanilla',
+      'Chocolate',
+      'Strawberry',
+      'Mint Chip',
+      'Cookies and Cream',
+      'Rocky Road',
+      'Neapolitan',
+      'Butter Pecan',
+      'Cookie Dough',
+      'Pistachio',
+      'Rum Raisin',
+      'Sherbet',
+      'Caramel',
+      'Coffee',
+      'Chocolate Chip',
+    ],
+    category: 'ice cream flavors',
+    count: 4,
+    solution: ['Vanilla', 'Chocolate', 'Strawberry', 'Mint Chip'],
+  },
+  {
+    prompt: 'Name the top 3 most popular sports in the world',
+    suggestions: [
+      'Soccer',
+      'Basketball',
+      'Cricket',
+      'Tennis',
+      'Field Hockey',
+      'Volleyball',
+      'Table Tennis',
+      'Baseball',
+      'Golf',
+      'American Football',
+      'Boxing',
+      'Rugby',
+      'Swimming',
+      'Badminton',
+      'Athletics',
+      'Wrestling',
+    ],
+    category: 'sports',
+    count: 3,
+    solution: ['Soccer', 'Basketball', 'Cricket'],
+  },
+  {
+    prompt: 'Name the top 5 most popular Netflix shows of all time',
+    suggestions: [
+      'Stranger Things',
+      'Squid Game',
+      'Wednesday',
+      'Bridgerton',
+      'Money Heist',
+      'The Crown',
+      'Ozark',
+      'The Witcher',
+      'You',
+      'Tiger King',
+      'Orange Is the New Black',
+      'House of Cards',
+      'Narcos',
+      'Black Mirror',
+      'The Umbrella Academy',
+      'Lupin',
+    ],
+    category: 'Netflix shows',
+    count: 5,
+    solution: ['Stranger Things', 'Squid Game', 'Wednesday', 'Bridgerton', 'Money Heist'],
+  },
+  {
+    prompt: 'Name the top 3 most valuable cryptocurrencies',
+    suggestions: [
+      'Bitcoin',
+      'Ethereum',
+      'Tether',
+      'BNB',
+      'Solana',
+      'XRP',
+      'USDC',
+      'Stablecoin',
+      'Cardano',
+      'Dogecoin',
+      'Avalanche',
+      'Polygon',
+      'Chainlink',
+      'Litecoin',
+      'Bitcoin Cash',
+      'Uniswap',
+      'Cosmos',
+      'Algorand',
+    ],
+    category: 'cryptocurrencies',
+    count: 3,
+    solution: ['Bitcoin', 'Ethereum', 'Tether'],
+  },
+  {
+    prompt: 'Name the top 4 most popular fast food chains in America',
+    suggestions: [
+      'McDonalds',
+      'Subway',
+      'Starbucks',
+      'KFC',
+      'Burger King',
+      'Pizza Hut',
+      'Dominos',
+      'Dunkin',
+      'Taco Bell',
+      'Chick-fil-A',
+      'Sonic',
+      'Arbys',
+      'Wendys',
+      'Dairy Queen',
+      'Papa Johns',
+      'Little Caesars',
+    ],
+    category: 'fast food chains',
+    count: 4,
+    solution: ['McDonalds', 'Subway', 'Starbucks', 'KFC'],
+  },
+  {
+    prompt: 'Name the top 3 largest oceans in the world',
+    suggestions: [
+      'Pacific Ocean',
+      'Atlantic Ocean',
+      'Indian Ocean',
+      'Southern Ocean',
+      'Arctic Ocean',
+      'Mediterranean Sea',
+      'Caribbean Sea',
+      'South China Sea',
+      'Bering Sea',
+      'Gulf of Mexico',
+      'Sea of Okhotsk',
+      'East China Sea',
+    ],
+    category: 'oceans',
+    count: 3,
+    solution: ['Pacific Ocean', 'Atlantic Ocean', 'Indian Ocean'],
+  },
+  {
+    prompt: 'Name the top 5 most popular car brands worldwide',
+    suggestions: [
+      'Toyota',
+      'Volkswagen',
+      'Ford',
+      'Honda',
+      'Nissan',
+      'Chevrolet',
+      'Hyundai',
+      'Kia',
+      'Mercedes-Benz',
+      'BMW',
+      'Audi',
+      'Mazda',
+      'Subaru',
+      'Lexus',
+      'Jeep',
+      'Volvo',
+      'Tesla',
+      'Porsche',
+      'Jaguar',
+      'Land Rover',
+    ],
+    category: 'car brands',
+    count: 5,
+    solution: ['Toyota', 'Volkswagen', 'Ford', 'Honda', 'Nissan'],
+  },
+  {
+    prompt: 'Name the top 3 most popular superhero movies of all time',
+    suggestions: [
+      'Avengers Endgame',
+      'Avengers Infinity War',
+      'Spider-Man No Way Home',
+      'The Dark Knight',
+      'Avengers',
+      'Black Panther',
+      'Iron Man',
+      'Wonder Woman',
+      'Guardians of the Galaxy',
+      'Thor Ragnarok',
+      'Captain America Civil War',
+      'Doctor Strange',
+      'Ant-Man',
+      'Captain Marvel',
+      'Aquaman',
+      'Justice League',
+    ],
+    category: 'superhero movies',
+    count: 3,
+    solution: ['Avengers Endgame', 'Avengers Infinity War', 'Spider-Man No Way Home'],
+  },
+  {
+    prompt: 'Name the top 4 most popular coffee drinks',
+    suggestions: [
+      'Espresso',
+      'Americano',
+      'Latte',
+      'Cappuccino',
+      'Macchiato',
+      'Mocha',
+      'Frappuccino',
+      'Cold Brew',
+      'Iced Coffee',
+      'Flat White',
+      'Cortado',
+      'Affogato',
+      'Red Eye',
+      'Black Eye',
+      'Drip Coffee',
+      'French Press',
+    ],
+    category: 'coffee drinks',
+    count: 4,
+    solution: ['Espresso', 'Americano', 'Latte', 'Cappuccino'],
+  },
+  {
+    prompt: 'Name the top 3 most popular board games',
+    suggestions: [
+      'Monopoly',
+      'Scrabble',
+      'Chess',
+      'Checkers',
+      'Risk',
+      'Clue',
+      'Backgammon',
+      'Trivial Pursuit',
+      'The Game of Life',
+      'Sorry',
+      'Yahtzee',
+      'Uno',
+      'Connect Four',
+      'Battleship',
+      'Twister',
+      'Pictionary',
+      'Charades',
+    ],
+    category: 'board games',
+    count: 3,
+    solution: ['Monopoly', 'Scrabble', 'Chess'],
+  },
+  {
+    prompt: 'Name the top 5 most popular streaming platforms',
+    suggestions: [
+      'Netflix',
+      'YouTube',
+      'Amazon Prime Video',
+      'Disney+',
+      'Hulu',
+      'HBO Max',
+      'Apple TV+',
+      'Paramount+',
+      'Peacock',
+      'Tubi',
+      'Crunchyroll',
+      'Funimation',
+      'Twitch',
+      'ESPN+',
+      'Discovery+',
+      'Starz',
+      'Showtime',
+      'Vudu',
+    ],
+    category: 'streaming platforms',
+    count: 5,
+    solution: ['Netflix', 'YouTube', 'Amazon Prime Video', 'Disney+', 'Hulu'],
+  },
+  {
+    prompt: 'Name the top 3 most popular social media apps among teens',
+    suggestions: [
+      'TikTok',
+      'Instagram',
+      'Snapchat',
+      'YouTube',
+      'Discord',
+      'WhatsApp',
+      'Twitter',
+      'Facebook',
+      'Reddit',
+      'Pinterest',
+      'Telegram',
+      'Signal',
+      'BeReal',
+      'VSCO',
+      'Tumblr',
+      'LinkedIn',
+      'Twitch',
+      'Clubhouse',
+    ],
+    category: 'social media apps',
+    count: 3,
+    solution: ['TikTok', 'Instagram', 'Snapchat'],
+  },
+  {
+    prompt: 'Name the top 4 most popular holiday destinations',
+    suggestions: [
+      'Paris',
+      'London',
+      'New York',
+      'Rome',
+      'Barcelona',
+      'Tokyo',
+      'Dubai',
+      'Amsterdam',
+      'Istanbul',
+      'Las Vegas',
+      'Los Angeles',
+      'Prague',
+      'Vienna',
+      'Venice',
+      'Florence',
+      'Athens',
+      'Santorini',
+      'Bali',
+      'Hawaii',
+      'Thailand',
+    ],
+    category: 'holiday destinations',
+    count: 4,
+    solution: ['Paris', 'London', 'New York', 'Rome'],
+  },
+  {
+    prompt: 'Name the top 3 most popular mobile games',
+    suggestions: [
+      'Candy Crush Saga',
+      'Pokemon GO',
+      'Fortnite',
+      'PUBG Mobile',
+      'Among Us',
+      'Clash of Clans',
+      'Clash Royale',
+      'Subway Surfers',
+      'Temple Run',
+      'Angry Birds',
+      'Words with Friends',
+      'Brawl Stars',
+      'Call of Duty Mobile',
+      'Genshin Impact',
+      'Roblox',
+      'Minecraft',
+      'Fall Guys',
+      'Wordle',
+    ],
+    category: 'mobile games',
+    count: 3,
+    solution: ['Candy Crush Saga', 'Pokemon GO', 'Fortnite'],
+  },
+];
+
 async function seedLetteredGames() {
   console.log('🚀 Starting lettered games seeding process...');
 
@@ -259,7 +873,7 @@ async function seedLetteredGames() {
             cols: gameData.cols,
             pieces: gameData.pieces,
             initial_piece_positions: gameData.initialPiecePositions,
-            solution: gameData.solution,
+            solution: gameData.solution || {},
             solution_hash: gameData.solutionHash,
           })
           .select()
@@ -300,8 +914,74 @@ async function seedLetteredGames() {
   console.log('\n🎉 Lettered games seeding completed!');
 }
 
+async function seedTopXGames() {
+  console.log('🚀 Starting TopX games seeding process...');
+
+  console.log('📊 Connected to Supabase');
+
+  let totalGames = 0;
+  let successCount = 0;
+  let errorCount = 0;
+
+  // Generate and insert games
+  for (const gameData of TOPX_GAME_DATA) {
+    totalGames++;
+
+    try {
+      console.log(`  🎮 Generating game for: "${gameData.prompt}"`);
+
+      // Generate solution hash map for secure validation
+      const solutionHash = await generateSolutionHashMap(gameData.solution);
+
+      // Insert into database
+      const { data, error } = await supabase
+        .from('topx_games')
+        .insert({
+          prompt: gameData.prompt,
+          solution: gameData.solution,
+          category: gameData.category,
+          count: gameData.count,
+          suggestions: gameData.suggestions,
+          solution_hash: solutionHash,
+        })
+        .select()
+        .single();
+
+      if (error) {
+        console.error(`  ❌ Failed to insert TopX game for "${gameData.prompt}":`, error.message);
+        errorCount++;
+      } else {
+        console.log(`  ✅ Successfully inserted TopX game: ${data.id}`);
+        successCount++;
+      }
+    } catch (error) {
+      console.error(`  ❌ Error generating TopX game for "${gameData.prompt}":`, error);
+      errorCount++;
+    }
+  }
+
+  console.log('\n📈 TopX Games Seeding Summary:');
+  console.log(`   Total games processed: ${totalGames}`);
+  console.log(`   Successfully inserted: ${successCount}`);
+  console.log(`   Errors: ${errorCount}`);
+
+  console.log('\n🎉 TopX games seeding completed!');
+}
+
 // Run the seeding process
-seedLetteredGames().catch((error) => {
-  console.error('💥 Fatal error during seeding:', error);
-  process.exit(1);
-});
+async function runSeeding() {
+  try {
+    console.log('🌱 Starting complete seeding process...\n');
+
+    await seedLetteredGames();
+    console.log('\n' + '='.repeat(50) + '\n');
+    await seedTopXGames();
+
+    console.log('\n🎉 All seeding completed successfully!');
+  } catch (error) {
+    console.error('💥 Fatal error during seeding:', error);
+    process.exit(1);
+  }
+}
+
+runSeeding();

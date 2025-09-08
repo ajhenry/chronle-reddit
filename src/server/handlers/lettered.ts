@@ -3,7 +3,6 @@ import { z } from 'zod';
 import { createHash } from 'crypto';
 import {
   LetteredDailyGameResponse,
-  LetteredGameCompleteResponse,
   LetteredGameSessionResponse,
   GridPosition,
   LetterPiece,
@@ -11,7 +10,6 @@ import {
   LetteredPostGameResponse,
 } from '../../shared/types/api';
 import { calculateDecayedScore } from '../../shared/score-decay';
-import { supabase } from '../../shared/supabase-server';
 import { ensureUserExistsAndGetId } from '../lib/user-helpers';
 import {
   getTodaysLetteredGame,
@@ -22,7 +20,6 @@ import {
   getTotalLetteredSubmissionsForToday,
 } from '../database/lettered';
 import { getOrCreateTodaysGame } from '../database/game';
-import { recordLeaderboardEntry } from '../lib/leaderboard-helpers';
 
 // Zod schema for validating the payload
 const gridPositionSchema = z.object({
@@ -148,7 +145,7 @@ router.get('/api/lettered/game', async (_req, res): Promise<void> => {
     const existingSession = await getOrCreateUserLetteredSessionForToday(userId);
 
     // User has an existing session, get the latest board state submission
-    const latestSubmission = await getLatestLetteredSubmissionForToday(existingSession.id);
+    const latestSubmission = await getLatestLetteredSubmissionForToday(userId);
 
     let currentScore = existingSession.initialScore;
     let placedPieces: Record<string, { pieceId: string; position: GridPosition }> = {};

@@ -45,7 +45,7 @@ export const getOrCreateTodaysGame = async (): Promise<DailyGame> => {
   const { data, error } = await supabase.from('daily_games').select('*').eq('day', today).single();
 
   // If the daily game doesn't exist, create it
-  if (!data && error.message.includes('PGRST116')) {
+  if ((!data && error?.message.includes('PGRST116')) || error?.code === 'PGRST116') {
     return await createDailyGame();
   }
 

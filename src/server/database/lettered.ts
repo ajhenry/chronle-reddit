@@ -176,9 +176,13 @@ export const getOrCreateLetteredSessionForToday = async (
     .from('lettered_sessions')
     .select('*')
     .eq('daily_game_id', dailyGame.id)
+    .eq('user_id', userId)
     .single();
 
-  if (!data && error.message.includes('PGRST116')) {
+  console.log('data', data);
+  console.log('error', error);
+
+  if (error?.message.includes('PGRST116') || error?.code === 'PGRST116') {
     return await createLetteredSession(userId);
   }
 
@@ -238,15 +242,17 @@ export const getLetteredSubmissionsForToday = async (
 export const getOrCreateUserLetteredSessionForToday = async (
   userId: string
 ): Promise<LetteredSession> => {
+  console.log('getOrCreateUserLetteredSessionForToday', { userId });
   const dailyGame = await getOrCreateTodaysGame();
 
   const { data, error } = await supabase
     .from('lettered_sessions')
     .select('*')
     .eq('daily_game_id', dailyGame.id)
+    .eq('user_id', userId)
     .single();
 
-  if (!data && error.message.includes('PGRST116')) {
+  if (error?.message.includes('PGRST116') || error?.code === 'PGRST116') {
     return await createLetteredSession(userId);
   }
 
@@ -259,7 +265,18 @@ export const getOrCreateUserLetteredSessionForToday = async (
 };
 
 export const createLetteredSession = async (userId: string): Promise<LetteredSession> => {
+  console.log('createLetteredSession', { userId });
   const dailyGame = await getOrCreateTodaysGame();
+
+  if (userId.includes('letteredsession_')) {
+    throw new Error('User already has a lettered session');
+  }
+
+  console.log('dailyGame', {
+    initial_score: DEFAULT_INITIAL_SCORE,
+    user_id: userId,
+    daily_game_id: dailyGame.id,
+  });
 
   const { data, error } = await supabase
     .from('lettered_sessions')
