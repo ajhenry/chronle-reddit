@@ -184,7 +184,7 @@ export const Combobox: React.FC<ComboboxProps> = ({
         disabled={disabled}
         placeholder={placeholder}
         className={cn(
-          'flex h-12 w-full rounded-none border-2 border-input bg-background px-4 py-3 text-sm font-medium ring-offset-background',
+          'flex h-12 w-full rounded-none border-2 border-input bg-background px-4 py-3 text-sm font-medium text-foreground ring-offset-background',
           'placeholder:text-muted-foreground',
           'focus-visible:outline-4 focus-visible:outline-ring focus-visible:outline-offset-2 focus-visible:shadow-md',
           'disabled:cursor-not-allowed disabled:opacity-50',
