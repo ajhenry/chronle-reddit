@@ -286,6 +286,50 @@ body {
   background-color: #ec4899;
 }
 
+.piece-color-yellow {
+  background-color: #eab308;
+}
+
+.piece-color-green {
+  background-color: #22c55e;
+}
+
+.piece-color-teal {
+  background-color: #14b8a6;
+}
+
+.piece-color-sky {
+  background-color: #0ea5e9;
+}
+
+.piece-color-indigo {
+  background-color: #6366f1;
+}
+
+.piece-color-purple {
+  background-color: #a855f7;
+}
+
+.piece-color-fuchsia {
+  background-color: #d946ef;
+}
+
+.piece-color-rose {
+  background-color: #f43f5e;
+}
+
+.piece-color-gray {
+  background-color: #6b7280;
+}
+
+.piece-color-slate {
+  background-color: #64748b;
+}
+
+.piece-color-zinc {
+  background-color: #71717a;
+}
+
 /* Mobile touch handling improvements */
 body.no-scroll {
   overflow: hidden;

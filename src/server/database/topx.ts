@@ -190,7 +190,7 @@ export const getOrCreateTodaysTopXSession = async (userId: string): Promise<TopX
     .single();
 
   if (error) {
-    if (error.code === 'PGRST116') {
+    if (error.code === 'PGRST116' || error.message.includes('PGRST116')) {
       console.log('No session found for today, creating one');
       // No session found for today
       return await createTopXSession(userId, dailyGame.id);
