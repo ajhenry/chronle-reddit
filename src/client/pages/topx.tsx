@@ -173,6 +173,9 @@ export const TopXPage = ({ onBack }: { onBack?: () => void }) => {
     null
   );
 
+  // Flag to track if this is a reloaded completed game
+  const [isReloadedCompletedGame, setIsReloadedCompletedGame] = useState(false);
+
   const [gameState, setGameState] = useState<GameState>({
     score: DEFAULT_INITIAL_SCORE,
     initialScore: DEFAULT_INITIAL_SCORE,
@@ -312,6 +315,11 @@ export const TopXPage = ({ onBack }: { onBack?: () => void }) => {
           initialScore = dailyGame.session.initialScore;
           gameComplete = dailyGame.session.isCompleted;
 
+          // Check if this is a reloaded completed game
+          if (dailyGame.session.isCompleted) {
+            setIsReloadedCompletedGame(true);
+          }
+
           // Restore previous submissions and answers
           submissions = dailyGame.session.submissions.map((sub) => ({
             answer: sub.answer,
@@ -395,12 +403,7 @@ export const TopXPage = ({ onBack }: { onBack?: () => void }) => {
           gameWon: gameComplete && guessedAnswers.length === dailyGame.game.count,
         }));
 
-        // If game is already completed, show the modal after a brief delay
-        if (gameComplete) {
-          setTimeout(() => {
-            setShowGameOverModal(true);
-          }, 250);
-        }
+        // Note: For completed games, users can click "View Stats" button instead of auto-showing modal
 
         setError(null);
       } catch (err) {
@@ -430,7 +433,7 @@ export const TopXPage = ({ onBack }: { onBack?: () => void }) => {
 
   // Show game over modal when game completes
   useEffect(() => {
-    if (gameState.gameComplete) {
+    if (gameState.gameComplete && !isReloadedCompletedGame) {
       if (gameState.gameWon) {
         // For wins: brief pause, then confetti, then modal
         toast.success('🎉 Amazing!', {
@@ -795,8 +798,31 @@ export const TopXPage = ({ onBack }: { onBack?: () => void }) => {
         </div>
       )}
 
+      {/* Completion Banner for Reloaded Games */}
+      {isReloadedCompletedGame && (
+        <div className="p-4 mb-4 rounded-lg border-2 border-foreground">
+          <div className="flex flex-col gap-3 sm:flex-row sm:justify-between sm:items-center">
+            <div className="flex items-center space-x-3">
+              <div>
+                <div className="font-semibold text-foreground">Puzzle Solved</div>
+                <div className="text-sm text-muted-foreground">
+                  Check back in tomorrow for a new puzzle
+                </div>
+              </div>
+            </div>
+            <Button
+              onClick={() => setShowGameOverModal(true)}
+              variant="outline"
+              className="self-start w-full sm:self-auto sm:w-auto"
+            >
+              View Stats
+            </Button>
+          </div>
+        </div>
+      )}
+
       {/* Attempts Counter */}
-      {gameState.attemptsLeft !== undefined && (
+      {gameState.attemptsLeft !== undefined && !gameState.gameComplete && (
         <div className="mx-auto mb-6 max-w-2xl">
           <div className="text-center">
             <Card className="inline-block px-4 py-2">
@@ -969,64 +995,7 @@ export const TopXPage = ({ onBack }: { onBack?: () => void }) => {
           setShowGoldShimmer(false);
           void resetGame();
         }}
-      >
-        {/* Correct Answers Found */}
-        {gameState.guessedAnswers.length > 0 && (
-          <div>
-            <h4 className="mb-2 text-sm font-semibold text-green-700">✅ Correct Answers Found:</h4>
-            <div className="space-y-1">
-              {gameState.guessedAnswers
-                .sort((a, b) => a.position - b.position)
-                .map((guessedAnswer) => (
-                  <div
-                    key={guessedAnswer.answer}
-                    className="px-2 py-1 text-sm text-green-600 bg-green-50 rounded"
-                  >
-                    {guessedAnswer.position}. {guessedAnswer.answer}
-                  </div>
-                ))}
-            </div>
-          </div>
-        )}
-
-        {/* Incorrect Answers */}
-        {gameState.incorrectAnswers.length > 0 && (
-          <div>
-            <h4 className="mb-2 text-sm font-semibold text-red-700">❌ Incorrect Guesses:</h4>
-            <div className="space-y-1">
-              {gameState.incorrectAnswers.map((answer) => (
-                <div key={answer} className="px-2 py-1 text-sm text-red-600 bg-red-50 rounded">
-                  {answer}
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
-
-        {/* Show missed answers for losses */}
-        {!gameState.gameWon && gameData && (
-          <div>
-            <h4 className="mb-2 text-sm font-semibold text-blue-700">
-              🎯 Correct Answers You Missed:
-            </h4>
-            <div className="space-y-1">
-              {(gameData.solution || [])
-                .filter((answer) => !gameState.guessedAnswers.some((ga) => ga.answer === answer))
-                .map((answer) => {
-                  const position = (gameData.solution || []).indexOf(answer) + 1;
-                  return (
-                    <div
-                      key={answer}
-                      className="px-2 py-1 text-sm text-blue-600 bg-blue-50 rounded"
-                    >
-                      {position}. {answer}
-                    </div>
-                  );
-                })}
-            </div>
-          </div>
-        )}
-      </PostGameModal>
+      ></PostGameModal>
     </GameLayout>
   );
 };
