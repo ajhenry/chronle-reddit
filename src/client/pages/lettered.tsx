@@ -6,6 +6,7 @@ import { CardContent } from '../components/ui/card';
 import { Button } from '../components/ui/button';
 import { PostGameModal } from '../components/PostGameModal';
 import { LetteredLoadingAnimation } from '../components/LetteredLoadingAnimation';
+import { LetteredInstructionsDialog } from '../components/LetteredInstructionsDialog';
 import { LetteredGameData, GridPosition, LetterPiece, GridCell } from '../../shared/types/api';
 import { DEFAULT_INITIAL_SCORE } from '../../shared/score-decay';
 import { isDevelopment } from '../lib/dev-utils';
@@ -203,6 +204,7 @@ interface UIState {
 export const LetteredPage = ({ onBack }: { onBack?: () => void }) => {
   const [showDevButtons, setShowDevButtons] = useState(false);
   const [, setShowGoldShimmer] = useState(false);
+  const [showInstructions, setShowInstructions] = useState(false);
   const [gameData, setGameData] = useState<LetteredGameData | null>(null);
   const [dailyGameId, setDailyGameId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
@@ -743,6 +745,7 @@ export const LetteredPage = ({ onBack }: { onBack?: () => void }) => {
       score={gameScore}
       onBack={handleBackToMenu}
       onLeaderboard={() => setUIState((prev) => ({ ...prev, showGameOverModal: true }))}
+      onHelp={() => setShowInstructions(true)}
       logoSrc="/lettered-logo.png"
     >
       {/* Development Controls */}
@@ -882,6 +885,9 @@ export const LetteredPage = ({ onBack }: { onBack?: () => void }) => {
           resetGame();
         }}
       />
+
+      {/* Instructions Dialog */}
+      <LetteredInstructionsDialog open={showInstructions} onOpenChange={setShowInstructions} />
     </GameLayout>
   );
 };

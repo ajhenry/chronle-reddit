@@ -189,13 +189,13 @@ export const Combobox: React.FC<ComboboxProps> = ({
         disabled={disabled}
         placeholder={placeholder}
         className={cn(
-          'flex h-12 w-full rounded-none border-2 border-input bg-background px-4 py-3 text-sm font-medium text-foreground ring-offset-background',
+          'flex h-16 w-full rounded-none border-2 border-input bg-background px-4 py-3 text-LG font-medium text-foreground ring-offset-background',
           'placeholder:text-muted-foreground',
           'focus-visible:outline-4 focus-visible:outline-ring focus-visible:outline-offset-2 focus-visible:shadow-md',
           'disabled:cursor-not-allowed disabled:opacity-50',
           'transition-all duration-200 hover:shadow-md hover:transform hover:-translate-x-0.5 hover:-translate-y-0.5',
           isOpen && 'shadow-md transform -translate-x-0.5 -translate-y-0.5',
-          mobileSticky && 'rounded-none'
+          mobileSticky && 'rounded-none '
         )}
         autoComplete="off"
         role="combobox"

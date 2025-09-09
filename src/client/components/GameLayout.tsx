@@ -12,6 +12,7 @@ interface GameLayoutProps {
   children: ReactNode;
   onBack: () => void;
   onLeaderboard?: () => void;
+  onHelp?: () => void;
   logoSrc?: string;
   className?: string;
 }
@@ -91,6 +92,7 @@ export const GameLayout = ({
   children,
   onBack,
   onLeaderboard,
+  onHelp,
   logoSrc = '/top-x-logo.png',
   className,
 }: GameLayoutProps) => {
@@ -135,7 +137,17 @@ export const GameLayout = ({
             </Button>
 
             {/* Help Button */}
-            <Button variant="outline" size="icon" onClick={() => setShowHelpModal(true)}>
+            <Button
+              variant="outline"
+              size="icon"
+              onClick={() => {
+                if (onHelp) {
+                  onHelp();
+                } else {
+                  setShowHelpModal(true);
+                }
+              }}
+            >
               <svg
                 width="20"
                 height="20"
