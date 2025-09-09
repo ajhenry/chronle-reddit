@@ -5,6 +5,7 @@ import { toast } from 'sonner';
 import { CardContent } from '../components/ui/card';
 import { Button } from '../components/ui/button';
 import { PostGameModal } from '../components/PostGameModal';
+import { LetteredLoadingAnimation } from '../components/LetteredLoadingAnimation';
 import { LetteredGameData, GridPosition, LetterPiece, GridCell } from '../../shared/types/api';
 import { DEFAULT_INITIAL_SCORE } from '../../shared/score-decay';
 import { isDevelopment } from '../lib/dev-utils';
@@ -711,7 +712,7 @@ export const LetteredPage = ({ onBack }: { onBack?: () => void }) => {
         logoSrc="/lettered-logo.png"
       >
         <CardContent className="flex justify-center items-center p-8">
-          <div className="text-lg font-medium text-foreground">Loading today's puzzle...</div>
+          <LetteredLoadingAnimation />
         </CardContent>
       </GameLayout>
     );
@@ -778,13 +779,6 @@ export const LetteredPage = ({ onBack }: { onBack?: () => void }) => {
         </div>
       )}
 
-      {/* Category Display */}
-      <div className="mb-4 text-center">
-        <div className="text-2xl font-black tracking-wide uppercase text-foreground">
-          {gameData.category}
-        </div>
-      </div>
-
       {/* Completion Banner for Reloaded Games */}
       {isReloadedCompletedGame && (
         <div className="p-4 mb-4 rounded-lg border-2 border-foreground">
@@ -807,6 +801,13 @@ export const LetteredPage = ({ onBack }: { onBack?: () => void }) => {
           </div>
         </div>
       )}
+
+      {/* Category Display */}
+      <div className="mb-4 text-center">
+        <div className="text-2xl font-black tracking-wide uppercase text-foreground">
+          {gameData.category}
+        </div>
+      </div>
 
       {/* Game Content */}
       <div className="flex justify-center">

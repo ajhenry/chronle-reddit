@@ -10,6 +10,7 @@ import { Card, CardContent } from '../components/ui/card';
 import { Button } from '../components/ui/button';
 import { Combobox, ComboboxOption } from '../components/ui/combobox';
 import { PostGameModal } from '../components/PostGameModal';
+import { TopXLoadingAnimation } from '../components/TopXLoadingAnimation';
 import {
   TopXGame,
   TopXDailyGameResponse,
@@ -478,7 +479,7 @@ export const TopXPage = ({ onBack }: { onBack?: () => void }) => {
         return () => clearTimeout(timer);
       }
     }
-  }, [gameState.gameComplete, gameState.gameWon]);
+  }, [gameState.gameComplete, gameState.gameWon, isReloadedCompletedGame]);
 
   // Function to trigger shake animation
   const triggerShake = () => {
@@ -716,7 +717,7 @@ export const TopXPage = ({ onBack }: { onBack?: () => void }) => {
         logoSrc="/top-x-logo.png"
       >
         <CardContent className="flex justify-center items-center p-8">
-          <div className="text-lg font-medium text-card-foreground">Loading today's game...</div>
+          <TopXLoadingAnimation />
         </CardContent>
       </GameLayout>
     );
