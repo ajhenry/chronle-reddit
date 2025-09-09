@@ -2,6 +2,7 @@ import { ReactNode, useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Button } from './ui/button';
 import { Card, CardContent } from './ui/card';
+import { cn } from '../lib/utils';
 
 interface GameLayoutProps {
   gameTitle: string;
@@ -12,6 +13,7 @@ interface GameLayoutProps {
   onBack: () => void;
   onLeaderboard?: () => void;
   logoSrc?: string;
+  className?: string;
 }
 
 const AnimatedNumber = ({ value }: { value: number }) => {
@@ -90,11 +92,12 @@ export const GameLayout = ({
   onBack,
   onLeaderboard,
   logoSrc = '/top-x-logo.png',
+  className,
 }: GameLayoutProps) => {
   const [showHelpModal, setShowHelpModal] = useState(false);
 
   return (
-    <div className="p-4 min-h-screen bg-background">
+    <div className={cn('p-4 min-h-screen bg-background', className)}>
       {/* Top Bar */}
       <div className="mx-auto mb-6 max-w-2xl">
         <div className="flex justify-between items-center">

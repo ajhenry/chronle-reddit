@@ -16,6 +16,7 @@ export type ComboboxProps = {
   className?: string;
   maxHeight?: number;
   filterFunction?: (option: ComboboxOption, query: string) => boolean;
+  mobileSticky?: boolean;
 };
 
 const defaultFilterFunction = (option: ComboboxOption, query: string): boolean => {
@@ -32,6 +33,7 @@ export const Combobox: React.FC<ComboboxProps> = ({
   className,
   maxHeight = 200,
   filterFunction = defaultFilterFunction,
+  mobileSticky = false,
 }) => {
   const [isOpen, setIsOpen] = useState(false);
   const [query, setQuery] = useState('');
@@ -173,7 +175,10 @@ export const Combobox: React.FC<ComboboxProps> = ({
   }, [focusedIndex, isOpen]);
 
   return (
-    <div ref={comboboxRef} className={cn('relative', className)}>
+    <div
+      ref={comboboxRef}
+      className={cn('relative', mobileSticky && 'fixed bottom-0 left-0 right-0 z-50', className)}
+    >
       <input
         ref={inputRef}
         type="text"
@@ -189,7 +194,8 @@ export const Combobox: React.FC<ComboboxProps> = ({
           'focus-visible:outline-4 focus-visible:outline-ring focus-visible:outline-offset-2 focus-visible:shadow-md',
           'disabled:cursor-not-allowed disabled:opacity-50',
           'transition-all duration-200 hover:shadow-md hover:transform hover:-translate-x-0.5 hover:-translate-y-0.5',
-          isOpen && 'shadow-md transform -translate-x-0.5 -translate-y-0.5'
+          isOpen && 'shadow-md transform -translate-x-0.5 -translate-y-0.5',
+          mobileSticky && 'rounded-none'
         )}
         autoComplete="off"
         role="combobox"
@@ -202,11 +208,14 @@ export const Combobox: React.FC<ComboboxProps> = ({
         <div
           ref={listRef}
           className={cn(
-            'absolute top-full left-0 right-0 z-50 mt-1',
-            'bg-background border-2 border-border rounded-none shadow-lg',
+            'absolute right-0 left-0 z-50',
+            mobileSticky ? 'bottom-full mb-0 rounded-none border-t-2 border-b-0' : 'top-full mt-1',
+            'rounded-none border-2 bg-background border-border',
             'overflow-y-auto'
           )}
-          style={{ maxHeight }}
+          style={{
+            maxHeight: mobileSticky ? Math.min(maxHeight, window.innerHeight * 0.4) : maxHeight,
+          }}
           role="listbox"
         >
           {filteredOptions.map((option, index) => (
@@ -232,8 +241,9 @@ export const Combobox: React.FC<ComboboxProps> = ({
       {isOpen && filteredOptions.length === 0 && query.trim() && (
         <div
           className={cn(
-            'absolute top-full left-0 right-0 z-50 mt-1',
-            'bg-background border-2 border-border rounded-none shadow-lg',
+            'absolute right-0 left-0 z-50',
+            mobileSticky ? 'bottom-full mb-0 rounded-none' : 'top-full mt-1',
+            'mb-2 rounded-none border-2 bg-background border-border',
             'px-4 py-3 text-sm text-muted-foreground'
           )}
         >

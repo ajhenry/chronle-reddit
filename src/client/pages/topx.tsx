@@ -5,6 +5,7 @@ import Confetti from 'react-confetti';
 import { GameLayout } from '../components/GameLayout';
 import { toast } from 'sonner';
 import { calculateDecayedScore, DEFAULT_INITIAL_SCORE } from '../../shared/score-decay';
+import { useViewport } from '../hooks/useViewport';
 
 import { Card, CardContent } from '../components/ui/card';
 import { Button } from '../components/ui/button';
@@ -21,6 +22,7 @@ import {
 } from '../../shared/types/api';
 import { apiFetch, findValidAnswerPosition } from '../lib/utils';
 import { isDevelopment } from '../lib/dev-utils';
+import { cn } from '../lib/utils';
 
 // Animated number component for smooth transitions
 const AnimatedNumber = ({ value }: { value: number }) => {
@@ -161,6 +163,8 @@ interface GameState {
 }
 
 export const TopXPage = ({ onBack }: { onBack?: () => void }) => {
+  const { breakpoint } = useViewport();
+  const isMobile = breakpoint === 'xs';
   const answerListRef = useRef<HTMLDivElement>(null);
   const [showDevButtons, setShowDevButtons] = useState(false);
   const [showGoldShimmer, setShowGoldShimmer] = useState(false);
@@ -753,6 +757,7 @@ export const TopXPage = ({ onBack }: { onBack?: () => void }) => {
       onBack={handleBackToMenu}
       onLeaderboard={() => console.log('Leaderboard clicked')}
       logoSrc="/top-x-logo.png"
+      className={isMobile && !gameState.gameComplete ? 'pb-16' : ''}
     >
       {/* Development Controls */}
       {isDevelopment() && (
@@ -842,7 +847,7 @@ export const TopXPage = ({ onBack }: { onBack?: () => void }) => {
       )}
 
       {/* Game Content */}
-      <div className="space-y-6">
+      <div className={cn('space-y-6', isMobile && !gameState.gameComplete && 'pb-16')}>
         {/* Prompt */}
         <h2 className="text-3xl font-black tracking-tight text-center text-foreground">
           {gameData.prompt}
@@ -850,7 +855,7 @@ export const TopXPage = ({ onBack }: { onBack?: () => void }) => {
 
         {/* Answer Input Combobox */}
         {!gameState.gameComplete && (
-          <div className={gameState.isShaking ? 'animate-shake' : ''}>
+          <div className={cn(gameState.isShaking ? 'animate-shake' : '')}>
             <Combobox
               options={comboboxOptions}
               value={gameState.currentInput}
@@ -859,6 +864,7 @@ export const TopXPage = ({ onBack }: { onBack?: () => void }) => {
               placeholder="Type to search for your answer..."
               disabled={gameState.gameComplete}
               maxHeight={240}
+              mobileSticky={isMobile}
             />
           </div>
         )}
