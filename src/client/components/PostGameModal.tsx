@@ -60,7 +60,7 @@ export const PostGameModal: React.FC<PostGameModalProps> = ({
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
       <DialogContent
-        className="p-0 border-4 border-black bg-card sm:max-w-lg max-h-[100vh] flex flex-col mt-4 overflow-y-visible"
+        className="p-0 border-4 border-black bg-card sm:max-w-lg h-auto max-h-[100vh] flex flex-col mt-4 overflow-y-visible"
         hideCloseButton
       >
         <DialogClose className="absolute top-4 right-4 z-30 text-white rounded-sm transition-colors hover:text-white/80 focus:outline-none focus:ring-2 focus:ring-white focus:ring-offset-2 focus:ring-offset-black disabled:pointer-events-none">

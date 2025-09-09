@@ -157,7 +157,13 @@ export const App = () => {
                           <span className="text-sm font-bold tracking-wide">PRESEASON</span>
                         </div>
                         <div className="py-4 border-4 bg-primary border-border">
-                          <h1 className="text-6xl font-black tracking-tight leading-none text-black">
+                          <h1
+                            className="text-6xl font-black tracking-tight leading-none text-black"
+                            style={{
+                              fontFamily: 'Archivo Black, sans-serif',
+                              letterSpacing: '-0.05em',
+                            }}
+                          >
                             SNOODLE
                           </h1>
                         </div>

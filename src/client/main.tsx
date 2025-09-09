@@ -1,4 +1,5 @@
 import './globals.css';
+import '@fontsource/archivo-black';
 
 import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';

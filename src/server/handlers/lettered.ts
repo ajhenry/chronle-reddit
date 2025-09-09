@@ -144,11 +144,23 @@ router.get('/api/lettered/game', async (_req, res): Promise<void> => {
     // First try to get existing session
     const existingSession = await getOrCreateUserLetteredSessionForToday(userId);
 
+    console.log('existingSession', existingSession);
+
     // User has an existing session, get the latest board state submission
     const latestSubmission = await getLatestLetteredSubmissionForToday(userId);
 
-    let currentScore = existingSession.initialScore;
+    // Calculate current score based on the startedAt time
+    const gameStartTime = new Date(existingSession.startedAt).getTime();
+    const now = Date.now();
+    const elapsedSeconds = Math.max(0, (now - gameStartTime) / 1000);
+    const currentScore = calculateDecayedScore({
+      initialScore: existingSession.initialScore,
+      elapsedSeconds,
+      gameType: 'lettered',
+      placedPieces: Object.keys(latestSubmission?.boardState.placedPieces || {}).length,
+    });
     let placedPieces: Record<string, { pieceId: string; position: GridPosition }> = {};
+    console.log('currentScore', currentScore);
 
     if (latestSubmission) {
       const boardState = latestSubmission.boardState;
@@ -164,20 +176,6 @@ router.get('/api/lettered/game', async (_req, res): Promise<void> => {
         },
         {} as Record<string, { pieceId: string; position: GridPosition }>
       );
-
-      // Use the score from the latest submission if game is not completed
-      if (!existingSession.isCompleted) {
-        const elapsedSeconds = Math.max(
-          0,
-          (new Date().getTime() - new Date(existingSession.startedAt).getTime()) / 1000
-        );
-        currentScore = calculateDecayedScore({
-          initialScore: existingSession.initialScore,
-          elapsedSeconds: elapsedSeconds,
-          gameType: 'lettered',
-          placedPieces: Object.keys(placedPieces).length,
-        });
-      }
     }
 
     const sessionData: LetteredGameSessionResponse = {
