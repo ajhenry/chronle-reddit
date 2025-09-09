@@ -24,6 +24,7 @@ export type TopXGame = {
   solution?: string[];
   category: string;
   count: number;
+  maxAttempts: number;
   suggestions: string[];
   solutionHash: Record<string, boolean>; // Hash map of valid answer combinations
   createdAt: string;
@@ -86,13 +87,14 @@ export type TopXDailyGameResponse = {
 export type TopXAttemptRequest = {
   answer: string;
   timestamp: number;
-  position?: number; // Position where the client thinks the answer should go
 };
 
 export type TopXSubmissionResponse = {
   type: 'topx_submission';
   submissionId: string;
   accepted: boolean; // Whether submission was recorded (not validation)
+  attemptsLeft?: number; // Remaining attempts after this submission
+  gameCompleted?: boolean; // Whether the game was completed by this submission
 };
 
 export type TopXGameCompleteResponse = {

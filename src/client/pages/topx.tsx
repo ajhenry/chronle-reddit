@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
+import { motion, AnimatePresence } from 'framer-motion';
 import pluralize from 'pluralize';
 import Confetti from 'react-confetti';
 import { GameLayout } from '../components/GameLayout';
@@ -8,13 +9,7 @@ import { calculateDecayedScore, DEFAULT_INITIAL_SCORE } from '../../shared/score
 import { Card, CardContent } from '../components/ui/card';
 import { Button } from '../components/ui/button';
 import { Combobox, ComboboxOption } from '../components/ui/combobox';
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogDescription,
-} from '../components/ui/dialog';
+import { PostGameModal } from '../components/PostGameModal';
 import {
   TopXGame,
   TopXDailyGameResponse,
@@ -25,6 +20,74 @@ import {
 } from '../../shared/types/api';
 import { apiFetch, findValidAnswerPosition } from '../lib/utils';
 import { isDevelopment } from '../lib/dev-utils';
+
+// Animated number component for smooth transitions
+const AnimatedNumber = ({ value }: { value: number }) => {
+  const [displayValue, setDisplayValue] = useState(value);
+  const [previousValue, setPreviousValue] = useState(value);
+  const [isAnimating, setIsAnimating] = useState(false);
+
+  useEffect(() => {
+    if (value !== displayValue) {
+      setPreviousValue(displayValue);
+      setDisplayValue(value);
+      setIsAnimating(true);
+
+      // Reset animation state after animation completes
+      const timer = setTimeout(() => {
+        setIsAnimating(false);
+      }, 600); // Match the animation duration
+
+      return () => clearTimeout(timer);
+    }
+  }, [value, displayValue]);
+
+  return (
+    <span className="inline-block relative number-container">
+      <AnimatePresence mode="wait">
+        {isAnimating ? (
+          <>
+            <motion.span
+              key={`out-${previousValue}`}
+              initial={{ y: 0, opacity: 1 }}
+              animate={{ y: -24, opacity: 0 }}
+              exit={{ y: -24, opacity: 0 }}
+              transition={{
+                duration: 0.6,
+                ease: [0.68, -0.55, 0.265, 1.55],
+              }}
+              className="flex absolute inset-0 justify-center items-center"
+            >
+              {previousValue}
+            </motion.span>
+            <motion.span
+              key={`in-${displayValue}`}
+              initial={{ y: 24, opacity: 0 }}
+              animate={{ y: 0, opacity: 1 }}
+              exit={{ y: 0, opacity: 1 }}
+              transition={{
+                duration: 0.6,
+                ease: [0.68, -0.55, 0.265, 1.55],
+              }}
+              className="flex absolute inset-0 justify-center items-center"
+            >
+              {displayValue}
+            </motion.span>
+          </>
+        ) : (
+          <motion.span
+            key={`static-${displayValue}`}
+            initial={{ opacity: 1 }}
+            animate={{ opacity: 1 }}
+            className="flex absolute inset-0 justify-center items-center"
+          >
+            {displayValue}
+          </motion.span>
+        )}
+      </AnimatePresence>
+    </span>
+  );
+};
 
 // API functions for daily TopX game
 const fetchTodaysGame = async (): Promise<TopXDailyGameResponse> => {
@@ -43,15 +106,13 @@ const fetchTodaysGame = async (): Promise<TopXDailyGameResponse> => {
 const submitAttempt = async (
   answer: string,
   timestamp: number,
-  gameId: string,
-  position?: number
+  gameId: string
 ): Promise<TopXSubmissionResponse> => {
   const response = await apiFetch(`/api/topx/${gameId}/attempt`, {
     method: 'POST',
     body: JSON.stringify({
       answer,
       timestamp,
-      position,
     }),
   });
   if (!response.ok) {
@@ -79,6 +140,7 @@ interface GameState {
   score: number;
   initialScore: number;
   attempts: number;
+  attemptsLeft?: number;
   maxAttempts: number;
   guessedAnswers: GuessedAnswer[];
   incorrectAnswers: string[];
@@ -97,7 +159,7 @@ interface GameState {
   currentAnswerState: string[]; // Current state of answers with empty strings for unfilled positions
 }
 
-export const TopPage = ({ onBack }: { onBack?: () => void }) => {
+export const TopXPage = ({ onBack }: { onBack?: () => void }) => {
   const answerListRef = useRef<HTMLDivElement>(null);
   const [showDevButtons, setShowDevButtons] = useState(false);
   const [showGoldShimmer, setShowGoldShimmer] = useState(false);
@@ -114,13 +176,13 @@ export const TopPage = ({ onBack }: { onBack?: () => void }) => {
   const [gameState, setGameState] = useState<GameState>({
     score: DEFAULT_INITIAL_SCORE,
     initialScore: DEFAULT_INITIAL_SCORE,
-    attempts: 1,
-    maxAttempts: 5,
-    guessedAnswers: [],
-    incorrectAnswers: [],
+    attempts: 0,
+    maxAttempts: 5, // Will be initialized when game data loads
+    guessedAnswers: [], // Will be initialized when game data loads
+    incorrectAnswers: [], // Will be initialized when game data loads
     currentInput: '',
     gameComplete: false,
-    gameWon: false,
+    gameWon: false, // Will be initialized when game data loads
     isShaking: false,
     showConfetti: false,
     gameStartTime: null,
@@ -129,7 +191,7 @@ export const TopPage = ({ onBack }: { onBack?: () => void }) => {
   });
 
   // Use count and category directly from server data
-  const number = gameData?.count ?? 3;
+  const topXAnswers = gameData?.count ?? 3;
   const category = gameData?.category ?? 'items';
 
   // Create combobox options from suggestions, excluding already guessed/incorrect answers
@@ -144,6 +206,34 @@ export const TopPage = ({ onBack }: { onBack?: () => void }) => {
         value: suggestion,
         label: suggestion,
       })) || [];
+
+  // Log initial game state after session restoration (only once when both values are set)
+  const hasLoggedInitialState = useRef(false);
+  useEffect(() => {
+    if (
+      gameState.gameStartTime &&
+      gameState.maxAttempts !== undefined &&
+      !hasLoggedInitialState.current
+    ) {
+      hasLoggedInitialState.current = true;
+      console.log('🎮 TopX Game State Initialized:', {
+        score: gameState.score,
+        initialScore: gameState.initialScore,
+        attempts: gameState.attempts,
+        maxAttempts: gameState.maxAttempts,
+        attemptsLeft: gameState.maxAttempts
+          ? gameState.maxAttempts - (gameState.attempts || 0)
+          : 'N/A',
+        guessedAnswers: gameState.guessedAnswers,
+        incorrectAnswers: gameState.incorrectAnswers,
+        currentAnswerState: gameState.currentAnswerState,
+        gameComplete: gameState.gameComplete,
+        gameWon: gameState.gameWon,
+        gameStartTime: gameState.gameStartTime,
+        submissionsCount: gameState.submissions.length,
+      });
+    }
+  }, [gameState.gameStartTime, gameState.maxAttempts]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Real-time score updating effect
   useEffect(() => {
@@ -209,6 +299,14 @@ export const TopPage = ({ onBack }: { onBack?: () => void }) => {
 
         if (dailyGame.session) {
           // Restore from existing session
+          console.log('🔄 Restoring session:', {
+            sessionId: dailyGame.session.id,
+            hasCorrectSolutionMap: !!dailyGame.session.correctSolutionMap,
+            hasIncorrectAnswers: !!dailyGame.session.incorrectAnswers,
+            correctSolutionMap: dailyGame.session.correctSolutionMap,
+            incorrectAnswers: dailyGame.session.incorrectAnswers,
+          });
+
           startTime = new Date(dailyGame.session.startedAt).getTime();
           score = dailyGame.session.currentScore ?? DEFAULT_INITIAL_SCORE;
           initialScore = dailyGame.session.initialScore;
@@ -223,6 +321,8 @@ export const TopPage = ({ onBack }: { onBack?: () => void }) => {
 
           // Use server's authoritative data when available
           if (dailyGame.session.correctSolutionMap && dailyGame.session.incorrectAnswers) {
+            console.log('✅ Using server authoritative data for session restoration');
+
             // Use correctSolutionMap to build guessedAnswers with correct positions
             for (let i = 0; i < dailyGame.session.correctSolutionMap.length; i++) {
               const answer = dailyGame.session.correctSolutionMap[i];
@@ -237,6 +337,7 @@ export const TopPage = ({ onBack }: { onBack?: () => void }) => {
             // Use server's incorrectAnswers directly
             incorrectAnswers.push(...dailyGame.session.incorrectAnswers);
           } else {
+            console.log('⚠️ Server authoritative data not available, using fallback logic');
             // Fallback: rebuild from submissions using correctness flags
             for (const sub of dailyGame.session.submissions) {
               if (sub.isCorrect) {
@@ -282,12 +383,15 @@ export const TopPage = ({ onBack }: { onBack?: () => void }) => {
           ...prev,
           score,
           initialScore,
+          attempts: incorrectAnswers.length,
+          attemptsLeft: dailyGame.session.attemptsLeft,
           gameStartTime: startTime,
           gameComplete,
           guessedAnswers,
           incorrectAnswers,
           submissions,
           currentAnswerState,
+          maxAttempts: dailyGame.game.maxAttempts,
           gameWon: gameComplete && guessedAnswers.length === dailyGame.game.count,
         }));
 
@@ -295,7 +399,7 @@ export const TopPage = ({ onBack }: { onBack?: () => void }) => {
         if (gameComplete) {
           setTimeout(() => {
             setShowGameOverModal(true);
-          }, 500);
+          }, 250);
         }
 
         setError(null);
@@ -378,116 +482,107 @@ export const TopPage = ({ onBack }: { onBack?: () => void }) => {
     setGameState((prev) => ({ ...prev, isShaking: true }));
   };
 
-  // Game state management simplified with new API
-
   const handleInputChange = (input: string) => {
     setGameState((prev) => ({ ...prev, currentInput: input }));
   };
 
   const handleAnswerSubmit = async (answer: string) => {
-    if (!gameData || gameState.gameComplete || !answer.trim() || !dailyGameId) return;
+    if (!gameData || gameState.gameComplete || !answer.trim() || !dailyGameId) {
+      return;
+    }
 
     const timestamp = Date.now();
 
-    try {
-      // Submit attempt to server
-      await submitAttempt(answer, timestamp, dailyGameId);
+    // Submit attempt to server
+    // DO NOT FUCKING CHANGE THIS
+    submitAttempt(answer, timestamp, dailyGameId).catch((error) => {
+      console.error('Failed to submit answer to server:', error);
+    });
 
-      // Add to submissions for local tracking
-      const newSubmission = {
-        answer: answer,
-        timestamp,
-        locallyCorrect: undefined, // Will be determined later
-      };
+    // Add to submissions for local tracking
+    const newSubmission = {
+      answer: answer,
+      timestamp,
+      locallyCorrect: undefined, // Will be determined later
+    };
 
-      console.log(`🎯 Attempting to validate answer: "${answer}"`);
-      console.log(`📊 Current answer state: [${gameState.currentAnswerState.join(', ')}]`);
+    console.log(`🎯 Attempting to validate answer: "${answer}"`);
+    console.log(`📊 Current answer state: [${gameState.currentAnswerState.join(', ')}]`);
 
-      // Try to find a valid position for this answer using the solution hash
-      const validPosition = await findValidAnswerPosition(
-        answer,
-        gameState.currentAnswerState,
-        gameData.solutionHash
+    // Try to find a valid position for this answer using the solution hash
+    const validPosition = await findValidAnswerPosition(
+      answer,
+      gameState.currentAnswerState,
+      gameData.solutionHash
+    );
+
+    if (validPosition !== null) {
+      // Valid answer found! Update the answer state and UI
+      console.log(`🎉 Answer "${answer}" is valid at position ${validPosition}`);
+      console.log(
+        `📊 Pre-submission state: attempts=${gameState.attempts}, maxAttempts=${gameState.maxAttempts}`
       );
 
-      if (validPosition !== null) {
-        // Valid answer found! Update the answer state and UI
-        console.log(`🎉 Answer "${answer}" is valid at position ${validPosition}`);
+      const newCurrentAnswerState = [...gameState.currentAnswerState];
+      newCurrentAnswerState[validPosition - 1] = answer; // validPosition is 1-indexed
 
-        const newCurrentAnswerState = [...gameState.currentAnswerState];
-        newCurrentAnswerState[validPosition - 1] = answer; // validPosition is 1-indexed
+      const newGuessedAnswer: GuessedAnswer = {
+        answer: answer,
+        position: validPosition,
+      };
 
-        const newGuessedAnswer: GuessedAnswer = {
-          answer: answer,
-          position: validPosition,
-        };
+      const newGuessedAnswers = [...gameState.guessedAnswers, newGuessedAnswer];
+      const isGameWon = newGuessedAnswers.length === topXAnswers;
 
-        const newGuessedAnswers = [...gameState.guessedAnswers, newGuessedAnswer];
-        const isGameWon = newGuessedAnswers.length === number;
-        const isGameComplete = isGameWon || gameState.attempts >= gameState.maxAttempts;
+      setGameState((prev) => ({
+        ...prev,
+        guessedAnswers: newGuessedAnswers,
+        submissions: [
+          ...prev.submissions,
+          { ...newSubmission, locallyCorrect: true, position: validPosition },
+        ],
+        currentAnswerState: newCurrentAnswerState,
+        currentInput: '',
+        gameWon: isGameWon,
+        gameComplete: isGameWon,
+      }));
 
-        // Submit to server for authoritative validation (include position for correct answers)
-        try {
-          await submitAttempt(answer, timestamp, dailyGameId, validPosition);
-        } catch (error) {
-          console.error('Failed to submit answer to server:', error);
-          // Continue with optimistic UI update even if server submission fails
-        }
-
-        setGameState((prev) => ({
-          ...prev,
-          guessedAnswers: newGuessedAnswers,
-          submissions: [
-            ...prev.submissions,
-            { ...newSubmission, locallyCorrect: true, position: validPosition },
-          ],
-          currentAnswerState: newCurrentAnswerState,
-          currentInput: '',
-          gameWon: isGameWon,
-          gameComplete: isGameComplete,
-        }));
-
-        // Complete game if won
-        if (isGameWon) {
-          await handleGameComplete();
-        }
-      } else {
-        // Invalid answer - add to incorrect answers
-        console.log(`❌ Answer "${answer}" is not valid`);
-
-        const newIncorrectAnswers = [...gameState.incorrectAnswers, answer];
-        const newAttempts = gameState.attempts + 1;
-        const isGameComplete = newAttempts >= gameState.maxAttempts;
-
-        triggerShake();
-
-        // Submit to server for validation (even though we know it's wrong)
-        try {
-          await submitAttempt(answer, timestamp, dailyGameId);
-        } catch (error) {
-          console.error('Failed to submit answer to server:', error);
-        }
-
-        setGameState((prev) => ({
-          ...prev,
-          incorrectAnswers: newIncorrectAnswers,
-          attempts: newAttempts,
-          submissions: [
-            ...prev.submissions,
-            { ...newSubmission, locallyCorrect: false, position: undefined },
-          ],
-          currentInput: '',
-          gameComplete: isGameComplete,
-        }));
-
-        // Complete game if max attempts reached
-        if (isGameComplete) {
-          await handleGameComplete();
-        }
+      // Complete game if won
+      if (isGameWon) {
+        await handleGameComplete();
       }
-    } catch (err) {
-      console.error('Error submitting answer:', err);
-      toast.error('Failed to submit answer');
+    } else {
+      // Invalid answer - add to incorrect answers
+      console.log(`❌ Answer "${answer}" is not valid`);
+      console.log(
+        `📊 Pre-submission state: attempts=${gameState.attempts}, maxAttempts=${gameState.maxAttempts}`
+      );
+
+      const newIncorrectAnswers = [...gameState.incorrectAnswers, answer];
+      const newAttempts = gameState.attempts + 1;
+      // Let server determine if this affects attemptsLeft
+      const isGameComplete = false;
+      console.log(
+        `📊 Post-submission state: attempts=${newAttempts}, gameComplete=${isGameComplete}`
+      );
+
+      triggerShake();
+
+      const newGameComplete = gameState.attemptsLeft === 0;
+      const newAttemptsLeft = gameState.attemptsLeft ? gameState.attemptsLeft - 1 : 0;
+
+      setGameState((prev) => ({
+        ...prev,
+        incorrectAnswers: newIncorrectAnswers,
+        attemptsLeft: newAttemptsLeft,
+        attempts: newAttempts,
+        gameComplete: newGameComplete,
+        submissions: [
+          ...prev.submissions,
+          { ...newSubmission, locallyCorrect: false, position: undefined },
+        ],
+        currentInput: '',
+      }));
     }
   };
 
@@ -612,8 +707,8 @@ export const TopPage = ({ onBack }: { onBack?: () => void }) => {
       <GameLayout
         gameTitle="Top X Daily"
         score={0}
-        attempts={1}
-        maxAttempts={5}
+        attempts={0}
+        maxAttempts={gameData?.maxAttempts ?? 5}
         onBack={handleBackToMenu}
         logoSrc="/top-x-logo.png"
       >
@@ -630,8 +725,8 @@ export const TopPage = ({ onBack }: { onBack?: () => void }) => {
       <GameLayout
         gameTitle="Top X Daily"
         score={0}
-        attempts={1}
-        maxAttempts={5}
+        attempts={0}
+        maxAttempts={gameData?.maxAttempts ?? 5}
         onBack={handleBackToMenu}
         logoSrc="/top-x-logo.png"
       >
@@ -700,6 +795,25 @@ export const TopPage = ({ onBack }: { onBack?: () => void }) => {
         </div>
       )}
 
+      {/* Attempts Counter */}
+      {gameState.attemptsLeft !== undefined && (
+        <div className="mx-auto mb-6 max-w-2xl">
+          <div className="text-center">
+            <Card className="inline-block px-4 py-2">
+              <span className="flex flex-row gap-2 items-center font-medium text-card-foreground">
+                {gameState.attemptsLeft === 0 ? (
+                  'LAST ATTEMPT'
+                ) : (
+                  <>
+                    ATTEMPTS LEFT <AnimatedNumber value={gameState.attemptsLeft} />
+                  </>
+                )}
+              </span>
+            </Card>
+          </div>
+        </div>
+      )}
+
       {/* Game Content */}
       <div className="space-y-6">
         {/* Prompt */}
@@ -724,12 +838,12 @@ export const TopPage = ({ onBack }: { onBack?: () => void }) => {
 
         {/* Answer List Title */}
         <h3 className="mb-4 text-lg font-bold text-center text-foreground">
-          Top {number} {pluralize(category, number)}
+          Top {topXAnswers} {pluralize(category, topXAnswers)}
         </h3>
 
         {/* Correct Answers */}
         <div ref={answerListRef} className="space-y-3">
-          {Array.from({ length: number }, (_, index) => {
+          {Array.from({ length: topXAnswers }, (_, index) => {
             const position = index + 1;
             // Find the guessed answer for this position
             const guessedAnswer = gameState.guessedAnswers.find(
@@ -798,8 +912,8 @@ export const TopPage = ({ onBack }: { onBack?: () => void }) => {
                 <Card key={index}>
                   <CardContent className="p-2">
                     <div className="flex gap-4 items-center">
-                      <div className="flex justify-center items-center w-6 h-6 text-sm font-semibold text-white bg-red-600 rounded">
-                        ✗
+                      <div className="flex justify-center items-center w-6 h-6 text-sm font-black text-white bg-red-600 rounded">
+                        ✕
                       </div>
                       <div className="text-sm text-card-foreground text-medium">{answer}</div>
                     </div>
@@ -834,7 +948,7 @@ export const TopPage = ({ onBack }: { onBack?: () => void }) => {
       )}
 
       {/* Game Over Modal */}
-      <Dialog
+      <PostGameModal
         open={showGameOverModal}
         onOpenChange={(open) => {
           setShowGameOverModal(open);
@@ -844,128 +958,75 @@ export const TopPage = ({ onBack }: { onBack?: () => void }) => {
             setShowGoldShimmer(false);
           }
         }}
+        gameType="topx"
+        score={gameState.score}
+        secondaryStatValue={`${gameState.guessedAnswers.length}/${topXAnswers}`}
+        secondaryStatLabel="ANSWERS"
+        theme={gameData?.prompt || 'Loading...'}
+        onClose={() => {
+          setShowGameOverModal(false);
+          setGameState((prev) => ({ ...prev, showConfetti: false }));
+          setShowGoldShimmer(false);
+          void resetGame();
+        }}
       >
-        <DialogContent className="sm:max-w-md">
-          <DialogHeader>
-            <DialogTitle
-              className={`text-center text-2xl font-bold ${
-                gameState.gameWon ? 'text-green-600' : 'text-red-600'
-              }`}
-            >
-              {gameState.gameWon ? '🎉 CONGRATULATIONS!' : '💔 GAME OVER'}
-            </DialogTitle>
-            <DialogDescription className="text-base text-center">
-              {gameState.gameWon
-                ? `You found all ${number} answers!`
-                : `You used all ${gameState.maxAttempts} attempts`}
-            </DialogDescription>
-          </DialogHeader>
-
-          <div className="space-y-4">
-            {/* Game Stats */}
-            <div className="grid grid-cols-2 gap-4">
-              <div className="text-center">
-                <div className="text-2xl font-bold text-primary">{gameState.score}</div>
-                <div className="text-sm text-muted-foreground">Final Score</div>
-              </div>
-              <div className="text-center">
-                <div className="text-2xl font-bold text-primary">
-                  {gameState.guessedAnswers.length}/{number}
-                </div>
-                <div className="text-sm text-muted-foreground">Correct Answers</div>
-              </div>
-            </div>
-
-            <div className="grid grid-cols-2 gap-4">
-              <div className="text-center">
-                <div className="text-2xl font-bold text-orange-600">
-                  {gameState.incorrectAnswers.length}
-                </div>
-                <div className="text-sm text-muted-foreground">Wrong Guesses</div>
-              </div>
-              <div className="text-center">
-                <div className="text-2xl font-bold text-blue-600">{gameState.attempts - 1}</div>
-                <div className="text-sm text-muted-foreground">Attempts Used</div>
-              </div>
-            </div>
-
-            {/* Correct Answers Found */}
-            {gameState.guessedAnswers.length > 0 && (
-              <div>
-                <h4 className="mb-2 text-sm font-semibold text-green-700">
-                  ✅ Correct Answers Found:
-                </h4>
-                <div className="space-y-1">
-                  {gameState.guessedAnswers
-                    .sort((a, b) => a.position - b.position)
-                    .map((guessedAnswer) => (
-                      <div
-                        key={guessedAnswer.answer}
-                        className="px-2 py-1 text-sm text-green-600 bg-green-50 rounded"
-                      >
-                        {guessedAnswer.position}. {guessedAnswer.answer}
-                      </div>
-                    ))}
-                </div>
-              </div>
-            )}
-
-            {/* Incorrect Answers */}
-            {gameState.incorrectAnswers.length > 0 && (
-              <div>
-                <h4 className="mb-2 text-sm font-semibold text-red-700">❌ Incorrect Guesses:</h4>
-                <div className="space-y-1">
-                  {gameState.incorrectAnswers.map((answer) => (
-                    <div key={answer} className="px-2 py-1 text-sm text-red-600 bg-red-50 rounded">
-                      {answer}
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
-
-            {/* Show missed answers for losses */}
-            {!gameState.gameWon && gameData && (
-              <div>
-                <h4 className="mb-2 text-sm font-semibold text-blue-700">
-                  🎯 Correct Answers You Missed:
-                </h4>
-                <div className="space-y-1">
-                  {(gameData.solution || [])
-                    .filter(
-                      (answer) => !gameState.guessedAnswers.some((ga) => ga.answer === answer)
-                    )
-                    .map((answer) => {
-                      const position = (gameData.solution || []).indexOf(answer) + 1;
-                      return (
-                        <div
-                          key={answer}
-                          className="px-2 py-1 text-sm text-blue-600 bg-blue-50 rounded"
-                        >
-                          {position}. {answer}
-                        </div>
-                      );
-                    })}
-                </div>
-              </div>
-            )}
-
-            {/* Play Again Button */}
-            <div className="flex justify-center pt-4">
-              <Button
-                onClick={() => {
-                  setShowGameOverModal(false);
-                  setGameState((prev) => ({ ...prev, showConfetti: false }));
-                  void resetGame();
-                }}
-                className="w-full"
-              >
-                🔄 RELOAD GAME
-              </Button>
+        {/* Correct Answers Found */}
+        {gameState.guessedAnswers.length > 0 && (
+          <div>
+            <h4 className="mb-2 text-sm font-semibold text-green-700">✅ Correct Answers Found:</h4>
+            <div className="space-y-1">
+              {gameState.guessedAnswers
+                .sort((a, b) => a.position - b.position)
+                .map((guessedAnswer) => (
+                  <div
+                    key={guessedAnswer.answer}
+                    className="px-2 py-1 text-sm text-green-600 bg-green-50 rounded"
+                  >
+                    {guessedAnswer.position}. {guessedAnswer.answer}
+                  </div>
+                ))}
             </div>
           </div>
-        </DialogContent>
-      </Dialog>
+        )}
+
+        {/* Incorrect Answers */}
+        {gameState.incorrectAnswers.length > 0 && (
+          <div>
+            <h4 className="mb-2 text-sm font-semibold text-red-700">❌ Incorrect Guesses:</h4>
+            <div className="space-y-1">
+              {gameState.incorrectAnswers.map((answer) => (
+                <div key={answer} className="px-2 py-1 text-sm text-red-600 bg-red-50 rounded">
+                  {answer}
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Show missed answers for losses */}
+        {!gameState.gameWon && gameData && (
+          <div>
+            <h4 className="mb-2 text-sm font-semibold text-blue-700">
+              🎯 Correct Answers You Missed:
+            </h4>
+            <div className="space-y-1">
+              {(gameData.solution || [])
+                .filter((answer) => !gameState.guessedAnswers.some((ga) => ga.answer === answer))
+                .map((answer) => {
+                  const position = (gameData.solution || []).indexOf(answer) + 1;
+                  return (
+                    <div
+                      key={answer}
+                      className="px-2 py-1 text-sm text-blue-600 bg-blue-50 rounded"
+                    >
+                      {position}. {answer}
+                    </div>
+                  );
+                })}
+            </div>
+          </div>
+        )}
+      </PostGameModal>
     </GameLayout>
   );
 };

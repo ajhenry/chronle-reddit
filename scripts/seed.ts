@@ -250,6 +250,7 @@ const TOPX_GAME_DATA = [
     ],
     category: 'states',
     count: 3,
+    maxAttempts: 4,
     solution: ['Georgia', 'Alabama', 'North Carolina'],
   },
   {
@@ -273,6 +274,7 @@ const TOPX_GAME_DATA = [
     ],
     category: 'programming languages',
     count: 5,
+    maxAttempts: 4,
     solution: ['JavaScript', 'Python', 'Java', 'C++', 'C#'],
   },
   {
@@ -293,6 +295,7 @@ const TOPX_GAME_DATA = [
     ],
     category: 'social media platforms',
     count: 4,
+    maxAttempts: 4,
     solution: ['Facebook', 'YouTube', 'WhatsApp', 'Instagram'],
   },
   {
@@ -321,6 +324,7 @@ const TOPX_GAME_DATA = [
     ],
     category: 'countries',
     count: 3,
+    maxAttempts: 4,
     solution: ['France', 'Spain', 'United States'],
   },
   {
@@ -347,6 +351,7 @@ const TOPX_GAME_DATA = [
     ],
     category: 'food',
     count: 4,
+    maxAttempts: 4,
     solution: ['Pepperoni', 'Mushrooms', 'Sausage', 'Extra Cheese'],
   },
   {
@@ -371,6 +376,7 @@ const TOPX_GAME_DATA = [
     ],
     category: 'music artists',
     count: 5,
+    maxAttempts: 4,
     solution: ['Drake', 'Bad Bunny', 'The Weeknd', 'Taylor Swift', 'Ariana Grande'],
   },
   {
@@ -393,6 +399,7 @@ const TOPX_GAME_DATA = [
     ],
     category: 'dog breeds',
     count: 3,
+    maxAttempts: 4,
     solution: ['Labrador Retriever', 'Golden Retriever', 'German Shepherd'],
   },
   {
@@ -419,6 +426,7 @@ const TOPX_GAME_DATA = [
     ],
     category: 'tech companies',
     count: 4,
+    maxAttempts: 4,
     solution: ['Apple', 'Microsoft', 'Amazon', 'Google'],
   },
   {
@@ -440,6 +448,7 @@ const TOPX_GAME_DATA = [
     ],
     category: 'breakfast cereals',
     count: 3,
+    maxAttempts: 4,
     solution: ['Cheerios', 'Frosted Flakes', 'Honey Nut Cheerios'],
   },
   {
@@ -462,6 +471,7 @@ const TOPX_GAME_DATA = [
     ],
     category: 'gaming consoles',
     count: 5,
+    maxAttempts: 4,
     solution: ['PlayStation 2', 'Nintendo DS', 'Nintendo Switch', 'Game Boy', 'PlayStation 4'],
   },
   {
@@ -488,6 +498,7 @@ const TOPX_GAME_DATA = [
     ],
     category: 'languages',
     count: 3,
+    maxAttempts: 4,
     solution: ['Mandarin Chinese', 'English', 'Hindi'],
   },
   {
@@ -511,6 +522,7 @@ const TOPX_GAME_DATA = [
     ],
     category: 'ice cream flavors',
     count: 4,
+    maxAttempts: 4,
     solution: ['Vanilla', 'Chocolate', 'Strawberry', 'Mint Chip'],
   },
   {
@@ -535,6 +547,7 @@ const TOPX_GAME_DATA = [
     ],
     category: 'sports',
     count: 3,
+    maxAttempts: 4,
     solution: ['Soccer', 'Basketball', 'Cricket'],
   },
   {
@@ -559,6 +572,7 @@ const TOPX_GAME_DATA = [
     ],
     category: 'Netflix shows',
     count: 5,
+    maxAttempts: 4,
     solution: ['Stranger Things', 'Squid Game', 'Wednesday', 'Bridgerton', 'Money Heist'],
   },
   {
@@ -585,6 +599,7 @@ const TOPX_GAME_DATA = [
     ],
     category: 'cryptocurrencies',
     count: 3,
+    maxAttempts: 4,
     solution: ['Bitcoin', 'Ethereum', 'Tether'],
   },
   {
@@ -609,6 +624,7 @@ const TOPX_GAME_DATA = [
     ],
     category: 'fast food chains',
     count: 4,
+    maxAttempts: 4,
     solution: ['McDonalds', 'Subway', 'Starbucks', 'KFC'],
   },
   {
@@ -629,6 +645,7 @@ const TOPX_GAME_DATA = [
     ],
     category: 'oceans',
     count: 3,
+    maxAttempts: 4,
     solution: ['Pacific Ocean', 'Atlantic Ocean', 'Indian Ocean'],
   },
   {
@@ -657,6 +674,7 @@ const TOPX_GAME_DATA = [
     ],
     category: 'car brands',
     count: 5,
+    maxAttempts: 4,
     solution: ['Toyota', 'Volkswagen', 'Ford', 'Honda', 'Nissan'],
   },
   {
@@ -681,6 +699,7 @@ const TOPX_GAME_DATA = [
     ],
     category: 'superhero movies',
     count: 3,
+    maxAttempts: 4,
     solution: ['Avengers Endgame', 'Avengers Infinity War', 'Spider-Man No Way Home'],
   },
   {
@@ -705,6 +724,7 @@ const TOPX_GAME_DATA = [
     ],
     category: 'coffee drinks',
     count: 4,
+    maxAttempts: 4,
     solution: ['Espresso', 'Americano', 'Latte', 'Cappuccino'],
   },
   {
@@ -730,6 +750,7 @@ const TOPX_GAME_DATA = [
     ],
     category: 'board games',
     count: 3,
+    maxAttempts: 4,
     solution: ['Monopoly', 'Scrabble', 'Chess'],
   },
   {
@@ -756,6 +777,7 @@ const TOPX_GAME_DATA = [
     ],
     category: 'streaming platforms',
     count: 5,
+    maxAttempts: 4,
     solution: ['Netflix', 'YouTube', 'Amazon Prime Video', 'Disney+', 'Hulu'],
   },
   {
@@ -782,6 +804,7 @@ const TOPX_GAME_DATA = [
     ],
     category: 'social media apps',
     count: 3,
+    maxAttempts: 4,
     solution: ['TikTok', 'Instagram', 'Snapchat'],
   },
   {
@@ -810,6 +833,7 @@ const TOPX_GAME_DATA = [
     ],
     category: 'holiday destinations',
     count: 4,
+    maxAttempts: 4,
     solution: ['Paris', 'London', 'New York', 'Rome'],
   },
   {
@@ -836,6 +860,7 @@ const TOPX_GAME_DATA = [
     ],
     category: 'mobile games',
     count: 3,
+    maxAttempts: 4,
     solution: ['Candy Crush Saga', 'Pokemon GO', 'Fortnite'],
   },
 ];
@@ -941,6 +966,7 @@ async function seedTopXGames() {
           solution: gameData.solution,
           category: gameData.category,
           count: gameData.count,
+          max_attempts: gameData.maxAttempts,
           suggestions: gameData.suggestions,
           solution_hash: solutionHash,
         })

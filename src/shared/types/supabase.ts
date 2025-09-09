@@ -242,6 +242,7 @@ export type Database = {
           count: number;
           created_at: string;
           id: string;
+          max_attempts: number;
           prompt: string;
           solution: string[];
           solution_hash: Json;
@@ -253,6 +254,7 @@ export type Database = {
           count: number;
           created_at?: string;
           id?: string;
+          max_attempts?: number;
           prompt: string;
           solution: string[];
           solution_hash?: Json;
@@ -264,6 +266,7 @@ export type Database = {
           count?: number;
           created_at?: string;
           id?: string;
+          max_attempts?: number;
           prompt?: string;
           solution?: string[];
           solution_hash?: Json;

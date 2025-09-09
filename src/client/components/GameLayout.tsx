@@ -153,26 +153,13 @@ export const GameLayout = ({
         </div>
       </div>
 
-      {/* Attempts Counter */}
-      {attempts !== undefined && maxAttempts !== undefined && (
-        <div className="mx-auto mb-6 max-w-2xl">
-          <div className="text-center">
-            <Card className="inline-block px-4 py-2">
-              <span className="flex flex-row gap-2 items-center font-medium text-card-foreground">
-                ATTEMPTS LEFT <AnimatedNumber value={maxAttempts - attempts} />
-              </span>
-            </Card>
-          </div>
-        </div>
-      )}
-
       {/* Game Content */}
       <div className="mx-auto max-w-2xl">{children}</div>
 
       {/* Help Modal */}
       {showHelpModal && (
         <div className="flex fixed inset-0 z-50 justify-center items-center p-4 bg-black/50">
-          <div className="w-full max-w-md max-h-full overflow-y-auto">
+          <div className="overflow-y-auto w-full max-w-md max-h-full">
             <Card className="p-6 w-full">
               <div className="flex justify-between items-center mb-4">
                 <h2 className="text-xl font-semibold text-card-foreground">HOW TO PLAY</h2>

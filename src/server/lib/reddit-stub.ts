@@ -1,3 +1,5 @@
+import { isDevelopment } from '../../shared/utils';
+
 // Reddit API stub for local development
 // This file provides mock implementations of the @devvit/web/server reddit functions
 
@@ -24,6 +26,9 @@ export const redditStub: RedditStub = {
    * Mock getCurrentUsername - returns a test username
    */
   async getCurrentUsername(): Promise<string> {
+    if (isDevelopment()) {
+      return 'mock_reddit_user';
+    }
     // Return a consistent test username for development
     const testUsernames = [
       'dev_user_1',

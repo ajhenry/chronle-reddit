@@ -91,6 +91,7 @@ const convertTopXGame = (game: Database['public']['Tables']['topx_games']['Row']
     solution: game.solution,
     category: game.category,
     count: game.count,
+    maxAttempts: game.max_attempts,
     suggestions: game.suggestions,
     solutionHash: game.solution_hash as Record<string, boolean>,
     createdAt: game.created_at,
@@ -113,6 +114,7 @@ export const createTopXGame = async (data: TopXGame): Promise<TopXGame> => {
       solution: data.solution,
       category: data.category,
       count: data.count,
+      max_attempts: data.maxAttempts,
       suggestions: data.suggestions,
       solution_hash: solutionHash,
       created_at: data.createdAt,
@@ -220,8 +222,10 @@ export const getOrCreateTodaysTopXSession = async (userId: string): Promise<TopX
   if (error) {
     if (error.code === 'PGRST116' || error.message.includes('PGRST116')) {
       console.log('No session found for today, creating one');
+      // Get today's game to determine max attempts
+      const todaysGame = await getTodaysTopXGame();
       // No session found for today
-      return await createTopXSession(userId, dailyGame.id);
+      return await createTopXSession(userId, dailyGame.id, todaysGame.maxAttempts);
     }
     console.error('Failed to find todays topx session:', { error });
     throw new Error(`Failed to find todays topx session: ${error.message}`, { cause: error });
@@ -245,13 +249,14 @@ export const getOrCreateTodaysTopXSession = async (userId: string): Promise<TopX
 
 export const createTopXSession = async (
   userId: string,
-  dailyGameId: string
+  dailyGameId: string,
+  maxAttempts: number = 5
 ): Promise<TopXSession> => {
   const { data, error } = await supabase
     .from('topx_sessions')
     .insert({
       initial_score: DEFAULT_INITIAL_SCORE,
-      attempts_left: 5,
+      attempts_left: maxAttempts,
       user_id: userId,
       daily_game_id: dailyGameId,
     })
@@ -431,6 +436,43 @@ export const getIncorrectTopXSubmissionCountForToday = async (userId: string): P
   console.log('count', count);
 
   return count ?? 0;
+};
+
+export const getCorrectTopXSubmissionCountForToday = async (userId: string): Promise<number> => {
+  const topxSession = await getOrCreateTodaysTopXSession(userId);
+
+  const { count, error } = await supabase
+    .from('topx_submissions')
+    .select('count', { count: 'exact', head: true })
+    .eq('game_session_id', topxSession.id)
+    .eq('is_correct', true);
+
+  if (error) {
+    console.error('Failed to find correct topx submissions:', { error });
+    throw new Error(`Failed to find correct topx submissions: ${error.message}`, {
+      cause: error,
+    });
+  }
+
+  return count ?? 0;
+};
+
+export const checkTopXSubmissionExists = async (
+  gameSessionId: string,
+  answer: string
+): Promise<boolean> => {
+  const { count, error } = await supabase
+    .from('topx_submissions')
+    .select('count', { count: 'exact', head: true })
+    .eq('game_session_id', gameSessionId)
+    .eq('answer', answer.trim().toLowerCase());
+
+  if (error) {
+    console.error('Failed to check topx submission exists:', { error });
+    throw new Error(`Failed to check topx submission exists: ${error.message}`, { cause: error });
+  }
+
+  return (count ?? 0) > 0;
 };
 
 export const createTopXSubmission = async (

@@ -1,8 +1,10 @@
 import { Router } from 'express';
+import { z } from 'zod';
 import {
   TopXDailyGameResponse,
   TopXSubmissionResponse,
   TopXGameCompleteResponse,
+  TopXSubmission,
 } from '../../shared/types/api';
 import { calculateDecayedScore } from '../../shared/score-decay';
 import { supabase } from '../../shared/supabase-server';
@@ -11,12 +13,20 @@ import { ensureUserExistsAndGetId } from '../lib/user-helpers';
 import { getUserTopXSessionForToday, updateTopXSession } from '../database/topx';
 import { getOrCreateTodaysGame } from '../database/game';
 import {
+  checkTopXSubmissionExists,
   createTopXSubmission,
+  getCorrectTopXSubmissionCountForToday,
   getIncorrectTopXSubmissionCountForToday,
   getOrCreateTodaysTopXSession,
   getTodaysTopXGame,
 } from '../database/topx';
 import { isDevelopment } from '../../shared/utils';
+
+// Zod schema for validating topx attempt payload
+const topxAttemptSchema = z.object({
+  answer: z.string().min(1, 'Answer cannot be empty').trim(),
+  timestamp: z.number().positive('Timestamp in milliseconds'),
+});
 
 const router = Router();
 
@@ -58,12 +68,19 @@ router.get('/api/topx/game', async (_req, res): Promise<void> => {
       incorrectCount: incorrectSubmissionCount,
     });
 
+    // Calculate attemptsLeft consistently as maxAttempts - incorrect submissions
+    const calculatedAttemptsLeft = Math.max(
+      0,
+      dailyTopXGame.maxAttempts - incorrectSubmissionCount
+    );
+
     const response: TopXDailyGameResponse = {
       type: 'topx_daily_game',
       dailyGameId: dailyGame.id,
       game: {
         category: dailyTopXGame.category,
         count: dailyTopXGame.count,
+        maxAttempts: dailyTopXGame.maxAttempts,
         createdAt: dailyTopXGame.createdAt,
         updatedAt: dailyTopXGame.updatedAt,
         id: dailyTopXGame.id,
@@ -77,6 +94,7 @@ router.get('/api/topx/game', async (_req, res): Promise<void> => {
       day: dailyGame.day,
       session: {
         ...existingSession,
+        attemptsLeft: calculatedAttemptsLeft,
         currentScore: existingSession.isCompleted ? existingSession.finalScore : currentScore,
       },
     };
@@ -97,7 +115,19 @@ router.get('/api/topx/game', async (_req, res): Promise<void> => {
 router.post('/api/topx/:gameId/attempt', async (req, res): Promise<void> => {
   console.log('POST /api/topx/:gameId/attempt', { body: req.body, params: req.params });
   try {
-    const { answer, timestamp, position } = req.body;
+    // Validate payload with Zod
+    const payloadValidation = topxAttemptSchema.safeParse(req.body);
+    if (!payloadValidation.success) {
+      console.error('Payload validation failed:', { error: payloadValidation.error });
+      res.status(400).json({
+        status: 'error',
+        message: 'Invalid payload structure',
+        errors: payloadValidation.error.issues,
+      });
+      return;
+    }
+
+    const { answer, timestamp } = payloadValidation.data;
     const { gameId } = req.params;
     const userId = await ensureUserExistsAndGetId();
 
@@ -122,14 +152,6 @@ router.post('/api/topx/:gameId/attempt', async (req, res): Promise<void> => {
       return;
     }
 
-    if (!answer || !timestamp) {
-      res.status(400).json({
-        status: 'error',
-        message: 'Answer and timestamp are required',
-      });
-      return;
-    }
-
     // Get existing game session (should already exist from game load)
     const session = await getOrCreateTodaysTopXSession(userId);
     if (session.isCompleted) {
@@ -140,51 +162,97 @@ router.post('/api/topx/:gameId/attempt', async (req, res): Promise<void> => {
       return;
     }
 
+    // Check if user has any attempts left
+    if (session.attemptsLeft < 0) {
+      res.status(400).json({
+        status: 'error',
+        message: 'No attempts remaining',
+      });
+      return;
+    }
+
+    // Check for duplicate submission
+    const trimmedAnswer = answer.trim();
+    const submissionExists = await checkTopXSubmissionExists(session.id, trimmedAnswer);
+    if (submissionExists) {
+      res.status(400).json({
+        status: 'error',
+        message: 'This answer has already been submitted',
+      });
+      return;
+    }
+
     // Calculate time-based score decay
     const gameStartTime = new Date(session.startedAt).getTime();
     const submissionTime = timestamp;
     const elapsedSeconds = Math.max(0, (submissionTime - gameStartTime) / 1000);
 
     // Count incorrect submissions so far
-    const incorrectCount = await getIncorrectTopXSubmissionCountForToday(userId);
+    const currentIncorrectCount = await getIncorrectTopXSubmissionCountForToday(userId);
 
     // Scoring algorithm: Start at 5000, decay over time, faster decay with wrong answers
     const currentScore = calculateDecayedScore({
       initialScore: session.initialScore,
       elapsedSeconds,
       gameType: 'topx',
-      incorrectCount,
+      incorrectCount: currentIncorrectCount,
     });
 
-    // Validate the submission - check both answer correctness and position
-    const trimmedAnswer = answer.trim();
+    // Validate the submission - check if answer is in the solution
     const solutionIndex = dailyTopXGame.solution!.findIndex(
       (s) => s.toLowerCase().trim() === trimmedAnswer.toLowerCase()
     );
     const isCorrect = solutionIndex !== -1;
-    const correctPosition = isCorrect ? solutionIndex + 1 : null; // 1-indexed position
-    const positionMatches = isCorrect && position === correctPosition;
 
     console.log(`🔍 Validating submission: "${trimmedAnswer}"`);
-    console.log(`📍 Solution index: ${solutionIndex}, Correct position: ${correctPosition}`);
-    console.log(`🎯 Client position: ${position}, Matches: ${positionMatches}`);
+    console.log(`📍 Solution index: ${solutionIndex}, Is correct: ${isCorrect}`);
 
-    const submission = await createTopXSubmission({
+    const submissionData: Omit<TopXSubmission, 'id'> = {
       gameSessionId: session.id,
       answer: trimmedAnswer,
-      isCorrect: isCorrect && positionMatches, // Only correct if answer AND position are right
+      isCorrect: isCorrect,
       scoreAtSubmission: currentScore,
       submittedAt: new Date(timestamp).toISOString(),
-      position: position,
-    });
+    };
 
-    // Update session's current score
-    await updateTopXSession(session.id, { finalScore: currentScore });
+    if (isCorrect) {
+      submissionData.position = solutionIndex + 1;
+    }
+
+    const submission = await createTopXSubmission(submissionData);
+
+    // Update session's current score and attempts left
+    const updateData: { finalScore: number; attemptsLeft?: number } = { finalScore: currentScore };
+    if (!isCorrect) {
+      // Only decrement attempts for incorrect answers
+      updateData.attemptsLeft = session.attemptsLeft - 1;
+    }
+    await updateTopXSession(session.id, updateData);
+
+    // Check if the game should be completed
+    const updatedAttemptsLeft = updateData.attemptsLeft ?? session.attemptsLeft;
+    const correctSubmissionsCount = await getCorrectTopXSubmissionCountForToday(userId);
+    const totalCorrectAnswers = dailyTopXGame.solution!.length;
+
+    // Game is completed if user found all answers OR ran out of attempts
+    const gameCompleted = correctSubmissionsCount >= totalCorrectAnswers || updatedAttemptsLeft < 0;
+
+    if (gameCompleted && !session.isCompleted) {
+      // Mark session as completed with current score
+      // Postgame endpoint will do final validation and leaderboard recording
+      await updateTopXSession(session.id, {
+        isCompleted: true,
+        completedAt: new Date().toISOString(),
+        finalScore: currentScore,
+      });
+    }
 
     const response: TopXSubmissionResponse = {
       type: 'topx_submission',
       submissionId: submission.id,
       accepted: true,
+      attemptsLeft: updatedAttemptsLeft,
+      gameCompleted: gameCompleted && !session.isCompleted,
     };
 
     res.json(response);
@@ -298,15 +366,15 @@ router.get('/api/topx/postgame', async (_req, res): Promise<void> => {
       // Validate each submission and calculate final score
       let finalScore = 0;
       const correctAnswers: Array<{ answer: string; position: number; points: number }> = [];
-      const foundPositions = new Set<number>();
+      const foundAnswers = new Set<string>();
 
       for (const submission of submissions || []) {
         const normalizedAnswer = submission.answer.toLowerCase().trim();
         const position = solution.indexOf(normalizedAnswer);
-        const isCorrect = position !== -1 && !foundPositions.has(position);
+        const isCorrect = position !== -1 && !foundAnswers.has(normalizedAnswer);
 
         if (isCorrect) {
-          foundPositions.add(position);
+          foundAnswers.add(normalizedAnswer);
           const points = submission.score_at_submission;
           finalScore += points;
 

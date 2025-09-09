@@ -5,6 +5,7 @@ CREATE TABLE IF NOT EXISTS topx_games (
   suggestions TEXT[] NOT NULL, -- Array of search suggestions
   category TEXT NOT NULL,
   count INTEGER NOT NULL, -- Number of correct answers (e.g., "top 3", "top 5")
+  max_attempts INTEGER NOT NULL DEFAULT 5, -- Maximum attempts allowed for this game
   solution TEXT[] NOT NULL, -- Array of correct answers
   created_at TIMESTAMP WITH TIME ZONE DEFAULT TIMEZONE('utc'::text, NOW()) NOT NULL,
   updated_at TIMESTAMP WITH TIME ZONE DEFAULT TIMEZONE('utc'::text, NOW()) NOT NULL

@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { Routes, Route, useNavigate } from 'react-router-dom';
-import { TopPage } from './pages/top';
+import { TopXPage } from './pages/topx';
 import { DevPage } from './pages/dev';
 import { LetteredPage } from './pages/lettered';
 import { Card, CardHeader, CardTitle, CardContent } from './components/ui/card';
@@ -91,7 +91,7 @@ export const App = () => {
 
   const handleGameSelect = (gameId: string) => {
     if (gameId === 'topx') {
-      void navigate('/top');
+      void navigate('/topx');
     } else if (gameId === 'lettered') {
       void navigate('/lettered');
     } else if (gameId === 'dev') {
@@ -117,7 +117,7 @@ export const App = () => {
 
   return (
     <Routes>
-      <Route path="/top" element={<TopPage onBack={handleBackToMenu} />} />
+      <Route path="/topx" element={<TopXPage onBack={handleBackToMenu} />} />
       <Route path="/lettered" element={<LetteredPage onBack={handleBackToMenu} />} />
       <Route
         path="/leaderboard"

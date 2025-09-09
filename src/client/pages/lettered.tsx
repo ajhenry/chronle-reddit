@@ -4,8 +4,7 @@ import { GameLayout } from '../components/GameLayout';
 import { toast } from 'sonner';
 import { CardContent } from '../components/ui/card';
 import { Button } from '../components/ui/button';
-import { Dialog, DialogContent, DialogClose } from '../components/ui/dialog';
-import { Skeleton } from '../components/ui/skeleton';
+import { PostGameModal } from '../components/PostGameModal';
 import { LetteredGameData, GridPosition, LetterPiece, GridCell } from '../../shared/types/api';
 import { DEFAULT_INITIAL_SCORE } from '../../shared/score-decay';
 import { isDevelopment } from '../lib/dev-utils';
@@ -855,7 +854,7 @@ export const LetteredPage = ({ onBack }: { onBack?: () => void }) => {
         />
       )}
       {/* Game Over Modal */}
-      <Dialog
+      <PostGameModal
         open={uiState.showGameOverModal}
         onOpenChange={(open) => {
           setUIState((prev) => ({ ...prev, showGameOverModal: open }));
@@ -864,132 +863,24 @@ export const LetteredPage = ({ onBack }: { onBack?: () => void }) => {
             setShowGoldShimmer(false);
           }
         }}
-      >
-        <DialogContent className="p-0 border-4 border-black bg-card sm:max-w-lg" hideCloseButton>
-          <DialogClose className="absolute top-4 right-4 z-20 text-white rounded-sm transition-colors hover:text-white/80 focus:outline-none focus:ring-2 focus:ring-white focus:ring-offset-2 focus:ring-offset-black disabled:pointer-events-none">
-            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={2}
-                d="M6 18L18 6M6 6l12 12"
-              />
-            </svg>
-            <span className="sr-only">Close</span>
-          </DialogClose>
-          <div className="relative">
-            {/* Header Banner */}
-            <div className="relative py-6 text-center text-white bg-black">
-              <div className="absolute -top-2 -left-2 z-10 px-3 py-1 text-black border-2 border-black transform -rotate-12 bg-primary">
-                <span className="text-sm font-black tracking-wide">COMPLETE</span>
-              </div>
-              <h1 className="text-4xl font-black tracking-tight text-white">PUZZLE</h1>
-              <h2 className="-mt-1 text-2xl font-black tracking-wider text-white">COMPLETE</h2>
-            </div>
-
-            <div className="p-6 space-y-6">
-              {/* Error State */}
-              {postGameStatsError && (
-                <div className="py-8 text-center">
-                  <div className="text-xl font-bold text-destructive">Failed to load stats</div>
-                  <div className="mt-2 text-sm text-muted-foreground">{postGameStatsError}</div>
-                </div>
-              )}
-
-              {/* Validation Message */}
-              <div className="relative p-4 text-center text-white bg-black border-4 border-black">
-                <div className="mb-1 text-2xl font-black tracking-wide">
-                  {postGameStatsLoading ? (
-                    <Skeleton className="mx-auto w-32 h-8 bg-gray-600" />
-                  ) : (
-                    'VALIDATED'
-                  )}
-                </div>
-                <div className="text-sm font-bold tracking-wider">
-                  {postGameStatsLoading ? (
-                    <Skeleton className="mx-auto w-40 h-4 bg-gray-600" />
-                  ) : (
-                    'SERVER CONFIRMED'
-                  )}
-                </div>
-              </div>
-
-              {/* Stats Grid */}
-              <div className="grid grid-cols-2 gap-4">
-                <div className="p-4 text-center bg-white border-4 border-black shadow-lg">
-                  <div className="mb-1 text-3xl font-black text-black">
-                    {postGameStatsLoading ? (
-                      <Skeleton className="mx-auto w-16 h-9 bg-gray-300" />
-                    ) : (
-                      (postGameStats?.finalScore ?? gameScore)
-                    )}
-                  </div>
-                  <div className="text-sm font-bold tracking-wide text-black">
-                    {postGameStatsLoading ? (
-                      <Skeleton className="mx-auto w-12 h-4 bg-gray-300" />
-                    ) : (
-                      'SCORE'
-                    )}
-                  </div>
-                </div>
-                <div className="p-4 text-center bg-white border-4 border-black shadow-lg">
-                  <div className="mb-1 text-3xl font-black text-black">
-                    {postGameStatsLoading ? (
-                      <Skeleton className="mx-auto w-8 h-9 bg-gray-300" />
-                    ) : (
-                      (postGameStats?.movesUsed ?? placedPieces.size)
-                    )}
-                  </div>
-                  <div className="text-sm font-bold tracking-wide text-black">
-                    {postGameStatsLoading ? (
-                      <Skeleton className="mx-auto w-12 h-4 bg-gray-300" />
-                    ) : (
-                      'MOVES'
-                    )}
-                  </div>
-                </div>
-              </div>
-
-              {/* Theme Display */}
-              <div className="p-4 text-center border-4 border-black shadow-lg bg-primary">
-                <div className="mb-1 text-sm font-black tracking-wide text-black">
-                  {postGameStatsLoading ? (
-                    <Skeleton className="mx-auto w-28 h-4 bg-gray-600" />
-                  ) : (
-                    "TODAY'S THEME"
-                  )}
-                </div>
-                <div className="text-xl font-black leading-tight text-black">
-                  {postGameStatsLoading ? (
-                    <Skeleton className="mx-auto w-48 h-7 bg-gray-600" />
-                  ) : (
-                    (postGameStats?.dailyGame.phrase ?? 'Loading...')
-                  )}
-                </div>
-              </div>
-
-              {/* Play Again Button */}
-              <div className="flex justify-center pt-4">
-                <Button
-                  onClick={() => {
-                    setUIState((prev) => ({
-                      ...prev,
-                      showGameOverModal: false,
-                      showConfetti: false,
-                    }));
-                    setPostGameStats(null); // Reset stats when closing
-                    setPostGameStatsError(null);
-                    resetGame();
-                  }}
-                  className="bg-foreground text-background border-4 border-foreground font-black text-xl py-4 px-8 shadow-lg hover:shadow-xl transition-all duration-200 hover:translate-x-[-2px] hover:translate-y-[-2px] tracking-wider"
-                >
-                  CLOSE
-                </Button>
-              </div>
-            </div>
-          </div>
-        </DialogContent>
-      </Dialog>
+        gameType="lettered"
+        loading={postGameStatsLoading}
+        error={postGameStatsError}
+        score={postGameStats?.finalScore ?? gameScore}
+        secondaryStatValue={postGameStats?.movesUsed ?? placedPieces.size}
+        secondaryStatLabel="MOVES"
+        theme={postGameStats?.dailyGame.phrase ?? 'Loading...'}
+        onClose={() => {
+          setUIState((prev) => ({
+            ...prev,
+            showGameOverModal: false,
+            showConfetti: false,
+          }));
+          setPostGameStats(null); // Reset stats when closing
+          setPostGameStatsError(null);
+          resetGame();
+        }}
+      />
     </GameLayout>
   );
 };
