@@ -2,7 +2,6 @@ import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card'
 import { Button } from '../components/ui/button';
 import { ArrowLeft, Settings } from 'lucide-react';
 import { DraggableItem, Grid, GridPosition } from '../components/tile-grid/tile-grid';
-import { ModeToggle } from '../components/mode-toggle';
 import { useState, useCallback } from 'react';
 
 interface DevPageProps {
@@ -164,11 +163,6 @@ export const DevPage = ({ onBack }: DevPageProps) => {
   }, []);
   return (
     <div className="p-4 min-h-screen bg-background">
-      {/* Theme Toggle - Fixed in top right */}
-      <div className="fixed top-4 right-4 z-50">
-        <ModeToggle />
-      </div>
-
       <div className="mx-auto space-y-6 max-w-4xl">
         {/* Header */}
         <div className="flex justify-between items-center">
