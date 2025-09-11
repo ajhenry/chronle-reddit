@@ -10,7 +10,11 @@ import { calculateDecayedScore } from '../../shared/score-decay';
 import { supabase } from '../../shared/supabase-server';
 import { recordLeaderboardEntry } from '../lib/leaderboard-helpers';
 import { ensureUserExistsAndGetId } from '../lib/user-helpers';
-import { getUserTopXSessionForToday, updateTopXSession } from '../database/topx';
+import {
+  getTopXSubmissionsForToday,
+  getUserTopXSessionForToday,
+  updateTopXSession,
+} from '../database/topx';
 import { getOrCreateTodaysGame } from '../database/game';
 import {
   checkTopXSubmissionExists,
@@ -278,165 +282,36 @@ router.get('/api/topx/postgame', async (_req, res): Promise<void> => {
       return;
     }
 
-    // Get today's daily game
-    const { data: dailyGameResult, error: dailyGameError } =
-      await supabase.rpc('get_todays_daily_game');
+    const session = await getOrCreateTodaysTopXSession(userId);
 
-    if (dailyGameError || !dailyGameResult || dailyGameResult.length === 0) {
-      console.error("Error fetching today's daily game:", dailyGameError);
-      res.status(404).json({
+    if (!session.isCompleted) {
+      res.status(400).json({
         status: 'error',
-        message: 'No daily game available for today',
+        message: 'Game session is not completed',
       });
       return;
     }
 
-    const dailyGame = dailyGameResult[0];
+    const submissions = await getTopXSubmissionsForToday(userId);
 
-    if (!dailyGame) {
-      console.error('Daily game data is malformed');
-      res.status(500).json({
-        status: 'error',
-        message: 'Daily game data is malformed',
-      });
-      return;
-    }
+    const finalScore = session.finalScore;
+    const correctAnswers = submissions
+      .filter((s) => s.isCorrect)
+      .map((s) => ({
+        answer: s.answer,
+        position: s.position!,
+        points: s.scoreAtSubmission,
+      }));
 
-    // Get the user's game session
-    let session;
-    try {
-      session = await getUserTopXSessionForToday(userId);
-    } catch (sessionError) {
-      console.error('Error fetching topx session:', sessionError);
-      res.status(500).json({
-        status: 'error',
-        message: 'Failed to fetch game session',
-      });
-      return;
-    }
+    const response: TopXGameCompleteResponse = {
+      type: 'topx_game_complete',
+      finalScore,
+      correctAnswers,
+      totalCorrect: correctAnswers.length,
+      isValid: true,
+    };
 
-    if (!session) {
-      res.status(404).json({
-        status: 'error',
-        message: 'No game session found for today',
-      });
-      return;
-    }
-
-    // TypeScript should know session is defined here
-    const validSession = session;
-
-    // If not completed, validate and complete the game now
-    if (!validSession.isCompleted) {
-      // Get all submissions for this session
-      const { data: submissions, error: submissionsError } = await supabase
-        .from('topx_submissions')
-        .select('*')
-        .eq('game_session_id', validSession.id)
-        .order('submitted_at', { ascending: true });
-
-      if (submissionsError) {
-        console.error('Error fetching submissions:', submissionsError);
-        res.status(500).json({
-          status: 'error',
-          message: 'Failed to fetch submissions',
-        });
-        return;
-      }
-
-      // Get the TopX game data
-      const { data: gameData, error: gameError } = await supabase
-        .from('topx_games')
-        .select('*')
-        .eq('id', dailyGame.topx_game_id)
-        .single();
-
-      if (gameError || !gameData) {
-        console.error('Error fetching topx game:', gameError);
-        res.status(500).json({
-          status: 'error',
-          message: 'Failed to fetch game data',
-        });
-        return;
-      }
-
-      const game = gameData;
-      const solution = game.solution.map((s: string) => s.toLowerCase().trim());
-
-      // Validate each submission and calculate final score
-      let finalScore = 0;
-      const correctAnswers: Array<{ answer: string; position: number; points: number }> = [];
-      const foundAnswers = new Set<string>();
-
-      for (const submission of submissions || []) {
-        const normalizedAnswer = submission.answer.toLowerCase().trim();
-        const position = solution.indexOf(normalizedAnswer);
-        const isCorrect = position !== -1 && !foundAnswers.has(normalizedAnswer);
-
-        if (isCorrect) {
-          foundAnswers.add(normalizedAnswer);
-          const points = submission.score_at_submission;
-          finalScore += points;
-
-          correctAnswers.push({
-            answer: submission.answer,
-            position: position + 1, // 1-indexed
-            points,
-          });
-        }
-
-        // Update submission with correct validation
-        await supabase
-          .from('topx_submissions')
-          .update({
-            is_correct: isCorrect,
-            position: isCorrect ? position + 1 : null,
-          })
-          .eq('id', submission.id);
-      }
-
-      // Mark session as completed
-      await updateTopXSession(validSession.id, {
-        isCompleted: true,
-        completedAt: new Date().toISOString(),
-        finalScore,
-      });
-
-      // Record the points in the leaderboard
-      const leaderboardResult = await recordLeaderboardEntry(
-        userId,
-        dailyGame.id,
-        session.id,
-        finalScore,
-        'topx'
-      );
-
-      if (!leaderboardResult.success) {
-        console.error('Failed to record leaderboard entry:', leaderboardResult.error);
-        // Continue with the response even if leaderboard recording fails
-      }
-
-      const response: TopXGameCompleteResponse = {
-        type: 'topx_game_complete',
-        finalScore,
-        correctAnswers,
-        totalCorrect: correctAnswers.length,
-        isValid: true,
-      };
-
-      res.json(response);
-    } else {
-      // Game already completed, return the stored results
-      const response: TopXGameCompleteResponse = {
-        type: 'topx_game_complete',
-        finalScore: session.finalScore,
-        correctAnswers: [], // TODO: Store correct answers in session or recalculate
-        totalCorrect: 0, // TODO: Calculate total correct from submissions
-        isValid: true,
-      };
-
-      res.json(response);
-    }
+    res.json(response);
   } catch (error) {
     console.error('Error getting postgame results:', error);
     res.status(500).json({
