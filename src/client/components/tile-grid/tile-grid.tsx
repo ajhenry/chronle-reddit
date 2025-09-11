@@ -287,6 +287,7 @@ function GridProvider({
       if (!draggedItemId || !gridBounds || !grabOffset) return;
 
       // Prevent default touch behavior (scrolling) during drag
+      // This is critical for preventing scroll during fast movements
       if (e.type.startsWith('touch')) {
         e.preventDefault();
         e.stopPropagation();
@@ -426,9 +427,15 @@ function GridProvider({
       document.addEventListener('mousemove', handlePointerMove);
       document.addEventListener('mouseup', handlePointerUp);
 
-      // Touch events
-      document.addEventListener('touchmove', handlePointerMove, { passive: false });
-      document.addEventListener('touchend', handlePointerUp, { passive: false });
+      // Touch events with passive: false to allow preventDefault
+      document.addEventListener('touchmove', handlePointerMove, {
+        passive: false,
+        capture: true, // Use capture phase for better event control
+      });
+      document.addEventListener('touchend', handlePointerUp, {
+        passive: false,
+        capture: true,
+      });
 
       return () => {
         // Remove dragging class from body
@@ -438,9 +445,13 @@ function GridProvider({
         document.removeEventListener('mousemove', handlePointerMove);
         document.removeEventListener('mouseup', handlePointerUp);
 
-        // Touch events
-        document.removeEventListener('touchmove', handlePointerMove);
-        document.removeEventListener('touchend', handlePointerUp);
+        // Touch events (must match the options used when adding)
+        document.removeEventListener('touchmove', handlePointerMove, {
+          capture: true,
+        } as EventListenerOptions);
+        document.removeEventListener('touchend', handlePointerUp, {
+          capture: true,
+        } as EventListenerOptions);
       };
     }
   }, [draggedItemId, handleGlobalPointerMove, handleGlobalPointerUp]);
@@ -678,6 +689,7 @@ const DraggableItemComponent = React.memo(
         }
 
         // Immediately prevent default behavior for touch events to stop scrolling
+        // This must be done BEFORE any async operations or checks
         if ('touches' in e) {
           e.preventDefault();
           e.stopPropagation();
@@ -706,60 +718,57 @@ const DraggableItemComponent = React.memo(
         // Only allow dragging if clicking on an occupied cell
         if (!isOccupiedCell) {
           // For empty spaces, temporarily hide this element to allow events to reach underlying pieces
-          // This handles both mouse and touch events by removing the element from the DOM temporarily
+          // Use immediate synchronous handling to avoid delays that could cause scrolling
           if (itemRef.current) {
             const originalPointerEvents = itemRef.current.style.pointerEvents;
             itemRef.current.style.pointerEvents = 'none';
 
-            // Forward the touch event to underlying pieces without hiding the element
-            setTimeout(() => {
-              const targetElement = document.elementFromPoint(coords.clientX, coords.clientY);
-              if (targetElement && targetElement !== itemRef.current) {
-                // Create a proper TouchEvent to forward
-                try {
-                  if ('touches' in e) {
-                    const forwardedTouchEvent = new TouchEvent(e.type, {
-                      touches: e.touches as unknown as Touch[],
-                      changedTouches: e.changedTouches as unknown as Touch[],
-                      bubbles: true,
-                      cancelable: true,
-                    });
-                    targetElement.dispatchEvent(forwardedTouchEvent);
-                  } else {
-                    // Fallback for mouse events
-                    const fallbackEvent = new MouseEvent(e.type, {
-                      clientX: coords.clientX,
-                      clientY: coords.clientY,
-                      button: e.button,
-                      buttons: e.buttons,
-                      bubbles: true,
-                      cancelable: true,
-                    });
-                    targetElement.dispatchEvent(fallbackEvent);
-                  }
-                } catch (error) {
-                  // Fallback: create a simple mouse event if event creation fails
-                  console.warn('Event forwarding failed, using mouse fallback:', error);
-                  const fallbackEvent = new MouseEvent(
-                    e.type === 'touchstart' ? 'mousedown' : e.type,
-                    {
-                      clientX: coords.clientX,
-                      clientY: coords.clientY,
-                      button: 'touches' in e ? 0 : e.button,
-                      buttons: 'touches' in e ? 1 : e.buttons,
-                      bubbles: true,
-                      cancelable: true,
-                    }
-                  );
+            // Immediately find the target element and forward the event
+            const targetElement = document.elementFromPoint(coords.clientX, coords.clientY);
+
+            // Restore pointer events immediately to prevent timing issues
+            itemRef.current.style.pointerEvents = originalPointerEvents;
+
+            if (targetElement && targetElement !== itemRef.current) {
+              // Create a proper TouchEvent to forward immediately
+              try {
+                if ('touches' in e) {
+                  const forwardedTouchEvent = new TouchEvent(e.type, {
+                    touches: e.touches as unknown as Touch[],
+                    changedTouches: e.changedTouches as unknown as Touch[],
+                    bubbles: true,
+                    cancelable: true,
+                  });
+                  targetElement.dispatchEvent(forwardedTouchEvent);
+                } else {
+                  // Fallback for mouse events
+                  const fallbackEvent = new MouseEvent(e.type, {
+                    clientX: coords.clientX,
+                    clientY: coords.clientY,
+                    button: e.button,
+                    buttons: e.buttons,
+                    bubbles: true,
+                    cancelable: true,
+                  });
                   targetElement.dispatchEvent(fallbackEvent);
                 }
+              } catch (error) {
+                // Fallback: create a simple mouse event if event creation fails
+                console.warn('Event forwarding failed, using mouse fallback:', error);
+                const fallbackEvent = new MouseEvent(
+                  e.type === 'touchstart' ? 'mousedown' : e.type,
+                  {
+                    clientX: coords.clientX,
+                    clientY: coords.clientY,
+                    button: 'touches' in e ? 0 : e.button,
+                    buttons: 'touches' in e ? 1 : e.buttons,
+                    bubbles: true,
+                    cancelable: true,
+                  }
+                );
+                targetElement.dispatchEvent(fallbackEvent);
               }
-
-              // Restore original pointer events
-              if (itemRef.current) {
-                itemRef.current.style.pointerEvents = originalPointerEvents;
-              }
-            }, 0);
+            }
           }
           return; // Don't process this click in the current piece
         }

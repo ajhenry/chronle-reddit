@@ -344,7 +344,15 @@ body.no-scroll {
 
 /* Ensure draggable elements don't interfere with scrolling */
 .dragging-active {
-  overflow: hidden;
+  /* Only prevent scroll overflow on touch devices */
+  overscroll-behavior: contain;
+}
+
+/* Prevent scrolling on touch devices only when dragging */
+@media (pointer: coarse) {
+  .dragging-active {
+    overflow: hidden;
+  }
 }
 
 /* Specific touch handling for grid elements */
