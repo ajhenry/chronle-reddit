@@ -1,6 +1,5 @@
 import express from 'express';
 import { Devvit } from '@devvit/public-api';
-import counterRoutes from './handlers/counter';
 import userRoutes from './handlers/user';
 import postRoutes from './handlers/post';
 import gameRoutes from './handlers/game';
@@ -52,7 +51,6 @@ if (isLocal) {
 }
 
 // Use router middleware with all handler modules
-app.use(counterRoutes);
 app.use(userRoutes);
 app.use(postRoutes);
 app.use(gameRoutes);

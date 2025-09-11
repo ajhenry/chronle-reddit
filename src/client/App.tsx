@@ -4,6 +4,7 @@ import { TopXPage } from './pages/topx';
 import { DevPage } from './pages/dev';
 import { LetteredPage } from './pages/lettered';
 import { TermsPage } from './pages/terms';
+import { AdminPage } from './pages/admin';
 import { Card, CardHeader, CardTitle, CardContent } from './components/ui/card';
 import { Button } from './components/ui/button';
 import { BouncingLogo } from './components/BouncingLogo';
@@ -14,12 +15,16 @@ import { X, Settings } from 'lucide-react';
 import { isDevelopment } from './lib/dev-utils';
 import { ModeToggle } from './components/mode-toggle';
 import { ScrollToTop } from './components/ScrollToTop';
+import { AdminBanner } from './components/AdminBanner';
 import { apiFetch } from './lib/utils';
+import type { User } from '../shared/types/api';
 
 export const App = () => {
   const navigate = useNavigate();
   const [showWelcome, setShowWelcome] = useState<boolean>(false);
   const [currentSeasonId, setCurrentSeasonId] = useState<string | null>(null);
+  const [userInfo, setUserInfo] = useState<User | null>(null);
+  // userInfo is stored for potential future use and debugging
 
   // Cookie utilities
   const getCookie = (name: string): string | null => {
@@ -86,6 +91,28 @@ export const App = () => {
     void fetchGameStatus();
   }, []);
 
+  // Fetch user info when app loads
+  useEffect(() => {
+    const fetchUserInfo = async () => {
+      try {
+        console.log('Fetching user info...');
+        const response = await apiFetch('/api/user');
+        if (response.ok) {
+          const data = await response.json();
+          setUserInfo(data.user);
+          console.log('User info fetched:', data.user, userInfo);
+        } else {
+          console.log('Failed to fetch user info:', response.statusText);
+        }
+      } catch (error) {
+        console.error('Error fetching user info:', error);
+      }
+    };
+
+    void fetchUserInfo();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   const dismissWelcome = () => {
     setShowWelcome(false);
     setCookie('snoodle_welcome_dismissed', 'true', 365); // Expires in 1 year
@@ -119,6 +146,7 @@ export const App = () => {
 
   return (
     <>
+      <AdminBanner user={userInfo} />
       <ScrollToTop />
       <Routes>
         <Route path="/topx" element={<TopXPage onBack={handleBackToMenu} />} />
@@ -135,6 +163,7 @@ export const App = () => {
         />
         <Route path="/terms" element={<TermsPage />} />
         <Route path="/dev" element={<DevPage onBack={handleBackFromDev} />} />
+        <Route path="/admin" element={<AdminPage />} />
         <Route
           path="/"
           element={

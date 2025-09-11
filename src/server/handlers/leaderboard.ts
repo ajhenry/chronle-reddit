@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import { LeaderboardResponse, UserLeaderboardPositionResponse } from '../../shared/types/api';
 import { supabase } from '../../shared/supabase-server';
-import { getUserId } from '../lib/user-helpers';
+import { ensureUserExistsAndGetId } from '../lib/user-helpers';
 
 const router = Router();
 
@@ -65,7 +65,7 @@ router.get('/api/leaderboard', async (req, res): Promise<void> => {
 // GET /api/leaderboard/position - Returns the current user's leaderboard position
 router.get('/api/leaderboard/position', async (_req, res): Promise<void> => {
   try {
-    const userId = await getUserId();
+    const userId = await ensureUserExistsAndGetId();
 
     if (!userId) {
       res.status(401).json({

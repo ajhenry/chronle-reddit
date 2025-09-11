@@ -129,7 +129,6 @@ export type Database = {
           user_id: string;
         };
         Insert: {
-          attempts_left?: number;
           completed_at?: string | null;
           created_at?: string;
           daily_game_id: string;
@@ -142,7 +141,6 @@ export type Database = {
           user_id: string;
         };
         Update: {
-          attempts_left?: number;
           completed_at?: string | null;
           created_at?: string;
           daily_game_id?: string;
@@ -245,7 +243,7 @@ export type Database = {
           max_attempts: number;
           prompt: string;
           solution: string[];
-          solution_hash: Json;
+          solution_hash: Json | null;
           suggestions: string[];
           updated_at: string;
         };
@@ -257,7 +255,7 @@ export type Database = {
           max_attempts?: number;
           prompt: string;
           solution: string[];
-          solution_hash?: Json;
+          solution_hash?: Json | null;
           suggestions: string[];
           updated_at?: string;
         };
@@ -269,7 +267,7 @@ export type Database = {
           max_attempts?: number;
           prompt?: string;
           solution?: string[];
-          solution_hash?: Json;
+          solution_hash?: Json | null;
           suggestions?: string[];
           updated_at?: string;
         };
@@ -375,6 +373,7 @@ export type Database = {
       };
       users: {
         Row: {
+          admin: boolean;
           created_at: string;
           handle: string;
           id: string;
@@ -383,6 +382,7 @@ export type Database = {
           updated_at: string;
         };
         Insert: {
+          admin?: boolean;
           created_at?: string;
           handle: string;
           id?: string;
@@ -391,6 +391,7 @@ export type Database = {
           updated_at?: string;
         };
         Update: {
+          admin?: boolean;
           created_at?: string;
           handle?: string;
           id?: string;

@@ -1,3 +1,4 @@
+import { User } from '@devvit/web/server';
 import { isDevelopment } from '../../shared/utils';
 
 // Reddit API stub for local development
@@ -7,6 +8,7 @@ import { isDevelopment } from '../../shared/utils';
 const mockStorage: { [key: string]: string } = {};
 
 export interface RedditStub {
+  getCurrentUser(): Promise<User>;
   getCurrentUsername(): Promise<string>;
   submitCustomPost(options: {
     title?: string;
@@ -22,12 +24,42 @@ export interface RedditStub {
  * Returns predictable data for testing purposes
  */
 export const redditStub: RedditStub = {
+  async getCurrentUser(): Promise<User> {
+    return {
+      id: 't2_ajhenrydev',
+      username: 'ajhenrydev',
+      createdAt: new Date(),
+      linkKarma: 0,
+      commentKarma: 0,
+      nsfw: false,
+      isAdmin: false,
+      modPermissions: new Map(),
+      url: 'https://reddit.com/u/ajhenrydev',
+      permalink: 'https://reddit.com/u/ajhenrydev',
+      hasVerifiedEmail: false,
+      getSnoovatarUrl: () =>
+        'https://plus.unsplash.com/premium_photo-1736613836139-7ca3e7eea856?q=80&w=1084&auto=format&fit=crop&ixlib=rb-4.1.0&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8fA%3D%3D',
+      toJSON: () => ({
+        id: 't2_ajhenrydev',
+        username: 'ajhenrydev',
+        createdAt: new Date(),
+        linkKarma: 0,
+        commentKarma: 0,
+        nsfw: false,
+        isAdmin: false,
+        modPermissions: new Map(),
+        url: 'https://reddit.com/u/ajhenrydev',
+        permalink: 'https://reddit.com/u/ajhenrydev',
+        hasVerifiedEmail: false,
+      }),
+    } as unknown as User;
+  },
   /**
    * Mock getCurrentUsername - returns a test username
    */
   async getCurrentUsername(): Promise<string> {
     if (isDevelopment()) {
-      return 'mock_reddit_user';
+      return 'ajhenrydev';
     }
     // Return a consistent test username for development
     const testUsernames = [

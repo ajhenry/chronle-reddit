@@ -6,6 +6,7 @@
 // - USE_REDDIT_STUB=true
 // - NODE_ENV=development with HOST=localhost (default for local dev)
 
+import { User } from '@devvit/web/server';
 import { redditStub } from './reddit-stub';
 
 /**
@@ -61,7 +62,12 @@ const getCachedRedditProvider = async () => {
  * Reddit API wrapper that conditionally uses stub or real implementation
  */
 export const reddit = {
-  async getCurrentUsername(): Promise<string> {
+  async getCurrentUser(): Promise<User | undefined> {
+    const provider = await getCachedRedditProvider();
+    return provider.getCurrentUser();
+  },
+
+  async getCurrentUsername(): Promise<string | undefined> {
     const provider = await getCachedRedditProvider();
     return provider.getCurrentUsername();
   },

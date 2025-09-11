@@ -140,7 +140,7 @@ export const findRandomTopXGame = async (): Promise<TopXGame> => {
 
   console.log('countData', count);
 
-  if (countError || !count) {
+  if (countError || count === null) {
     console.error('Failed to find topx game count:', { error: countError });
     throw new Error(`Failed to find topx game count: ${countError?.message}`, {
       cause: countError,

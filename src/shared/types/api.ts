@@ -251,6 +251,16 @@ export type StatusResponse = {
   day: string;
 };
 
+export type User = {
+  id: string;
+  redditId: string;
+  handle: string;
+  imageUrl: string | null;
+  admin: boolean;
+  createdAt: string;
+  updatedAt: string;
+};
+
 export type LetteredPostGameResponse = {
   type: 'lettered_post_game';
   dailyGame: LetteredGameData;
