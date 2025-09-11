@@ -250,6 +250,30 @@ body {
   z-index: 10;
 }
 
+/* Gold shimmer effects for winning numbers and text */
+.gold-shimmer-number {
+  background: linear-gradient(45deg, #ffd700, #ffed4e) !important;
+  color: #000 !important;
+}
+
+.gold-shimmer-text {
+  color: #ffd700 !important;
+  font-weight: 600;
+}
+
+/* Grey out effect for losing games */
+.grey-out-card {
+  border: 2px solid #6b7280 !important;
+  position: relative;
+  z-index: 10;
+  opacity: 0.7;
+  transition: opacity 0.5s ease-in-out;
+}
+
+.grey-out-number {
+  background: #6b7280 !important;
+}
+
 /* Piece color classes for lettered game pieces */
 .piece-color-red {
   background-color: #ef4444;

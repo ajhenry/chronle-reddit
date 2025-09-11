@@ -855,18 +855,17 @@ export const TopXPage = ({ onBack }: { onBack?: () => void }) => {
 
         {/* Answer Input Combobox */}
         {!gameState.gameComplete && (
-          <div className={cn(gameState.isShaking ? 'animate-shake' : '')}>
-            <Combobox
-              options={comboboxOptions}
-              value={gameState.currentInput}
-              onValueChange={handleAnswerSubmit}
-              onInputChange={handleInputChange}
-              placeholder="Type to search for your answer..."
-              disabled={gameState.gameComplete}
-              maxHeight={240}
-              mobileSticky={isMobile}
-            />
-          </div>
+          <Combobox
+            options={comboboxOptions}
+            value={gameState.currentInput}
+            onValueChange={handleAnswerSubmit}
+            onInputChange={handleInputChange}
+            placeholder="Type to search for your answer..."
+            disabled={gameState.gameComplete}
+            maxHeight={240}
+            mobileSticky={isMobile}
+            className={gameState.isShaking ? 'animate-shake' : ''}
+          />
         )}
 
         {/* Answer List Title */}
@@ -889,35 +888,51 @@ export const TopXPage = ({ onBack }: { onBack?: () => void }) => {
             const answerToShow = guessedAnswer?.answer || correctAnswer;
             const wasGuessed = !!guessedAnswer;
 
+            // Show gold shimmer for either active winning state or completed winning games
+            const shouldShowGoldShimmer =
+              (showGoldShimmer && gameState.gameWon) ||
+              (gameState.gameComplete && gameState.gameWon);
+
+            // Show grey out effect for completed but lost games
+            const shouldShowGreyOut = gameState.gameComplete && !gameState.gameWon;
+
             return (
               <Card
                 key={index}
                 className={`${
-                  guessedAnswer && showGoldShimmer && gameState.gameWon ? 'gold-shimmer-card' : ''
+                  shouldShowGoldShimmer
+                    ? 'gold-shimmer-card'
+                    : shouldShowGreyOut
+                      ? 'grey-out-card'
+                      : ''
                 }`}
               >
                 <CardContent className="p-3">
                   <div className="flex gap-4 items-center">
                     <div
                       className={`w-8 h-8 text-white font-semibold flex items-center justify-center rounded transition-all duration-200 ${
-                        guessedAnswer && showGoldShimmer && gameState.gameWon
+                        shouldShowGoldShimmer
                           ? 'gold-shimmer-number'
-                          : wasGuessed
-                            ? 'bg-green-600'
-                            : isGameLost
-                              ? 'bg-gray-500' // Grey for missed answers when game is lost
-                              : 'bg-gray-400'
+                          : shouldShowGreyOut
+                            ? 'grey-out-number'
+                            : wasGuessed
+                              ? 'bg-green-600'
+                              : isGameLost
+                                ? 'bg-gray-500' // Grey for missed answers when game is lost
+                                : 'bg-gray-400'
                       }`}
                     >
                       {position}
                     </div>
                     <div
-                      className={`${
-                        guessedAnswer && showGoldShimmer && gameState.gameWon
-                          ? 'gold-shimmer-text'
-                          : wasGuessed || isGameLost
-                            ? 'text-card-foreground'
-                            : 'text-muted-foreground italic'
+                      className={`text-card-foreground font-medium leading-tight ${
+                        shouldShowGoldShimmer
+                          ? 'text-card-foreground'
+                          : shouldShowGreyOut
+                            ? 'grey-out-text'
+                            : wasGuessed || isGameLost
+                              ? 'font-semibold'
+                              : 'italic'
                       }`}
                     >
                       {answerToShow || ''}
@@ -986,9 +1001,12 @@ export const TopXPage = ({ onBack }: { onBack?: () => void }) => {
         onOpenChange={(open) => {
           setShowGameOverModal(open);
           if (!open) {
-            // Hide confetti and gold shimmer when modal is closed
+            // Hide confetti when modal is closed, but keep gold shimmer for completed games
             setGameState((prev) => ({ ...prev, showConfetti: false }));
-            setShowGoldShimmer(false);
+            // Only hide gold shimmer if game is not completed and won
+            if (!gameState.gameComplete || !gameState.gameWon) {
+              setShowGoldShimmer(false);
+            }
           }
         }}
         gameType="topx"
@@ -999,7 +1017,10 @@ export const TopXPage = ({ onBack }: { onBack?: () => void }) => {
         onClose={() => {
           setShowGameOverModal(false);
           setGameState((prev) => ({ ...prev, showConfetti: false }));
-          setShowGoldShimmer(false);
+          // Only hide gold shimmer if game is not completed and won
+          if (!gameState.gameComplete || !gameState.gameWon) {
+            setShowGoldShimmer(false);
+          }
           void resetGame();
         }}
       ></PostGameModal>
