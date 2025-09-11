@@ -686,7 +686,7 @@ export const LetteredPage = ({ onBack }: { onBack?: () => void }) => {
   };
 
   const pieceTileClass = (piece: LetterPiece) => {
-    const baseClass = 'text-primary-foreground transition-colors';
+    const baseClass = 'text-primary-foreground transition-colors touch-none';
     return cn(baseClass, piece.color);
   };
 
