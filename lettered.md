@@ -64,9 +64,9 @@ Specific grid coordinates for each letter?
 
 - No, the letters should be randomly placed on the grid.
 
-Scoring: Should it follow the same score decay mechanism as TopX with the same starting score (5000) and timing?
+Scoring: Should it follow the same score decay mechanism as TopX with the same starting score (250) and timing?
 
-- Yes, it should follow the same score decay mechanism as TopX with the same starting score (5000) and timing.
+- Yes, it should follow the same score decay mechanism as TopX with the same starting score (250) and timing.
 
 Piece Snapping: When pieces snap to invalid positions, should they return to:
 

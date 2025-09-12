@@ -311,7 +311,7 @@ export const LetteredPage = ({ onBack }: { onBack?: () => void }) => {
       let initialScoreForManager: number | undefined;
       let gameStartTime: number | undefined;
 
-      if (apiSessionData && Object.keys(apiSessionData.pieces).length > 0) {
+      if (apiSessionData) {
         // Use the current score from server and set game start time to now
         // This ensures decay continues properly from the restored score
         initialScoreForManager = apiSessionData.currentScore;
@@ -327,7 +327,7 @@ export const LetteredPage = ({ onBack }: { onBack?: () => void }) => {
         );
 
         // If we have session data, restore the placed pieces
-        if (apiSessionData && Object.keys(apiSessionData.pieces).length > 0) {
+        if (apiSessionData) {
           // Set restoration flags to prevent race conditions
           setIsRestoringSession(true);
           gameStateManagerRef.current.setRestoring(true);
@@ -353,12 +353,6 @@ export const LetteredPage = ({ onBack }: { onBack?: () => void }) => {
         // Enable client-side decay for visual feedback, but sync with server values
         gameStateManagerRef.current.setTimerEnabled(true);
         gameStateManagerRef.current.startScoreDecay();
-
-        // Set up score sync callback for periodic server synchronization
-        // Disabled periodic syncing as requested
-        // gameStateManagerRef.current.setScoreSyncCallback(() => {
-        //   void syncScoreWithServer();
-        // });
       }
 
       // Reset UI state for new game

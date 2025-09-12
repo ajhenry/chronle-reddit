@@ -10,6 +10,7 @@ import { calculateDecayedScore } from '../../shared/score-decay';
 import { supabase } from '../../shared/supabase-server';
 import { recordLeaderboardEntry } from '../lib/leaderboard-helpers';
 import { ensureUserExistsAndGetId } from '../lib/user-helpers';
+import { getCurrentUTCTime, toUTCTimestamp, getCurrentUTCISOString } from '../lib/time';
 import {
   getTopXSubmissionsForToday,
   getUserTopXSessionForToday,
@@ -60,8 +61,8 @@ router.get('/api/topx/game', async (_req, res): Promise<void> => {
     console.log('existingSession', existingSession);
 
     // Calculate current score using same algorithm as client
-    const gameStartTime = new Date(existingSession.startedAt).getTime();
-    const now = Date.now();
+    const gameStartTime = toUTCTimestamp(existingSession.startedAt);
+    const now = getCurrentUTCTime();
     const elapsedSeconds = Math.max(0, (now - gameStartTime) / 1000);
 
     // Calculate current score using same algorithm as client
@@ -187,14 +188,14 @@ router.post('/api/topx/:gameId/attempt', async (req, res): Promise<void> => {
     }
 
     // Calculate time-based score decay
-    const gameStartTime = new Date(session.startedAt).getTime();
+    const gameStartTime = toUTCTimestamp(session.startedAt);
     const submissionTime = timestamp;
     const elapsedSeconds = Math.max(0, (submissionTime - gameStartTime) / 1000);
 
     // Count incorrect submissions so far
     const currentIncorrectCount = await getIncorrectTopXSubmissionCountForToday(userId);
 
-    // Scoring algorithm: Start at 5000, decay over time, faster decay with wrong answers
+    // Scoring algorithm: Start at 250, decay over time, faster decay with wrong answers
     const currentScore = calculateDecayedScore({
       initialScore: session.initialScore,
       elapsedSeconds,
@@ -216,7 +217,7 @@ router.post('/api/topx/:gameId/attempt', async (req, res): Promise<void> => {
       answer: trimmedAnswer,
       isCorrect: isCorrect,
       scoreAtSubmission: currentScore,
-      submittedAt: new Date(timestamp).toISOString(),
+      submittedAt: new Date(timestamp).toISOString(), // timestamp is already in milliseconds
     };
 
     if (isCorrect) {
@@ -246,7 +247,7 @@ router.post('/api/topx/:gameId/attempt', async (req, res): Promise<void> => {
       // Postgame endpoint will do final validation and leaderboard recording
       await updateTopXSession(session.id, {
         isCompleted: true,
-        completedAt: new Date().toISOString(),
+        completedAt: getCurrentUTCISOString(),
         finalScore: currentScore,
       });
     }

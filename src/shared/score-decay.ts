@@ -5,7 +5,7 @@
 /**
  * Default initial score for all games (Lettered and TopX)
  */
-export const DEFAULT_INITIAL_SCORE = 5000;
+export const DEFAULT_INITIAL_SCORE = 250;
 
 export interface DecayCalculationParams {
   initialScore: number;
@@ -30,8 +30,8 @@ export interface DecayConfig {
 export const DEFAULT_DECAY_CONFIGS: Record<string, DecayConfig> = {
   lettered: {
     gameType: 'lettered',
-    letteredBaseDecayRate: 6,
-    letteredPieceMultiplier: 1.1,
+    letteredBaseDecayRate: 1.5,
+    letteredPieceMultiplier: 1,
   },
   topx: {
     gameType: 'topx',

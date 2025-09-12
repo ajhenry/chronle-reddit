@@ -258,7 +258,7 @@ export const TopXPage = ({ onBack }: { onBack?: () => void }) => {
         });
 
         setGameState((prev) => ({ ...prev, score: currentScore }));
-      }, 100); // Update every 100ms for smooth score decay
+      }, 1000); // Update every 1000ms for score decay
 
       setScoreUpdateTimer(timer);
       return () => {

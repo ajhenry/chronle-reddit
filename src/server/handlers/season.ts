@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { reddit } from '../lib/reddit-provider';
 import { supabase } from '../../shared/supabase-server';
 import type { SeasonInsert } from '../../shared/types/supabase';
+import { getCurrentUTCISOString } from '../lib/time';
 import type {
   SeasonResponse,
   SeasonsResponse,
@@ -52,8 +53,8 @@ router.get('/api/season/current', async (_req, res): Promise<void> => {
 
       const newSeasonData: SeasonInsert = {
         name: `Season ${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`,
-        start_date: now.toISOString(),
-        end_date: endDate.toISOString(),
+        start_date: now.toISOString(), // Keep as local time for season naming
+        end_date: endDate.toISOString(), // Keep as local time for season naming
         is_active: true,
         game_type: 'topx',
       };

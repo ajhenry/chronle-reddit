@@ -69,13 +69,13 @@ export class LetteredGameStateManager {
 
     return {
       score,
-      initialScore: score, // Use the restored score as the initial score for decay calculations
+      initialScore: initialScore ?? score, // Use the restored score as the initial score for decay calculations
       gameComplete: false,
       gameWon: false,
       boardLayout: gameData?.grid || [],
       placedPieces,
       lastValidPositions: new Map(placedPieces), // Also initialize lastValidPositions
-      scoreDecayInterval: 250,
+      scoreDecayInterval: 1000,
       lastScoreUpdate: startTime,
       gameStartTime: startTime,
       gameData,
@@ -181,7 +181,7 @@ export class LetteredGameStateManager {
   // Set restoration state
   setRestoring(isRestoring: boolean): void {
     this.state.isRestoring = isRestoring;
-    
+
     // When exiting restoration mode, send a complete state update
     if (!isRestoring) {
       this.notifyUpdates({
@@ -192,7 +192,7 @@ export class LetteredGameStateManager {
         gameWon: this.state.gameWon,
         score: this.state.score,
       });
-      
+
       // Also check game completion now that restoration is done
       void this.checkGameCompletion();
     } else {

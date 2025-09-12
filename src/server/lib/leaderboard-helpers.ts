@@ -1,5 +1,6 @@
 import { supabase } from '../../shared/supabase-server';
 import type { LeaderboardInsert } from '../../shared/types/supabase';
+import { getCurrentUTCISOString } from './time';
 
 /**
  * Records a user's points in the leaderboard after completing a game
@@ -18,7 +19,7 @@ export async function recordLeaderboardEntry(
       daily_game_id: dailyGameId,
       game_session_id: gameSessionId,
       points_earned: pointsEarned,
-      completed_at: new Date().toISOString(),
+      completed_at: getCurrentUTCISOString(),
       session_type: sessionType,
     };
 
@@ -33,7 +34,7 @@ export async function recordLeaderboardEntry(
           .from('leaderboard')
           .update({
             points_earned: pointsEarned,
-            completed_at: new Date().toISOString(),
+            completed_at: getCurrentUTCISOString(),
             session_type: sessionType,
           })
           .eq('user_id', userId)

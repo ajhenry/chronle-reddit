@@ -11,6 +11,7 @@ import {
 } from '../../shared/types/api';
 import { calculateDecayedScore } from '../../shared/score-decay';
 import { ensureUserExistsAndGetId } from '../lib/user-helpers';
+import { getCurrentUTCTime, toUTCTimestamp } from '../lib/time';
 import {
   getTodaysLetteredGame,
   getOrCreateUserLetteredSessionForToday,
@@ -149,9 +150,9 @@ router.get('/api/lettered/game', async (_req, res): Promise<void> => {
     // User has an existing session, get the latest board state submission
     const latestSubmission = await getLatestLetteredSubmissionForToday(userId);
 
-    // Calculate current score based on the startedAt time
-    const gameStartTime = new Date(existingSession.startedAt).getTime();
-    const now = Date.now();
+    // Calculate current score based on the startedAt time (using UTC consistently)
+    const gameStartTime = toUTCTimestamp(existingSession.startedAt);
+    const now = getCurrentUTCTime();
     const elapsedSeconds = Math.max(0, (now - gameStartTime) / 1000);
     const currentScore = calculateDecayedScore({
       initialScore: existingSession.initialScore,
@@ -289,9 +290,9 @@ router.post('/api/lettered/:dailyGameId/session', async (req, res): Promise<void
 
     // Store the complete board state as a submission
 
-    // Calculate current score for this submission
-    const gameStartTime = new Date(session.startedAt).getTime();
-    const placementTime = new Date().getTime();
+    // Calculate current score for this submission (using UTC consistently)
+    const gameStartTime = toUTCTimestamp(session.startedAt);
+    const placementTime = getCurrentUTCTime();
     const elapsedSeconds = Math.max(0, (placementTime - gameStartTime) / 1000);
 
     console.log('Calculating current score for submission', {
@@ -328,7 +329,7 @@ router.post('/api/lettered/:dailyGameId/session', async (req, res): Promise<void
     if (hasWon) {
       await updateLetteredSession(session.id, {
         isCompleted: true,
-        completedAt: new Date(timestamp).toISOString(),
+        completedAt: new Date(getCurrentUTCTime()).toISOString(),
         finalScore: currentScore,
       });
 
