@@ -29,6 +29,7 @@ export interface LetteredSession {
   initialScore: number;
   finalScore: number;
   isCompleted: boolean;
+  moves: number;
 }
 
 export interface LetteredSubmission {
@@ -66,6 +67,9 @@ const convertLetteredSession = (
     initialScore: session.initial_score,
     finalScore: session.final_score,
     isCompleted: session.is_completed,
+    moves:
+      (session as Database['public']['Tables']['lettered_sessions']['Row'] & { moves?: number })
+        .moves ?? 0,
   };
 };
 
@@ -298,7 +302,7 @@ export const createLetteredSession = async (userId: string): Promise<LetteredSes
 
 export const updateLetteredSession = async (
   sessionId: string,
-  updates: Partial<Pick<LetteredSession, 'completedAt' | 'finalScore' | 'isCompleted'>>
+  updates: Partial<Pick<LetteredSession, 'completedAt' | 'finalScore' | 'isCompleted' | 'moves'>>
 ): Promise<LetteredSession> => {
   const updateData: Database['public']['Tables']['lettered_sessions']['Update'] = {};
 
@@ -310,6 +314,11 @@ export const updateLetteredSession = async (
   }
   if (updates.isCompleted !== undefined) {
     updateData.is_completed = updates.isCompleted;
+  }
+  if (updates.moves !== undefined) {
+    (
+      updateData as Database['public']['Tables']['lettered_sessions']['Update'] & { moves?: number }
+    ).moves = updates.moves;
   }
 
   const { data, error } = await supabase

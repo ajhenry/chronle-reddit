@@ -43,9 +43,10 @@ export class LetteredGameStateManager {
   constructor(
     gameData: LetteredGameData | null = null,
     initialScore?: number,
-    gameStartTime?: number
+    gameStartTime?: number,
+    currentScore?: number
   ) {
-    this.state = this.createInitialState(gameData, initialScore, gameStartTime);
+    this.state = this.createInitialState(gameData, initialScore, gameStartTime, currentScore);
     // Don't start score decay immediately - wait for explicit call
     this.notifyUpdates(this.state);
   }
@@ -53,7 +54,8 @@ export class LetteredGameStateManager {
   private createInitialState(
     gameData: LetteredGameData | null,
     initialScore?: number,
-    gameStartTime?: number
+    gameStartTime?: number,
+    currentScore?: number
   ): GameState {
     // Initialize placed pieces with initial tray positions for all pieces
     const placedPieces = new Map<string, GridPosition>();
@@ -64,12 +66,13 @@ export class LetteredGameStateManager {
     }
 
     const defaultScore = DEFAULT_INITIAL_SCORE;
-    const score = initialScore ?? defaultScore;
+    const originalInitialScore = initialScore ?? defaultScore;
+    const score = currentScore ?? originalInitialScore; // Use currentScore if provided, otherwise use initialScore
     const startTime = gameStartTime ?? Date.now();
 
     return {
       score,
-      initialScore: initialScore ?? score, // Use the restored score as the initial score for decay calculations
+      initialScore: originalInitialScore, // Always use the original initial score for decay calculations
       gameComplete: false,
       gameWon: false,
       boardLayout: gameData?.grid || [],
@@ -111,9 +114,14 @@ export class LetteredGameStateManager {
   }
 
   // Initialize game with new data
-  initializeGame(gameData: LetteredGameData, initialScore?: number, gameStartTime?: number): void {
+  initializeGame(
+    gameData: LetteredGameData,
+    initialScore?: number,
+    gameStartTime?: number,
+    currentScore?: number
+  ): void {
     this.stopScoreDecay();
-    this.state = this.createInitialState(gameData, initialScore, gameStartTime);
+    this.state = this.createInitialState(gameData, initialScore, gameStartTime, currentScore);
     // Don't start score decay immediately - wait for explicit call
     this.notifyUpdates(this.state);
   }

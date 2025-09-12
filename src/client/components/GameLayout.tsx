@@ -1,5 +1,4 @@
-import { ReactNode, useState, useEffect } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
+import { ReactNode, useState } from 'react';
 import { Button } from './ui/button';
 import { Card, CardContent } from './ui/card';
 import { cn } from '../lib/utils';
@@ -7,8 +6,7 @@ import { cn } from '../lib/utils';
 interface GameLayoutProps {
   gameTitle: string;
   score: number;
-  attempts?: number;
-  maxAttempts?: number;
+  moves?: number;
   children: ReactNode;
   onBack: () => void;
   onLeaderboard?: () => void;
@@ -17,78 +15,10 @@ interface GameLayoutProps {
   className?: string;
 }
 
-const AnimatedNumber = ({ value }: { value: number }) => {
-  const [displayValue, setDisplayValue] = useState(value);
-  const [previousValue, setPreviousValue] = useState(value);
-  const [isAnimating, setIsAnimating] = useState(false);
-
-  useEffect(() => {
-    if (value !== displayValue) {
-      setPreviousValue(displayValue);
-      setDisplayValue(value);
-      setIsAnimating(true);
-
-      // Reset animation state after animation completes
-      const timer = setTimeout(() => {
-        setIsAnimating(false);
-      }, 600); // Match the animation duration
-
-      return () => clearTimeout(timer);
-    }
-  }, [value, displayValue]);
-
-  return (
-    <span className="inline-block relative number-container">
-      <AnimatePresence mode="wait">
-        {isAnimating ? (
-          <>
-            <motion.span
-              key={`out-${previousValue}`}
-              initial={{ y: 0, opacity: 1 }}
-              animate={{ y: -24, opacity: 0 }}
-              exit={{ y: -24, opacity: 0 }}
-              transition={{
-                duration: 0.6,
-                ease: [0.68, -0.55, 0.265, 1.55],
-              }}
-              className="flex absolute inset-0 justify-center items-center"
-            >
-              {previousValue}
-            </motion.span>
-            <motion.span
-              key={`in-${displayValue}`}
-              initial={{ y: 24, opacity: 0 }}
-              animate={{ y: 0, opacity: 1 }}
-              exit={{ y: 0, opacity: 1 }}
-              transition={{
-                duration: 0.6,
-                ease: [0.68, -0.55, 0.265, 1.55],
-              }}
-              className="flex absolute inset-0 justify-center items-center"
-            >
-              {displayValue}
-            </motion.span>
-          </>
-        ) : (
-          <motion.span
-            key={`static-${displayValue}`}
-            initial={{ opacity: 1 }}
-            animate={{ opacity: 1 }}
-            className="flex absolute inset-0 justify-center items-center"
-          >
-            {displayValue}
-          </motion.span>
-        )}
-      </AnimatePresence>
-    </span>
-  );
-};
-
 export const GameLayout = ({
   gameTitle,
   score,
-  attempts,
-  maxAttempts,
+  moves,
   children,
   onBack,
   onLeaderboard,
@@ -111,10 +41,21 @@ export const GameLayout = ({
             <h1 className="hidden text-2xl font-semibold text-foreground md:block">{gameTitle}</h1>
           </div>
 
-          {/* Score */}
-          <div className="text-center">
-            <div className="text-3xl font-bold text-foreground">{score}</div>
-            <div className="text-sm font-medium text-foreground">SCORE</div>
+          {/* Score and Moves */}
+          <div className="flex items-center gap-6">
+            {/* Score */}
+            <div className="text-center">
+              <div className="text-3xl font-bold text-foreground">{score}</div>
+              <div className="text-sm font-medium text-foreground">SCORE</div>
+            </div>
+
+            {/* Moves */}
+            {moves !== undefined && (
+              <div className="text-center">
+                <div className="text-3xl font-bold text-foreground">{moves}</div>
+                <div className="text-sm font-medium text-foreground">MOVES</div>
+              </div>
+            )}
           </div>
 
           {/* Action Buttons */}
@@ -190,7 +131,6 @@ export const GameLayout = ({
                   <p>2. Type your answer in the input field</p>
                   <p>3. Press Enter to submit your answer</p>
                   <p>4. Get all correct answers to win!</p>
-                  {maxAttempts && <p>5. You have {maxAttempts} attempts total</p>}
                 </div>
                 <Button onClick={() => setShowHelpModal(false)} className="mt-6 w-full">
                   GOT IT

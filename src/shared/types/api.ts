@@ -243,6 +243,7 @@ export type LetteredGameSessionResponse = {
   currentScore: number;
   initialScore: number;
   isCompleted: boolean;
+  moves: number;
   pieces: Record<string, GridPosition>;
 };
 

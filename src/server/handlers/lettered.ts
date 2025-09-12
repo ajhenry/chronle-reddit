@@ -185,6 +185,7 @@ router.get('/api/lettered/game', async (_req, res): Promise<void> => {
       currentScore: existingSession.isCompleted ? existingSession.finalScore : currentScore,
       initialScore: existingSession.initialScore,
       isCompleted: existingSession.isCompleted,
+      moves: existingSession.moves,
       pieces: latestSubmission?.boardState.placedPieces || {},
     };
 
@@ -331,6 +332,7 @@ router.post('/api/lettered/:dailyGameId/session', async (req, res): Promise<void
         isCompleted: true,
         completedAt: new Date(getCurrentUTCTime()).toISOString(),
         finalScore: currentScore,
+        moves: placedPieces,
       });
 
       // TODO: Record the points in the leaderboard
@@ -390,6 +392,7 @@ router.get('/api/lettered/:gameId/session', async (req, res): Promise<void> => {
       currentScore: session.isCompleted ? session.finalScore : session.initialScore,
       initialScore: session.initialScore,
       isCompleted: session.isCompleted,
+      moves: session.moves,
       pieces: latestSubmission?.boardState.placedPieces || {},
     };
 

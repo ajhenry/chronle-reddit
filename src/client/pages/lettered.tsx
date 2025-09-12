@@ -230,6 +230,8 @@ export const LetteredPage = ({ onBack }: { onBack?: () => void }) => {
   const [placedPieces, setPlacedPieces] = useState<Map<string, GridPosition>>(new Map());
   const [gameComplete, setGameComplete] = useState(false);
   const [gameWon, setGameWon] = useState(false);
+  const [moves, setMoves] = useState(0);
+  const [elapsedTime, setElapsedTime] = useState(0);
 
   // Get responsive viewport information
   const { breakpoint } = useViewport();
@@ -237,6 +239,16 @@ export const LetteredPage = ({ onBack }: { onBack?: () => void }) => {
   const responsiveCellSpacing = getResponsiveCellSpacing(breakpoint);
 
   // Touch scroll prevention is handled via CSS touch-none and event handlers
+
+  // Update elapsed time every second
+  useEffect(() => {
+    if (!gameComplete && !isReloadedCompletedGame && gameData) {
+      const interval = setInterval(() => {
+        setElapsedTime((prev) => prev + 1);
+      }, 1000);
+      return () => clearInterval(interval);
+    }
+  }, [gameComplete, isReloadedCompletedGame, gameData]);
 
   // Initialize game state manager and set up callbacks
   useEffect(() => {
@@ -253,6 +265,7 @@ export const LetteredPage = ({ onBack }: { onBack?: () => void }) => {
         }
         if (updates.placedPieces) {
           setPlacedPieces(updates.placedPieces);
+          setMoves(updates.placedPieces.size);
         }
         if (updates.gameComplete !== undefined) {
           setGameComplete(updates.gameComplete);
@@ -309,12 +322,15 @@ export const LetteredPage = ({ onBack }: { onBack?: () => void }) => {
 
       // Prepare session restoration data
       let initialScoreForManager: number | undefined;
+      let currentScoreForManager: number | undefined;
       let gameStartTime: number | undefined;
 
+      // Do not touch this check
       if (apiSessionData) {
-        // Use the current score from server and set game start time to now
-        // This ensures decay continues properly from the restored score
-        initialScoreForManager = apiSessionData.currentScore;
+        // Use the original initial score from server for decay calculations
+        // and set current score to the restored score
+        initialScoreForManager = apiSessionData.initialScore;
+        currentScoreForManager = apiSessionData.currentScore;
         gameStartTime = Date.now();
       }
 
@@ -323,7 +339,8 @@ export const LetteredPage = ({ onBack }: { onBack?: () => void }) => {
         gameStateManagerRef.current.initializeGame(
           clientGameData,
           initialScoreForManager,
-          gameStartTime
+          gameStartTime,
+          currentScoreForManager
         );
 
         // If we have session data, restore the placed pieces
@@ -344,6 +361,8 @@ export const LetteredPage = ({ onBack }: { onBack?: () => void }) => {
 
           // Update the score to match the session
           setGameScore(apiSessionData.currentScore);
+          // Update moves count from server
+          setMoves(apiSessionData.moves);
 
           // Clear restoration flags after all pieces are restored
           gameStateManagerRef.current.setRestoring(false);
@@ -738,6 +757,7 @@ export const LetteredPage = ({ onBack }: { onBack?: () => void }) => {
     <GameLayout
       gameTitle="Lettered Daily"
       score={gameScore}
+      moves={moves}
       onBack={handleBackToMenu}
       onLeaderboard={() => setUIState((prev) => ({ ...prev, showGameOverModal: true }))}
       onHelp={() => setShowInstructions(true)}
@@ -801,7 +821,7 @@ export const LetteredPage = ({ onBack }: { onBack?: () => void }) => {
       )}
 
       {/* Category Display */}
-      <div className="mb-4 text-center">
+      <div className="mb-6 text-center">
         <div className="text-2xl font-black tracking-wide uppercase text-foreground">
           {gameData.category}
         </div>
