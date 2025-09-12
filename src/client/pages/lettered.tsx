@@ -87,14 +87,10 @@ const convertGridDataToItems = ({
     // Create content from letters
     const content = piece.letters.join('') || piece.id;
 
-    // Use the piece's predefined color
-    const color = piece.color;
-
     items.push({
       position: { x: position.col, y: position.row },
       shape,
       content,
-      color,
       disabled: false,
       style: getTileStyle ? getTileStyle(piece) : undefined,
       className: getTileClassName ? getTileClassName(piece) : undefined,
@@ -128,7 +124,6 @@ const convertGridDataToItems = ({
           position: { x: col, y: row },
           shape,
           content: cell.letter,
-          color: '#000000',
           disabled: true, // Anchor letters are immovable
           style: {
             ...(getTileStyle ? getTileStyle(anchorPiece) : {}),
@@ -174,14 +169,10 @@ const convertGridDataToItems = ({
     // Create content from letters
     const content = piece.letters.join('') || piece.id;
 
-    // Use the piece's predefined color
-    const color = piece.color;
-
     items.push({
       position: { x: initialPosition.col, y: initialPosition.row },
       shape,
       content,
-      color,
       disabled: false,
       style: getTileStyle ? getTileStyle(piece) : undefined,
       className: getTileClassName ? getTileClassName(piece) : undefined,
@@ -223,6 +214,9 @@ export const LetteredPage = ({ onBack }: { onBack?: () => void }) => {
   // Flag to track if this is a reloaded completed game
   const [isReloadedCompletedGame, setIsReloadedCompletedGame] = useState(false);
 
+  // Flag to track if session restoration is in progress
+  const [isRestoringSession, setIsRestoringSession] = useState(false);
+
   // Postgame stats state
   const [postGameStats, setPostGameStats] = useState<LetteredPostGameResponse | null>(null);
   const [postGameStatsLoading, setPostGameStatsLoading] = useState(false);
@@ -230,25 +224,6 @@ export const LetteredPage = ({ onBack }: { onBack?: () => void }) => {
 
   // Game state manager (core game logic, doesn't cause rerenders)
   const gameStateManagerRef = useRef<LetteredGameStateManager | null>(null);
-
-  // Function to sync score with server
-  const syncScoreWithServer = useCallback(async () => {
-    if (!dailyGameId) return;
-
-    try {
-      console.log('[DEBUG] Syncing score with server...');
-      const response = await apiFetch(`/api/lettered/${dailyGameId}/session`);
-      if (response.ok) {
-        const sessionData = await response.json();
-        if (sessionData.currentScore !== undefined && gameStateManagerRef.current) {
-          gameStateManagerRef.current.setScore(sessionData.currentScore);
-          console.log('[DEBUG] Synced score from server:', sessionData.currentScore);
-        }
-      }
-    } catch (error) {
-      console.error('[DEBUG] Failed to sync score with server:', error);
-    }
-  }, [dailyGameId]);
 
   // State for UI updates from game state manager
   const [gameScore, setGameScore] = useState(DEFAULT_INITIAL_SCORE);
@@ -300,8 +275,9 @@ export const LetteredPage = ({ onBack }: { onBack?: () => void }) => {
     try {
       setLoading(true);
 
-      // Reset flag for new game load
+      // Reset flags for new game load
       setIsReloadedCompletedGame(false);
+      setIsRestoringSession(false);
 
       // Fetch today's daily game
       const gameData = await fetchTodaysGame();
@@ -352,6 +328,10 @@ export const LetteredPage = ({ onBack }: { onBack?: () => void }) => {
 
         // If we have session data, restore the placed pieces
         if (apiSessionData && Object.keys(apiSessionData.pieces).length > 0) {
+          // Set restoration flags to prevent race conditions
+          setIsRestoringSession(true);
+          gameStateManagerRef.current.setRestoring(true);
+
           // Check if this is a reloaded completed game
           if (apiSessionData.isCompleted) {
             setIsReloadedCompletedGame(true);
@@ -364,6 +344,10 @@ export const LetteredPage = ({ onBack }: { onBack?: () => void }) => {
 
           // Update the score to match the session
           setGameScore(apiSessionData.currentScore);
+
+          // Clear restoration flags after all pieces are restored
+          gameStateManagerRef.current.setRestoring(false);
+          setIsRestoringSession(false);
         }
 
         // Enable client-side decay for visual feedback, but sync with server values
@@ -394,7 +378,7 @@ export const LetteredPage = ({ onBack }: { onBack?: () => void }) => {
     } finally {
       setLoading(false);
     }
-  }, [syncScoreWithServer]);
+  }, []);
 
   useEffect(() => {
     const initializeGame = async () => {
@@ -479,6 +463,12 @@ export const LetteredPage = ({ onBack }: { onBack?: () => void }) => {
   const handleGridLayoutChange = useCallback(
     async (layout: (string | null)[][]) => {
       if (!gameData || !gameStateManagerRef.current) {
+        return;
+      }
+
+      // Prevent handling layout changes during session restoration to avoid race conditions
+      if (isRestoringSession) {
+        console.log('[DEBUG] Skipping layout change during session restoration');
         return;
       }
 
@@ -632,7 +622,7 @@ export const LetteredPage = ({ onBack }: { onBack?: () => void }) => {
         console.log('[DEBUG] No piece movement detected, skipping server update');
       }
     },
-    [gameData, dailyGameId]
+    [gameData, dailyGameId, isRestoringSession]
   );
 
   const handleBackToMenu = () => {
@@ -686,8 +676,19 @@ export const LetteredPage = ({ onBack }: { onBack?: () => void }) => {
   };
 
   const pieceTileClass = (piece: LetterPiece) => {
-    const baseClass = 'text-primary-foreground transition-colors touch-none';
-    return cn(baseClass, piece.color);
+    const baseClass = 'text-primary-foreground transition-all touch-none duration-500';
+    return cn(
+      baseClass,
+      !(
+        gameStateManagerRef.current?.isGameComplete() ||
+        gameWon ||
+        gameComplete ||
+        isRestoringSession ||
+        isReloadedCompletedGame
+      )
+        ? piece.color
+        : 'bg-muted-foreground gold-shimmer-number'
+    );
   };
 
   // Enhanced version that accepts additional classes
@@ -815,16 +816,17 @@ export const LetteredPage = ({ onBack }: { onBack?: () => void }) => {
       {/* Game Content */}
       <div className="flex justify-center">
         <Grid
+          key={`${gameWon}-${isRestoringSession}`}
           gridSize={{
             width: gameData.grid[0]!.length || 8,
-            height: gameData.grid.length + 12, // Extend grid height significantly for letter pieces area
+            height: gameData.grid.length + 20, // Extend grid height to match server's maxRows for letter pieces area
             spacing: responsiveCellSpacing,
           }}
           cellSize={responsiveCellSize}
           initialItems={convertGridDataToItems({
             grid: gameData.grid,
             placedPieces:
-              placedPieces.size === 0
+              placedPieces.size === 0 && !isRestoringSession
                 ? new Map(Object.entries(gameData.initialPiecePositions))
                 : placedPieces,
             pieces: gameData.pieces,
@@ -836,7 +838,7 @@ export const LetteredPage = ({ onBack }: { onBack?: () => void }) => {
           defaultItemClassName="bg-primary text-primary-foreground"
           getBoardTileClassName={boardTileClass}
           getTileDraggingClassName={pieceTileDraggingClass}
-          disabled={gameComplete}
+          disabled={gameComplete || isRestoringSession}
         />
       </div>
       {/* Confetti Animation */}

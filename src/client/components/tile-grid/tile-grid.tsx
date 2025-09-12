@@ -34,7 +34,6 @@ export type DraggableItem = {
   position: GridPosition; // Origin position
   shape: ItemShape;
   content: ReactNode;
-  color?: string;
   disabled?: boolean; // Whether the piece is locked in place and cannot be dragged
   style?: React.CSSProperties; // Custom styles to apply to the tile
   className?: string; // Custom CSS classes to apply to the tile
@@ -860,7 +859,6 @@ const DraggableItemComponent = React.memo(
             key={`cell-${index}`}
             className={cn(
               'border border-border dark:border-transparent flex justify-center items-center overflow-y-hidden',
-              item.color || 'bg-primary',
               isDragging ? 'opacity-70' : 'opacity-100',
               item.className || defaultClassName || ''
             )}
@@ -882,7 +880,6 @@ const DraggableItemComponent = React.memo(
       });
     }, [
       item.shape.cells,
-      item.color,
       item.content,
       item.style,
       item.className,
@@ -993,7 +990,6 @@ const DragPreviewComponent = React.memo(
             key={`preview-cell-${index}`}
             className={cn(
               'border-2 border-dashed dark:border-transparent flex justify-center items-center',
-              item.color || 'bg-primary',
               item.className || defaultClassName || '',
               customDraggingClassName || '' // Add custom dragging class
             )}

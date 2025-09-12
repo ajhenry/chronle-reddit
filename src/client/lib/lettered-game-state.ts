@@ -29,6 +29,7 @@ export interface GameState {
   gameStartTime: number;
   gameData: LetteredGameData | null;
   timerDisabled: boolean; // Whether the score decay timer is disabled
+  isRestoring: boolean; // Whether session restoration is in progress
 }
 
 export class LetteredGameStateManager {
@@ -79,6 +80,7 @@ export class LetteredGameStateManager {
       gameStartTime: startTime,
       gameData,
       timerDisabled: false,
+      isRestoring: false,
     };
   }
 
@@ -176,6 +178,33 @@ export class LetteredGameStateManager {
     }
   }
 
+  // Set restoration state
+  setRestoring(isRestoring: boolean): void {
+    this.state.isRestoring = isRestoring;
+    
+    // When exiting restoration mode, send a complete state update
+    if (!isRestoring) {
+      this.notifyUpdates({
+        isRestoring,
+        placedPieces: new Map(this.state.placedPieces),
+        boardLayout: this.state.boardLayout,
+        gameComplete: this.state.gameComplete,
+        gameWon: this.state.gameWon,
+        score: this.state.score,
+      });
+      
+      // Also check game completion now that restoration is done
+      void this.checkGameCompletion();
+    } else {
+      this.notifyUpdates({ isRestoring });
+    }
+  }
+
+  // Check if in restoration mode
+  isRestoring(): boolean {
+    return this.state.isRestoring;
+  }
+
   // Check if timer is enabled
   isTimerEnabled(): boolean {
     return !this.state.timerDisabled;
@@ -212,15 +241,20 @@ export class LetteredGameStateManager {
     // Update board layout (this would be used for visual feedback)
     this.updateBoardLayout();
 
-    // Check if game is complete
-    await this.checkGameCompletion();
+    // Check if game is complete (but skip during restoration to avoid premature notifications)
+    if (!this.state.isRestoring) {
+      await this.checkGameCompletion();
+    }
 
-    this.notifyUpdates({
-      placedPieces: new Map(this.state.placedPieces),
-      boardLayout: this.state.boardLayout,
-      gameComplete: this.state.gameComplete,
-      gameWon: this.state.gameWon,
-    });
+    // Only notify updates if not in restoration mode (to prevent UI flicker)
+    if (!this.state.isRestoring) {
+      this.notifyUpdates({
+        placedPieces: new Map(this.state.placedPieces),
+        boardLayout: this.state.boardLayout,
+        gameComplete: this.state.gameComplete,
+        gameWon: this.state.gameWon,
+      });
+    }
 
     return true;
   }
