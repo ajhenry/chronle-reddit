@@ -231,30 +231,24 @@ export const LetteredPage = ({ onBack }: { onBack?: () => void }) => {
   const [gameComplete, setGameComplete] = useState(false);
   const [gameWon, setGameWon] = useState(false);
   const [moves, setMoves] = useState(0);
-  const [elapsedTime, setElapsedTime] = useState(0);
+  console.log('moves', moves);
 
   // Get responsive viewport information
   const { breakpoint } = useViewport();
   const responsiveCellSize = getResponsiveCellSize(breakpoint, gameData?.rows, gameData?.cols);
   const responsiveCellSpacing = getResponsiveCellSpacing(breakpoint);
 
-  // Touch scroll prevention is handled via CSS touch-none and event handlers
-
-  // Update elapsed time every second
-  useEffect(() => {
-    if (!gameComplete && !isReloadedCompletedGame && gameData) {
-      const interval = setInterval(() => {
-        setElapsedTime((prev) => prev + 1);
-      }, 1000);
-      return () => clearInterval(interval);
-    }
-  }, [gameComplete, isReloadedCompletedGame, gameData]);
-
   // Initialize game state manager and set up callbacks
   useEffect(() => {
     if (!gameStateManagerRef.current) {
       // Start with default values, will be updated when game loads
-      gameStateManagerRef.current = new LetteredGameStateManager();
+      gameStateManagerRef.current = new LetteredGameStateManager(
+        null,
+        undefined,
+        undefined,
+        undefined,
+        0
+      );
       // Disable timer initially to prevent decay before restoration
       gameStateManagerRef.current.setTimerEnabled(false);
 
@@ -265,13 +259,15 @@ export const LetteredPage = ({ onBack }: { onBack?: () => void }) => {
         }
         if (updates.placedPieces) {
           setPlacedPieces(updates.placedPieces);
-          setMoves(updates.placedPieces.size);
         }
         if (updates.gameComplete !== undefined) {
           setGameComplete(updates.gameComplete);
         }
         if (updates.gameWon !== undefined) {
           setGameWon(updates.gameWon);
+        }
+        if (updates.moves !== undefined) {
+          setMoves(updates.moves);
         }
       });
 
@@ -291,6 +287,7 @@ export const LetteredPage = ({ onBack }: { onBack?: () => void }) => {
       // Reset flags for new game load
       setIsReloadedCompletedGame(false);
       setIsRestoringSession(false);
+      setMoves(0); // Reset moves for new game
 
       // Fetch today's daily game
       const gameData = await fetchTodaysGame();
@@ -324,6 +321,7 @@ export const LetteredPage = ({ onBack }: { onBack?: () => void }) => {
       let initialScoreForManager: number | undefined;
       let currentScoreForManager: number | undefined;
       let gameStartTime: number | undefined;
+      let movesForManager: number | undefined;
 
       // Do not touch this check
       if (apiSessionData) {
@@ -332,6 +330,10 @@ export const LetteredPage = ({ onBack }: { onBack?: () => void }) => {
         initialScoreForManager = apiSessionData.initialScore;
         currentScoreForManager = apiSessionData.currentScore;
         gameStartTime = Date.now();
+        movesForManager = apiSessionData.moves;
+
+        // Set the moves count from server data
+        setMoves(apiSessionData.moves);
       }
 
       // Initialize game state manager with new game and session data
@@ -340,7 +342,8 @@ export const LetteredPage = ({ onBack }: { onBack?: () => void }) => {
           clientGameData,
           initialScoreForManager,
           gameStartTime,
-          currentScoreForManager
+          currentScoreForManager,
+          movesForManager
         );
 
         // If we have session data, restore the placed pieces

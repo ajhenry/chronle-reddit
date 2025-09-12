@@ -30,6 +30,7 @@ export interface GameState {
   gameData: LetteredGameData | null;
   timerDisabled: boolean; // Whether the score decay timer is disabled
   isRestoring: boolean; // Whether session restoration is in progress
+  moves: number; // Number of moves made
 }
 
 export class LetteredGameStateManager {
@@ -44,9 +45,16 @@ export class LetteredGameStateManager {
     gameData: LetteredGameData | null = null,
     initialScore?: number,
     gameStartTime?: number,
-    currentScore?: number
+    currentScore?: number,
+    moves?: number
   ) {
-    this.state = this.createInitialState(gameData, initialScore, gameStartTime, currentScore);
+    this.state = this.createInitialState(
+      gameData,
+      initialScore,
+      gameStartTime,
+      currentScore,
+      moves
+    );
     // Don't start score decay immediately - wait for explicit call
     this.notifyUpdates(this.state);
   }
@@ -55,7 +63,8 @@ export class LetteredGameStateManager {
     gameData: LetteredGameData | null,
     initialScore?: number,
     gameStartTime?: number,
-    currentScore?: number
+    currentScore?: number,
+    moves?: number
   ): GameState {
     // Initialize placed pieces with initial tray positions for all pieces
     const placedPieces = new Map<string, GridPosition>();
@@ -84,6 +93,7 @@ export class LetteredGameStateManager {
       gameData,
       timerDisabled: false,
       isRestoring: false,
+      moves: moves ?? 0, // Initialize moves counter from parameter or default to 0
     };
   }
 
@@ -118,10 +128,17 @@ export class LetteredGameStateManager {
     gameData: LetteredGameData,
     initialScore?: number,
     gameStartTime?: number,
-    currentScore?: number
+    currentScore?: number,
+    moves?: number
   ): void {
     this.stopScoreDecay();
-    this.state = this.createInitialState(gameData, initialScore, gameStartTime, currentScore);
+    this.state = this.createInitialState(
+      gameData,
+      initialScore,
+      gameStartTime,
+      currentScore,
+      moves
+    );
     // Don't start score decay immediately - wait for explicit call
     this.notifyUpdates(this.state);
   }
@@ -199,6 +216,7 @@ export class LetteredGameStateManager {
         gameComplete: this.state.gameComplete,
         gameWon: this.state.gameWon,
         score: this.state.score,
+        moves: this.state.moves,
       });
 
       // Also check game completion now that restoration is done
@@ -256,11 +274,14 @@ export class LetteredGameStateManager {
 
     // Only notify updates if not in restoration mode (to prevent UI flicker)
     if (!this.state.isRestoring) {
+      // Increment moves counter
+      this.state.moves += 1;
       this.notifyUpdates({
         placedPieces: new Map(this.state.placedPieces),
         boardLayout: this.state.boardLayout,
         gameComplete: this.state.gameComplete,
         gameWon: this.state.gameWon,
+        moves: this.state.moves,
       });
     }
 
@@ -581,6 +602,11 @@ export class LetteredGameStateManager {
   // Check if game is won
   isGameWon(): boolean {
     return this.state.gameWon;
+  }
+
+  // Get current moves count
+  getMoves(): number {
+    return this.state.moves;
   }
 
   // Clean up resources

@@ -110,21 +110,32 @@ const checkPlayerHasWon = (
   pieces: LetterPiece[],
   solutionHash: string
 ): boolean => {
-  // Check if all pieces are placed
-  const totalPieces = pieces.length;
-  const placedCount = Object.keys(placedPieces).length;
+  const mainGridHeight = gameGrid.length;
+  const mainGridWidth = gameGrid[0]?.length || 0;
 
-  if (placedCount !== totalPieces) {
+  // Filter out pieces placed in the tray area (below main grid)
+  const mainBoardPieces = Object.entries(placedPieces).filter(([, position]) => {
+    return position.row < mainGridHeight && position.col < mainGridWidth;
+  });
+
+  // Check if all pieces are placed on the main board
+  const totalPieces = pieces.length;
+  const placedOnBoardCount = mainBoardPieces.length;
+
+  if (placedOnBoardCount !== totalPieces) {
     return false;
   }
 
-  // Create hash of current board state and compare with solution hash
-  const currentHash = createBoardHash(gameGrid, placedPieces, pieces);
+  // Create hash using only pieces placed on the main board
+  const mainBoardPiecesObj = Object.fromEntries(mainBoardPieces);
+  const currentHash = createBoardHash(gameGrid, mainBoardPiecesObj, pieces);
   const isValid = currentHash === solutionHash;
 
   console.log('Board validation:', {
     currentHash: currentHash.substring(0, 16) + '...',
     solutionHash: solutionHash.substring(0, 16) + '...',
+    totalPieces,
+    placedOnBoardCount,
     isValid,
   });
 
@@ -154,11 +165,20 @@ router.get('/api/lettered/game', async (_req, res): Promise<void> => {
     const gameStartTime = toUTCTimestamp(existingSession.startedAt);
     const now = getCurrentUTCTime();
     const elapsedSeconds = Math.max(0, (now - gameStartTime) / 1000);
+    // Calculate current score based on pieces placed on main board only
+    const mainGridHeight = letteredGame.grid.length;
+    const mainGridWidth = letteredGame.grid[0]?.length || 0;
+    const latestBoardState = latestSubmission?.boardState.placedPieces || {};
+
+    const mainBoardPlacedCount = Object.values(latestBoardState).filter((position) => {
+      return position.row < mainGridHeight && position.col < mainGridWidth;
+    }).length;
+
     const currentScore = calculateDecayedScore({
       initialScore: existingSession.initialScore,
       elapsedSeconds,
       gameType: 'lettered',
-      placedPieces: Object.keys(latestSubmission?.boardState.placedPieces || {}).length,
+      placedPieces: mainBoardPlacedCount,
     });
     let placedPieces: Record<string, { pieceId: string; position: GridPosition }> = {};
     console.log('currentScore', currentScore);
@@ -259,6 +279,32 @@ router.post('/api/lettered/:dailyGameId/session', async (req, res): Promise<void
     // Get or create game session
     const session = await getOrCreateUserLetteredSessionForToday(userId);
 
+    // Calculate moves based on pieces placed on main board only
+    const mainGridHeight = dailyLetterGame.grid.length;
+    const mainGridWidth = dailyLetterGame.grid[0]?.length || 0;
+
+    // Count pieces placed on the main board (not in tray)
+    const mainBoardPiecesCount = Object.values(boardState.placedPieces).filter((position) => {
+      return position.row < mainGridHeight && position.col < mainGridWidth;
+    }).length;
+
+    // Only increment moves if pieces were actually placed on the main board
+    const movesIncrement = mainBoardPiecesCount > 0 ? 1 : 0;
+
+    // Update session moves count
+    const updatedSession = await updateLetteredSession(session.id, {
+      moves: session.moves + movesIncrement,
+    });
+
+    console.log('Moves calculation:', {
+      mainGridHeight,
+      mainGridWidth,
+      mainBoardPiecesCount,
+      movesIncrement,
+      sessionMovesBefore: session.moves,
+      sessionMovesAfter: updatedSession.moves,
+    });
+
     // Check if player has won
     const hasWon = checkPlayerHasWon(
       boardState.placedPieces,
@@ -283,6 +329,7 @@ router.post('/api/lettered/:dailyGameId/session', async (req, res): Promise<void
         accepted: true,
         currentScore,
         placedPieces,
+        moves: session.moves, // Return moves count even for completed games
         boardStateStored,
         hasWon,
       });
@@ -332,7 +379,7 @@ router.post('/api/lettered/:dailyGameId/session', async (req, res): Promise<void
         isCompleted: true,
         completedAt: new Date(getCurrentUTCTime()).toISOString(),
         finalScore: currentScore,
-        moves: placedPieces,
+        moves: updatedSession.moves, // Use the updated moves count
       });
 
       // TODO: Record the points in the leaderboard
@@ -343,6 +390,7 @@ router.post('/api/lettered/:dailyGameId/session', async (req, res): Promise<void
       accepted: true,
       currentScore,
       placedPieces,
+      moves: updatedSession.moves, // Return the updated moves count
       boardStateStored: true,
       hasWon,
     };

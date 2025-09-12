@@ -12,6 +12,6 @@ export const createPost = async () => {
       appDisplayName: 'podium-dev',
     },
     subredditName: subredditName,
-    title: 'podium-dev',
+    title: 'Podium Game for the day',
   });
 };
