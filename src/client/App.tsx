@@ -191,7 +191,7 @@ export const App = () => {
                             style={{
                               fontFamily: 'Inter, sans-serif',
                               fontWeight: 900,
-                              letterSpacing: '-0.08em',
+                              letterSpacing: '-0.05em',
                               lineHeight: '0.8',
                             }}
                           >
