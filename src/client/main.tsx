@@ -1,5 +1,5 @@
 import './globals.css';
-import '@fontsource/archivo-black';
+import '@fontsource/inter/900.css'; // Inter Black
 
 import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';

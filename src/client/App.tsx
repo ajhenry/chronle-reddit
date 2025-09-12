@@ -43,7 +43,7 @@ export const App = () => {
 
   // Check if welcome was dismissed on mount
   useEffect(() => {
-    const welcomeDismissed = getCookie('snoodle_welcome_dismissed');
+    const welcomeDismissed = getCookie('podium_welcome_dismissed');
     if (welcomeDismissed !== 'true') {
       setShowWelcome(true);
     }
@@ -115,7 +115,7 @@ export const App = () => {
 
   const dismissWelcome = () => {
     setShowWelcome(false);
-    setCookie('snoodle_welcome_dismissed', 'true', 365); // Expires in 1 year
+    setCookie('podium_welcome_dismissed', 'true', 365); // Expires in 1 year
   };
 
   const handleGameSelect = (gameId: string) => {
@@ -174,10 +174,10 @@ export const App = () => {
                 <div className="flex flex-col flex-1 gap-8 justify-center items-center mx-auto my-6 w-full max-w-md">
                   {/* Bouncing Logo */}
                   <div className="w-full">
-                    <BouncingLogo src="/top-x-logo.png" alt="Top X Logo" />
+                    <BouncingLogo src="/topx-logo.svg" alt="Top X Logo" />
                   </div>
 
-                  {/* Snoodle Logo */}
+                  {/* Podium Logo */}
                   <div className="w-full text-center">
                     <div className="space-y-4 text-center">
                       <div className="relative animate-bounce-shadow">
@@ -187,13 +187,15 @@ export const App = () => {
                         </div>
                         <div className="py-4 border-4 bg-primary border-border">
                           <h1
-                            className="text-6xl font-black tracking-tight leading-none text-black"
+                            className="text-6xl font-black tracking-tight text-black"
                             style={{
-                              fontFamily: 'Archivo Black, sans-serif',
-                              letterSpacing: '-0.05em',
+                              fontFamily: 'Inter, sans-serif',
+                              fontWeight: 900,
+                              letterSpacing: '-0.08em',
+                              lineHeight: '0.8',
                             }}
                           >
-                            SNOODLE
+                            PODIUM
                           </h1>
                         </div>
                       </div>
@@ -245,7 +247,7 @@ export const App = () => {
                         onClick={() => handleGameSelect('topx')}
                         className="relative overflow-hidden border-4 border-border shadow-lg hover:shadow-xl transition-all duration-200 hover:translate-x-[-2px] hover:translate-y-[-2px] w-full"
                         style={{
-                          backgroundImage: 'url(/top-x-button.png)',
+                          backgroundImage: 'url(/topx-button-logo.svg)',
                           backgroundSize: 'cover',
                           backgroundPosition: 'center',
                           backgroundRepeat: 'no-repeat',
@@ -268,7 +270,7 @@ export const App = () => {
                         onClick={() => handleGameSelect('lettered')}
                         className="relative overflow-hidden border-4 border-border shadow-lg hover:shadow-xl transition-all duration-200 hover:translate-x-[-2px] hover:translate-y-[-2px] w-full"
                         style={{
-                          backgroundImage: 'url(/lettered-button.png)',
+                          backgroundImage: 'url(/letter-button-logo.svg)',
                           backgroundSize: 'cover',
                           backgroundPosition: 'center',
                           backgroundRepeat: 'no-repeat',

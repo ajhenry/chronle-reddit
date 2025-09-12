@@ -718,7 +718,7 @@ export const TopXPage = ({ onBack }: { onBack?: () => void }) => {
         attempts={0}
         maxAttempts={gameData?.maxAttempts ?? 5}
         onBack={handleBackToMenu}
-        logoSrc="/top-x-logo.png"
+        logoSrc="/topx-logo.svg"
       >
         <CardContent className="flex justify-center items-center p-8">
           <TopXLoadingAnimation />
@@ -736,7 +736,7 @@ export const TopXPage = ({ onBack }: { onBack?: () => void }) => {
         attempts={0}
         maxAttempts={gameData?.maxAttempts ?? 5}
         onBack={handleBackToMenu}
-        logoSrc="/top-x-logo.png"
+        logoSrc="/topx-logo.svg"
       >
         <CardContent className="flex flex-col justify-center items-center p-8 space-y-4">
           <div className="text-lg font-medium text-center text-destructive">
@@ -756,7 +756,7 @@ export const TopXPage = ({ onBack }: { onBack?: () => void }) => {
       maxAttempts={gameState.maxAttempts}
       onBack={handleBackToMenu}
       onLeaderboard={() => console.log('Leaderboard clicked')}
-      logoSrc="/top-x-logo.png"
+      logoSrc="/topx-logo.svg"
       className={isMobile && !gameState.gameComplete ? 'pb-16' : ''}
     >
       {/* Development Controls */}

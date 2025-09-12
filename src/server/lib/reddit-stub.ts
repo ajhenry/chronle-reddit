@@ -65,7 +65,7 @@ export const redditStub: RedditStub = {
     const testUsernames = [
       'dev_user_1',
       'test_player',
-      'snoodle_tester',
+      'podium_tester',
       'local_dev_user',
       'mock_reddit_user',
     ];

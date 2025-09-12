@@ -1,4 +1,4 @@
-// Theme utility functions for Snoodle app
+// Theme utility functions for Podium app
 
 export type GameTheme = 'topx' | 'game2' | 'game3' | 'default';
 

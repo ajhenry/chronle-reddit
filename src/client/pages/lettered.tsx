@@ -712,7 +712,7 @@ export const LetteredPage = ({ onBack }: { onBack?: () => void }) => {
         gameTitle="Lettered Daily"
         score={0}
         onBack={handleBackToMenu}
-        logoSrc="/lettered-logo.png"
+        logoSrc="/lettered-logo.svg"
       >
         <CardContent className="flex justify-center items-center p-8">
           <LetteredLoadingAnimation />
@@ -728,7 +728,7 @@ export const LetteredPage = ({ onBack }: { onBack?: () => void }) => {
         gameTitle="Lettered Daily"
         score={0}
         onBack={handleBackToMenu}
-        logoSrc="/lettered-logo.png"
+        logoSrc="/lettered-logo.svg"
       >
         <CardContent className="flex flex-col justify-center items-center p-8 space-y-4">
           <div className="text-lg font-medium text-center text-destructive">
@@ -747,7 +747,7 @@ export const LetteredPage = ({ onBack }: { onBack?: () => void }) => {
       onBack={handleBackToMenu}
       onLeaderboard={() => setUIState((prev) => ({ ...prev, showGameOverModal: true }))}
       onHelp={() => setShowInstructions(true)}
-      logoSrc="/lettered-logo.png"
+      logoSrc="/lettered-logo.svg"
     >
       {/* Development Controls */}
       {isDevelopment() && (

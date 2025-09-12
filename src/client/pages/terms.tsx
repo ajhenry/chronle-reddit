@@ -30,22 +30,22 @@ export function TermsPage() {
             Last updated: {new Date().toLocaleDateString()}
           </p>
 
-          <h2>Welcome to Snoodle</h2>
+          <h2>Welcome to Podium</h2>
           <p>
-            By accessing and using Snoodle, you accept and agree to be bound by the terms and
+            By accessing and using Podium, you accept and agree to be bound by the terms and
             provision of this agreement. If you do not agree to abide by the above, please do not
             use this service.
           </p>
 
           <h3>1. Acceptance of Terms</h3>
           <p>
-            By accessing and using Snoodle, you accept and agree to be bound by the terms and
+            By accessing and using Podium, you accept and agree to be bound by the terms and
             provision of this agreement. If you do not agree to abide by the above, please do not
             use this service.
           </p>
 
           <h3>2. Description of Service</h3>
-          <p>Snoodle is a daily gaming platform featuring word-based games including:</p>
+          <p>Podium is a daily gaming platform featuring word-based games including:</p>
           <ul>
             <li>
               <strong>TOP X</strong> - Guess the top answers to trivia questions
@@ -57,9 +57,7 @@ export function TermsPage() {
           <p>Each game can be played once per day, with new content available daily.</p>
 
           <h3>3. User Accounts and Data</h3>
-          <p>
-            While Snoodle does not require user registration for basic gameplay, we may collect:
-          </p>
+          <p>While Podium does not require user registration for basic gameplay, we may collect:</p>
           <ul>
             <li>Game progress and completion data</li>
             <li>Anonymous usage statistics</li>
@@ -79,8 +77,8 @@ export function TermsPage() {
           <h3>5. Intellectual Property</h3>
           <p>
             All game content, including questions, puzzles, graphics, and software, are the
-            intellectual property of Snoodle. You may not reproduce, distribute, or create
-            derivative works without explicit permission.
+            intellectual property of Podium. You may not reproduce, distribute, or create derivative
+            works without explicit permission.
           </p>
 
           <h3>6. Privacy Policy</h3>
@@ -92,13 +90,13 @@ export function TermsPage() {
 
           <h3>7. Service Availability</h3>
           <p>
-            While we strive for 99.9% uptime, Snoodle is provided "as is" without warranties. We
+            While we strive for 99.9% uptime, Podium is provided "as is" without warranties. We
             reserve the right to modify, suspend, or discontinue the service at any time.
           </p>
 
           <h3>8. Limitation of Liability</h3>
           <p>
-            Snoodle and its creators shall not be liable for any indirect, incidental, special, or
+            Podium and its creators shall not be liable for any indirect, incidental, special, or
             consequential damages arising from your use of the service.
           </p>
 
@@ -116,8 +114,8 @@ export function TermsPage() {
 
           <div className="p-6 mt-12 rounded-lg border bg-muted">
             <p className="text-sm font-medium text-center text-muted-foreground">
-              By using Snoodle, you acknowledge that you have read, understood, and agree to be
-              bound by these Terms of Service.
+              By using Podium, you acknowledge that you have read, understood, and agree to be bound
+              by these Terms of Service.
             </p>
           </div>
         </div>

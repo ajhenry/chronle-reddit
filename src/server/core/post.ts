@@ -9,9 +9,9 @@ export const createPost = async () => {
 
   return await reddit.submitCustomPost({
     splash: {
-      appDisplayName: 'snoodle-dev',
+      appDisplayName: 'podium-dev',
     },
     subredditName: subredditName,
-    title: 'snoodle-dev',
+    title: 'podium-dev',
   });
 };

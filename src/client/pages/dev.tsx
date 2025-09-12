@@ -364,7 +364,7 @@ export const DevPage = ({ onBack }: DevPageProps) => {
                 </div>
                 <div>
                   <h3 className="text-sm font-semibold">Version</h3>
-                  <p className="text-sm text-muted-foreground">Snoodle Dev Build</p>
+                  <p className="text-sm text-muted-foreground">Podium Dev Build</p>
                 </div>
                 <div>
                   <h3 className="text-sm font-semibold">Status</h3>
@@ -413,7 +413,7 @@ export const DevPage = ({ onBack }: DevPageProps) => {
           </CardHeader>
           <CardContent>
             <div className="space-y-2 text-sm text-muted-foreground">
-              <p>• This is the development page for Snoodle</p>
+              <p>• This is the development page for Podium</p>
               <p>• Add any development tools or debugging utilities here</p>
               <p>• This page should only be accessible during development</p>
             </div>

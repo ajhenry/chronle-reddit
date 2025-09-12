@@ -1,6 +1,6 @@
-## Devvit React Starter
+## Podium - Daily Reddit Games
 
-A starter to build web applications on Reddit's developer platform
+A collection of daily games built on Reddit's developer platform
 
 - [Devvit](https://developers.reddit.com/): A way to build and deploy immersive games on Reddit
 - [Vite](https://vite.dev/): For compiling the webView

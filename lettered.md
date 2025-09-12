@@ -15,7 +15,7 @@ We are going to be creating a new game
     - And if a user drops a piece in an invalid space, it should snap back to the bottom of the grid or where it was last valid.
 - The game with automatically end when the grid is filled with the correct solution.
 - The user has a unlimited moves
-- We need to create a new button on the homepage for this game. There is a picture to use as the background for the button found at `public/lettered-button.png`
+- We need to create a new button on the homepage for this game. There is a picture to use as the background for the button found at `public/letter-button-logo.svg`
 - Create a new page for the game called `lettered` and it should use the same layout as the topx game.
 - It follows the same score decay mechanism as topx.
 - Do not worry about the API for now. We will create that later. Let's get the game working first with some mock data.

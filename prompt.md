@@ -1,6 +1,6 @@
-# Snoodle
+# Podium
 
-Snoodle is a reddit app that is a collection of daily games. Users can play each game once per day and they have stats for each game and overall.
+Podium is a reddit app that is a collection of daily games. Users can play each game once per day and they have stats for each game and overall.
 
 The 3 games are the following:
 

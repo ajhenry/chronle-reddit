@@ -1,6 +1,6 @@
 {
   "$schema": "https://developers.reddit.com/schema/config-file.v1.json",
-  "name": "snoodle-game",
+  "name": "podium-game",
   "post": {
     "dir": "dist/client",
     "entrypoints": {
@@ -18,7 +18,7 @@
     "items": [
       {
         "label": "Create a new post",
-        "description": "snoodle-game",
+        "description": "podium-game",
         "location": "subreddit",
         "forUserType": "moderator",
         "endpoint": "/internal/menu/post-create"
@@ -31,9 +31,7 @@
   "permissions": {
     "http": {
       "enable": true,
-      "domains": [
-        "gwnwsqtfvkgcihmwgrsj.supabase.co"
-      ]
+      "domains": ["gwnwsqtfvkgcihmwgrsj.supabase.co"]
     },
     "reddit": {
       "enable": true,
@@ -42,6 +40,6 @@
     "redis": true
   },
   "dev": {
-    "subreddit": "snoodle_game_dev"
+    "subreddit": "podium_game_dev"
   }
 }
