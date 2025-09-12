@@ -2286,7 +2286,11 @@ export const generateInitialPiecePositions = (
     let placed = false;
 
     // Try every possible position systematically
-    for (let currentRow = extendedStartRow; currentRow <= extendedStartRow + maxRows - height && !placed; currentRow++) {
+    for (
+      let currentRow = extendedStartRow;
+      currentRow <= extendedStartRow + maxRows - height && !placed;
+      currentRow++
+    ) {
       for (let currentCol = 0; currentCol <= maxCols - width && !placed; currentCol++) {
         // Try to place the piece at current position
         const pieceLeft = currentCol;
@@ -2300,7 +2304,7 @@ export const generateInitialPiecePositions = (
           const checkRow = pieceTop + shapePos.row;
           const checkCol = pieceLeft + shapePos.col;
           const positionKey = `${checkCol},${checkRow}`;
-          
+
           if (occupiedPositions.has(positionKey)) {
             hasOverlap = true;
             break;
@@ -2315,12 +2319,24 @@ export const generateInitialPiecePositions = (
           for (const shapePos of piece.shape) {
             const occupyRow = pieceTop + shapePos.row;
             const occupyCol = pieceLeft + shapePos.col;
-            
+
             // Mark the piece position and surrounding buffer
-            for (let bufferRow = occupyRow - pieceSpacing; bufferRow <= occupyRow + pieceSpacing; bufferRow++) {
-              for (let bufferCol = occupyCol - pieceSpacing; bufferCol <= occupyCol + pieceSpacing; bufferCol++) {
-                if (bufferRow >= extendedStartRow && bufferRow < extendedStartRow + maxRows && 
-                    bufferCol >= 0 && bufferCol < maxCols) {
+            for (
+              let bufferRow = occupyRow - pieceSpacing;
+              bufferRow <= occupyRow + pieceSpacing;
+              bufferRow++
+            ) {
+              for (
+                let bufferCol = occupyCol - pieceSpacing;
+                bufferCol <= occupyCol + pieceSpacing;
+                bufferCol++
+              ) {
+                if (
+                  bufferRow >= extendedStartRow &&
+                  bufferRow < extendedStartRow + maxRows &&
+                  bufferCol >= 0 &&
+                  bufferCol < maxCols
+                ) {
                   occupiedPositions.add(`${bufferCol},${bufferRow}`);
                 }
               }
@@ -2328,7 +2344,9 @@ export const generateInitialPiecePositions = (
           }
 
           placed = true;
-          console.log(`✅ Placed piece ${piece.id} at (${pieceTop}, ${pieceLeft}) with size ${width}x${height}`);
+          console.log(
+            `✅ Placed piece ${piece.id} at (${pieceTop}, ${pieceLeft}) with size ${width}x${height}`
+          );
         }
       }
     }
@@ -2336,8 +2354,12 @@ export const generateInitialPiecePositions = (
     // If piece still couldn't be placed after comprehensive search, try without spacing buffer
     if (!placed) {
       console.warn(`⚠️ Could not place piece ${piece.id} with spacing, trying without buffer...`);
-      
-      for (let currentRow = extendedStartRow; currentRow <= extendedStartRow + maxRows - height && !placed; currentRow++) {
+
+      for (
+        let currentRow = extendedStartRow;
+        currentRow <= extendedStartRow + maxRows - height && !placed;
+        currentRow++
+      ) {
         for (let currentCol = 0; currentCol <= maxCols - width && !placed; currentCol++) {
           const pieceLeft = currentCol;
           const pieceTop = currentRow;
@@ -2348,16 +2370,16 @@ export const generateInitialPiecePositions = (
           for (const shapePos of piece.shape) {
             const checkRow = pieceTop + shapePos.row;
             const checkCol = pieceLeft + shapePos.col;
-            
+
             // Check if this exact position is occupied by another piece (not spacing buffer)
             for (const [placedPieceId, placedPosition] of Object.entries(initialPositions)) {
-              const placedPiece = pieces.find(p => p.id === placedPieceId);
+              const placedPiece = pieces.find((p) => p.id === placedPieceId);
               if (!placedPiece) continue;
-              
+
               for (const placedShapePos of placedPiece.shape) {
                 const placedRow = placedPosition.row + placedShapePos.row;
                 const placedCol = placedPosition.col + placedShapePos.col;
-                
+
                 if (placedRow === checkRow && placedCol === checkCol) {
                   hasOverlap = true;
                   break;
@@ -2371,7 +2393,7 @@ export const generateInitialPiecePositions = (
           if (!hasOverlap) {
             // Place the piece here
             initialPositions[piece.id] = { row: pieceTop, col: pieceLeft };
-            
+
             // Mark only the actual piece positions as occupied
             for (const shapePos of piece.shape) {
               const occupyRow = pieceTop + shapePos.row;
@@ -2380,7 +2402,9 @@ export const generateInitialPiecePositions = (
             }
 
             placed = true;
-            console.log(`✅ Placed piece ${piece.id} at (${pieceTop}, ${pieceLeft}) without spacing buffer`);
+            console.log(
+              `✅ Placed piece ${piece.id} at (${pieceTop}, ${pieceLeft}) without spacing buffer`
+            );
           }
         }
       }
@@ -2388,12 +2412,18 @@ export const generateInitialPiecePositions = (
 
     // If piece STILL cannot be placed, this indicates a serious problem - expand the available area
     if (!placed) {
-      console.error(`❌ CRITICAL: Could not place piece ${piece.id} anywhere! Expanding placement area...`);
-      
+      console.error(
+        `❌ CRITICAL: Could not place piece ${piece.id} anywhere! Expanding placement area...`
+      );
+
       // Expand search area vertically
       const expandedMaxRows = maxRows + 10;
-      
-      for (let currentRow = extendedStartRow; currentRow <= extendedStartRow + expandedMaxRows - height && !placed; currentRow++) {
+
+      for (
+        let currentRow = extendedStartRow;
+        currentRow <= extendedStartRow + expandedMaxRows - height && !placed;
+        currentRow++
+      ) {
         for (let currentCol = 0; currentCol <= maxCols - width && !placed; currentCol++) {
           const pieceLeft = currentCol;
           const pieceTop = currentRow;
@@ -2404,15 +2434,15 @@ export const generateInitialPiecePositions = (
           for (const shapePos of piece.shape) {
             const checkRow = pieceTop + shapePos.row;
             const checkCol = pieceLeft + shapePos.col;
-            
+
             for (const [placedPieceId, placedPosition] of Object.entries(initialPositions)) {
-              const placedPiece = pieces.find(p => p.id === placedPieceId);
+              const placedPiece = pieces.find((p) => p.id === placedPieceId);
               if (!placedPiece) continue;
-              
+
               for (const placedShapePos of placedPiece.shape) {
                 const placedRow = placedPosition.row + placedShapePos.row;
                 const placedCol = placedPosition.col + placedShapePos.col;
-                
+
                 if (placedRow === checkRow && placedCol === checkCol) {
                   hasOverlap = true;
                   break;
@@ -2426,7 +2456,9 @@ export const generateInitialPiecePositions = (
           if (!hasOverlap) {
             initialPositions[piece.id] = { row: pieceTop, col: pieceLeft };
             placed = true;
-            console.log(`✅ Placed piece ${piece.id} at (${pieceTop}, ${pieceLeft}) in expanded area`);
+            console.log(
+              `✅ Placed piece ${piece.id} at (${pieceTop}, ${pieceLeft}) in expanded area`
+            );
           }
         }
       }
@@ -2434,7 +2466,9 @@ export const generateInitialPiecePositions = (
 
     // If we STILL can't place it, something is very wrong
     if (!placed) {
-      throw new Error(`FATAL: Cannot place piece ${piece.id} anywhere without overlaps. This should never happen.`);
+      throw new Error(
+        `FATAL: Cannot place piece ${piece.id} anywhere without overlaps. This should never happen.`
+      );
     }
   }
 
