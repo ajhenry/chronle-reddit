@@ -5,6 +5,7 @@ import { DevPage } from './pages/dev';
 import { LetteredPage } from './pages/lettered';
 import { TermsPage } from './pages/terms';
 import { AdminPage } from './pages/admin';
+import { CustomGamePage } from './pages/custom';
 import { Card, CardHeader, CardTitle, CardContent } from './components/ui/card';
 import { Button } from './components/ui/button';
 import { BouncingLogo } from './components/BouncingLogo';
@@ -24,6 +25,7 @@ export const App = () => {
   const [showWelcome, setShowWelcome] = useState<boolean>(false);
   const [currentSeasonId, setCurrentSeasonId] = useState<string | null>(null);
   const [userInfo, setUserInfo] = useState<User | null>(null);
+  const [isCheckingContext, setIsCheckingContext] = useState<boolean>(true);
   // userInfo is stored for potential future use and debugging
 
   // Cookie utilities
@@ -41,13 +43,62 @@ export const App = () => {
     document.cookie = `${name}=${value};${expires};path=/`;
   };
 
-  // Check if welcome was dismissed on mount
+  // Check if welcome was dismissed on mount and handle custom game context
   useEffect(() => {
-    const welcomeDismissed = getCookie('podium_welcome_dismissed');
-    if (welcomeDismissed !== 'true') {
-      setShowWelcome(true);
-    }
-  }, []);
+    const initializeApp = async () => {
+      console.log('App initializing with URL:', window.location.href);
+      console.log('Pathname:', window.location.pathname);
+      console.log('Search params:', window.location.search);
+      console.log('Hash:', window.location.hash);
+      
+      // FIRST: Check for custom game context BEFORE doing anything else
+      try {
+        // ALWAYS check context - don't restrict to homepage only
+        console.log('Checking for custom game context...', window.location);
+        const response = await apiFetch('/api/context');
+        if (response.ok) {
+          const data = await response.json();
+          console.log('Context data received:', data);
+            
+          const metadata = data.context?.metadata;
+          const debug = data.context?.debug;
+          
+          console.log('Debug info:', debug);
+          console.log('Metadata:', metadata);
+          
+          // If this is a custom game post, redirect to the custom game IMMEDIATELY
+          if (metadata?.customGameId && metadata?.gameType === 'lettered') {
+            console.log('Redirecting to custom game:', metadata.customGameId);
+            navigate(`/lettered/${metadata.customGameId}`);
+            setIsCheckingContext(false);
+            return; // Exit early - don't show homepage
+          } else if (debug?.gameId) {
+            console.log('Found custom game ID in context:', debug.gameId);
+            // Navigate directly to the custom game
+            navigate(`/lettered/${debug.gameId}`);
+            return; // Exit early to prevent loading homepage
+          } else {
+            console.log('No custom game detected, proceeding with normal flow');
+          }
+        } else {
+          console.log('Context API call failed');
+        }
+      } catch (error) {
+        console.log('No custom game context found or error:', error);
+      }
+
+      // SECOND: If no custom game, proceed with normal initialization
+      setIsCheckingContext(false);
+      
+      // Check welcome state
+      const welcomeDismissed = getCookie('podium_welcome_dismissed');
+      if (welcomeDismissed !== 'true') {
+        setShowWelcome(true);
+      }
+    };
+
+    initializeApp();
+  }, [navigate]);
 
   // Fetch current season ID
   useEffect(() => {
@@ -148,10 +199,19 @@ export const App = () => {
     <>
       <AdminBanner user={userInfo} />
       <ScrollToTop />
-      <Routes>
-        <Route path="/topx" element={<TopXPage onBack={handleBackToMenu} />} />
-        <Route path="/lettered" element={<LetteredPage onBack={handleBackToMenu} />} />
-        <Route
+      
+      {/* Show loading while checking for custom game context */}
+      {isCheckingContext ? (
+        <div className="flex items-center justify-center min-h-screen">
+          <div className="text-lg">Loading...</div>
+        </div>
+      ) : (
+        <Routes>
+          <Route path="/topx" element={<TopXPage onBack={handleBackToMenu} />} />
+          <Route path="/lettered" element={<LetteredPage onBack={handleBackToMenu} />} />
+          <Route path="/lettered/:gameId" element={<LetteredPage onBack={handleBackToMenu} />} />
+          <Route path="/custom" element={<CustomGamePage />} />
+          <Route
           path="/leaderboard"
           element={
             <div className="p-4 min-h-screen bg-background">
@@ -287,6 +347,23 @@ export const App = () => {
                       </h3>
                     </div>
 
+                    {/* Custom Game */}
+                    <div className="flex flex-col items-center space-y-2 w-full">
+                      <button
+                        onClick={() => navigate('/custom')}
+                        className="relative overflow-hidden border-4 border-border shadow-lg hover:shadow-xl transition-all duration-200 hover:translate-x-[-2px] hover:translate-y-[-2px] w-full bg-gradient-to-r from-purple-500 to-pink-500"
+                      >
+                        <div className="py-8 flex items-center justify-center min-h-[100px]">
+                          <h2 className="p-2 -m-2 text-4xl font-black tracking-wider text-white bg-black/70 rounded">
+                            CUSTOM GAME
+                          </h2>
+                        </div>
+                      </button>
+                      <h3 className="mt-2 mb-2 text-xl font-bold text-center text-card-foreground">
+                        Create your own phrase puzzle
+                      </h3>
+                    </div>
+
                     {/* Dev Game */}
                     {isDevelopment() && (
                       <div className="flex flex-col items-center space-y-2 w-full">
@@ -348,6 +425,7 @@ export const App = () => {
           }
         />
       </Routes>
+      )}
     </>
   );
 };

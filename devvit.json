@@ -1,6 +1,6 @@
 {
   "$schema": "https://developers.reddit.com/schema/config-file.v1.json",
-  "name": "podium-game",
+  "name": "pepp-dle",
   "post": {
     "dir": "dist/client",
     "entrypoints": {
@@ -31,7 +31,9 @@
   "permissions": {
     "http": {
       "enable": true,
-      "domains": ["gwnwsqtfvkgcihmwgrsj.supabase.co"]
+      "domains": [
+        "gwnwsqtfvkgcihmwgrsj.supabase.co"
+      ]
     },
     "reddit": {
       "enable": true,
@@ -40,6 +42,6 @@
     "redis": true
   },
   "dev": {
-    "subreddit": "podium_game_dev"
+    "subreddit": "pepp_dle_dev"
   }
 }

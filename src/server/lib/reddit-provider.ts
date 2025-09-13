@@ -78,6 +78,7 @@ export const reddit = {
     height?: number;
     width?: number;
     splash?: any;
+    webviewMetadata?: any;
   }): Promise<{ id: string; url: string }> {
     const provider = await getCachedRedditProvider();
     return provider.submitCustomPost(options);

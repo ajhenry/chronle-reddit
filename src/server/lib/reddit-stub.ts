@@ -16,6 +16,7 @@ export interface RedditStub {
     height?: number;
     width?: number;
     splash?: any;
+    webviewMetadata?: any;
   }): Promise<{ id: string; url: string }>;
 }
 
@@ -94,6 +95,7 @@ export const redditStub: RedditStub = {
     height?: number;
     width?: number;
     splash?: any;
+    webviewMetadata?: any;
   }): Promise<{ id: string; url: string }> {
     // Generate a mock post ID
     const mockPostId = `mock_post_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;

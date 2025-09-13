@@ -7,6 +7,7 @@ export interface PostGameModalProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   gameType: 'lettered' | 'topx';
+  isCustomGame?: boolean; // New prop for custom games
 
   // Loading states
   loading?: boolean;
@@ -20,6 +21,15 @@ export interface PostGameModalProps {
   // Theme/prompt
   theme: string;
 
+  // Leaderboard data
+  leaderboard?: Array<{
+    username: string;
+    score: number;
+    rank?: number;
+  }>;
+  playerRank?: number;
+  totalPlayers?: number;
+
   // Actions
   onClose: () => void;
 
@@ -31,12 +41,16 @@ export const PostGameModal: React.FC<PostGameModalProps> = ({
   open,
   onOpenChange,
   gameType,
+  isCustomGame = false, // Default to false for regular games
   loading = false,
   error = null,
   score,
   secondaryStatValue,
   secondaryStatLabel,
   theme,
+  leaderboard = [],
+  playerRank,
+  totalPlayers,
   onClose,
   children,
 }) => {
@@ -95,13 +109,25 @@ export const PostGameModal: React.FC<PostGameModalProps> = ({
             </div>
           )}
 
-          {/* Validation Message */}
+          {/* Player Score Display - Different text for custom vs daily games */}
           <div className="relative p-4 text-center text-white bg-black border-4 border-black">
             <div className="mb-1 text-2xl font-black tracking-wide">
-              {loading ? <Skeleton className="mx-auto w-32 h-8 bg-gray-600" /> : 'VALIDATED'}
+              {loading ? (
+                <Skeleton className="mx-auto w-32 h-8 bg-gray-600" />
+              ) : isCustomGame ? (
+                'PLAYER SCORE'
+              ) : (
+                'VALIDATED'
+              )}
             </div>
             <div className="text-sm font-bold tracking-wider">
-              {loading ? <Skeleton className="mx-auto w-40 h-4 bg-gray-600" /> : 'SERVER CONFIRMED'}
+              {loading ? (
+                <Skeleton className="mx-auto w-40 h-4 bg-gray-600" />
+              ) : isCustomGame ? (
+                'USERNAME RANKED'
+              ) : (
+                'SERVER CONFIRMED'
+              )}
             </div>
           </div>
 
@@ -142,6 +168,38 @@ export const PostGameModal: React.FC<PostGameModalProps> = ({
               {loading ? <Skeleton className="mx-auto w-48 h-7 bg-gray-600" /> : theme}
             </div>
           </div>
+
+          {/* Leaderboard Display for Custom Games */}
+          {isCustomGame && leaderboard && leaderboard.length > 0 && (
+            <div className="p-4 border-4 border-black shadow-lg bg-white">
+              <div className="mb-3 text-lg font-black text-center text-black">
+                LEADERBOARD
+              </div>
+              <div className="space-y-2">
+                {leaderboard.slice(0, 5).map((entry, index) => (
+                  <div 
+                    key={`${entry.username}-${entry.score}`}
+                    className={`flex justify-between items-center p-2 border-2 border-black ${
+                      entry.username === 'You' || index === (playerRank ? playerRank - 1 : -1) 
+                        ? 'bg-yellow-300 font-bold' 
+                        : 'bg-gray-100'
+                    }`}
+                  >
+                    <div className="flex items-center gap-2">
+                      <span className="font-black text-black">#{index + 1}</span>
+                      <span className="font-bold text-black">{entry.username}</span>
+                    </div>
+                    <span className="font-black text-black">{entry.score}</span>
+                  </div>
+                ))}
+              </div>
+              {playerRank && totalPlayers && (
+                <div className="mt-3 text-center text-sm font-bold text-black">
+                  Your Rank: #{playerRank} of {totalPlayers} players
+                </div>
+              )}
+            </div>
+          )}
 
           {/* Additional content (game-specific sections) */}
           {children}

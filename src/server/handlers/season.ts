@@ -160,12 +160,20 @@ router.get('/api/leaderboard/:seasonId', async (req, res): Promise<void> => {
     const { seasonId } = req.params;
     const { limit = '50', offset = '0' } = req.query;
 
-    // Get leaderboard data with aggregated stats
-    const { data: leaderboardData, error } = await supabase.rpc('get_season_leaderboard', {
-      season_id: seasonId,
-      result_limit: parseInt(limit as string),
-      result_offset: parseInt(offset as string),
-    });
+    // Get leaderboard data with unique best score per user
+    const { data: leaderboardData, error } = await supabase
+      .from('lettered_sessions')
+      .select(`
+        user_id,
+        users!inner(reddit_handle),
+        final_score,
+        completed_at
+      `)
+      .eq('season_id', seasonId)
+      .not('final_score', 'is', null)
+      .order('final_score', { ascending: false })
+      .limit(parseInt(limit as string))
+      .range(parseInt(offset as string), parseInt(offset as string) + parseInt(limit as string) - 1);
 
     if (error) {
       console.error('Error fetching leaderboard:', error);
@@ -176,28 +184,41 @@ router.get('/api/leaderboard/:seasonId', async (req, res): Promise<void> => {
       return;
     }
 
-    // Since game_sessions table is removed, set totalPlayers to 0
-    const totalPlayers = 0;
+    // Group by user and keep only their best score
+    const userBestScores = new Map();
+    leaderboardData?.forEach((entry: any) => {
+      const userId = entry.user_id;
+      const currentBest = userBestScores.get(userId);
+      
+      if (!currentBest || entry.final_score > currentBest.final_score) {
+        userBestScores.set(userId, {
+          userId: userId,
+          redditHandle: entry.users.reddit_handle,
+          bestScore: entry.final_score,
+          completedAt: entry.completed_at
+        });
+      }
+    });
 
-    const entries: LeaderboardEntry[] =
-      leaderboardData?.map((entry: any, index: number) => ({
-        rank: parseInt(offset as string) + index + 1,
-        userId: entry.user_id,
-        redditHandle: entry.reddit_handle,
-        totalScore: entry.total_score || 0,
-        gamesPlayed: entry.games_played || 0,
-        gamesWon: entry.games_won || 0,
-        averageScore: entry.average_score || 0,
-        winRate: entry.win_rate || 0,
-        bestScore: entry.best_score || 0,
-        totalCorrectAnswers: entry.total_correct_answers || 0,
-        averageAttempts: entry.average_attempts || 0,
-      })) || [];
+    // Convert to array and sort by best score
+    const uniqueEntries = Array.from(userBestScores.values())
+      .sort((a, b) => b.bestScore - a.bestScore);
+
+    const totalPlayers = uniqueEntries.length;
+
+    const entries: LeaderboardEntry[] = uniqueEntries.map((entry: any, index: number) => ({
+      rank: parseInt(offset as string) + index + 1,
+      userId: entry.userId,
+      redditHandle: entry.redditHandle,
+      totalPoints: entry.bestScore,
+      gamesPlayed: 1, // Since we're showing best score only
+      latestGame: entry.completedAt,
+      averageScore: entry.bestScore,
+    })) || [];
 
     const response: LeaderboardResponse = {
       type: 'leaderboard',
       entries,
-      seasonId,
       totalPlayers: totalPlayers || 0,
     };
 

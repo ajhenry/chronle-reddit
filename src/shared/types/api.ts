@@ -269,4 +269,12 @@ export type LetteredPostGameResponse = {
   isValid: boolean;
   pieces: Record<string, GridPosition>;
   movesUsed: number;
+  timeElapsed?: number;
+  rank?: number;
+  totalPlayers?: number;
+  leaderboard?: Array<{
+    username: string;
+    score: number;
+    rank?: number;
+  }>;
 };

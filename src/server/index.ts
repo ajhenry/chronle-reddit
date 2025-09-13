@@ -8,6 +8,8 @@ import seasonRoutes from './handlers/season';
 import adminRoutes from './handlers/admin';
 import leaderboardRoutes from './handlers/leaderboard';
 import topxRoutes from './handlers/topx';
+import customRoutes from './handlers/custom';
+import contextRoutes from './handlers/context';
 
 // Environment detection - use LOCAL_MODE flag for local development
 // Set LOCAL_MODE=true to use regular Express server instead of Reddit's server
@@ -59,6 +61,8 @@ app.use(seasonRoutes);
 app.use(adminRoutes);
 app.use(leaderboardRoutes);
 app.use(topxRoutes);
+app.use(customRoutes);
+app.use(contextRoutes);
 // Health check endpoint for local development
 if (isLocal) {
   app.get('/health', (_req, res) => {
