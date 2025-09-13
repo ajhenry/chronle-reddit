@@ -12,12 +12,12 @@ import { Button } from '../components/ui/button';
 import { Combobox, ComboboxOption } from '../components/ui/combobox';
 import { PostGameModal } from '../components/PostGameModal';
 import { TopXLoadingAnimation } from '../components/TopXLoadingAnimation';
+import { TopXErrorAnimation } from '../components/TopXErrorAnimation';
 import {
   TopXGame,
   TopXDailyGameResponse,
   TopXSubmissionResponse,
   TopXGameCompleteResponse,
-  Season,
   EraseTopXResultsResponse,
 } from '../../shared/types/api';
 import { apiFetch, findValidAnswerPosition } from '../lib/utils';
@@ -170,7 +170,6 @@ export const TopXPage = ({ onBack }: { onBack?: () => void }) => {
   const [showGoldShimmer, setShowGoldShimmer] = useState(false);
   const [gameData, setGameData] = useState<TopXGame | null>(null);
   const [dailyGameId, setDailyGameId] = useState<string | null>(null);
-  const [, setSeason] = useState<Season | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [showGameOverModal, setShowGameOverModal] = useState(false);
@@ -278,14 +277,6 @@ export const TopXPage = ({ onBack }: { onBack?: () => void }) => {
     const loadDailyGame = async () => {
       try {
         setLoading(true);
-
-        // Fetch current season
-        const seasonResponse = await apiFetch('/api/season/current');
-        if (!seasonResponse.ok) {
-          throw new Error('Failed to fetch current season');
-        }
-        const seasonData = await seasonResponse.json();
-        setSeason(seasonData.season);
 
         // Fetch today's daily game
         const dailyGame = await fetchTodaysGame();
@@ -713,7 +704,7 @@ export const TopXPage = ({ onBack }: { onBack?: () => void }) => {
   if (loading) {
     return (
       <GameLayout
-        gameTitle="Top X Daily"
+        gameTitle="Top X"
         score={0}
         attempts={0}
         maxAttempts={gameData?.maxAttempts ?? 5}
@@ -731,26 +722,24 @@ export const TopXPage = ({ onBack }: { onBack?: () => void }) => {
   if (error || !gameData) {
     return (
       <GameLayout
-        gameTitle="Top X Daily"
+        gameTitle="Top X"
         score={0}
         attempts={0}
         maxAttempts={gameData?.maxAttempts ?? 5}
         onBack={handleBackToMenu}
         logoSrc="/topx-logo.svg"
       >
-        <CardContent className="flex flex-col justify-center items-center p-8 space-y-4">
-          <div className="text-lg font-medium text-center text-destructive">
-            {error || "Failed to load today's game"}
-          </div>
+        <div className="flex flex-col justify-center items-center space-y-8 h-[80vh]">
+          <TopXErrorAnimation errorMessage={error || 'Failed to load the Top X game'} />
           <Button onClick={() => window.location.reload()}>Try Again</Button>
-        </CardContent>
+        </div>
       </GameLayout>
     );
   }
 
   return (
     <GameLayout
-      gameTitle="Top X Daily"
+      gameTitle="Top X"
       score={gameState.score}
       attempts={gameState.attempts}
       maxAttempts={gameState.maxAttempts}

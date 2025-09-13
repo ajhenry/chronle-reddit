@@ -50,7 +50,7 @@ export const App = () => {
       console.log('Pathname:', window.location.pathname);
       console.log('Search params:', window.location.search);
       console.log('Hash:', window.location.hash);
-      
+
       // FIRST: Check for custom game context BEFORE doing anything else
       try {
         // ALWAYS check context - don't restrict to homepage only
@@ -59,13 +59,13 @@ export const App = () => {
         if (response.ok) {
           const data = await response.json();
           console.log('Context data received:', data);
-            
+
           const metadata = data.context?.metadata;
           const debug = data.context?.debug;
-          
+
           console.log('Debug info:', debug);
           console.log('Metadata:', metadata);
-          
+
           // If this is a custom game post, redirect to the custom game IMMEDIATELY
           if (metadata?.customGameId && metadata?.gameType === 'lettered') {
             console.log('Redirecting to custom game:', metadata.customGameId);
@@ -89,7 +89,7 @@ export const App = () => {
 
       // SECOND: If no custom game, proceed with normal initialization
       setIsCheckingContext(false);
-      
+
       // Check welcome state
       const welcomeDismissed = getCookie('podium_welcome_dismissed');
       if (welcomeDismissed !== 'true') {
@@ -199,10 +199,10 @@ export const App = () => {
     <>
       <AdminBanner user={userInfo} />
       <ScrollToTop />
-      
+
       {/* Show loading while checking for custom game context */}
       {isCheckingContext ? (
-        <div className="flex items-center justify-center min-h-screen">
+        <div className="flex justify-center items-center min-h-screen">
           <div className="text-lg">Loading...</div>
         </div>
       ) : (
@@ -212,168 +212,133 @@ export const App = () => {
           <Route path="/lettered/:gameId" element={<LetteredPage onBack={handleBackToMenu} />} />
           <Route path="/custom" element={<CustomGamePage />} />
           <Route
-          path="/leaderboard"
-          element={
-            <div className="p-4 min-h-screen bg-background">
-              {currentSeasonId && (
-                <Leaderboard seasonId={currentSeasonId} onClose={handleBackFromLeaderboard} />
-              )}
-            </div>
-          }
-        />
-        <Route path="/terms" element={<TermsPage />} />
-        <Route path="/dev" element={<DevPage onBack={handleBackFromDev} />} />
-        <Route path="/admin" element={<AdminPage />} />
-        <Route
-          path="/"
-          element={
-            <div className="flex relative flex-col min-h-screen bg-background">
-              {/* Main Container */}
-              <div className="container px-4 py-6 mx-auto max-w-4xl">
-                {/* Content Container with max-width constraint */}
-                <div className="flex flex-col flex-1 gap-8 justify-center items-center mx-auto my-6 w-full max-w-md">
-                  {/* Bouncing Logo */}
-                  <div className="w-full">
-                    <BouncingLogo src="/topx-logo.svg" alt="Top X Logo" />
-                  </div>
+            path="/leaderboard"
+            element={
+              <div className="p-4 min-h-screen bg-background">
+                {currentSeasonId && (
+                  <Leaderboard seasonId={currentSeasonId} onClose={handleBackFromLeaderboard} />
+                )}
+              </div>
+            }
+          />
+          <Route path="/terms" element={<TermsPage />} />
+          <Route path="/dev" element={<DevPage onBack={handleBackFromDev} />} />
+          <Route path="/admin" element={<AdminPage />} />
+          <Route
+            path="/"
+            element={
+              <div className="flex relative flex-col min-h-screen bg-background">
+                {/* Main Container */}
+                <div className="container px-4 py-6 mx-auto max-w-4xl">
+                  {/* Content Container with max-width constraint */}
+                  <div className="flex flex-col flex-1 gap-8 justify-center items-center mx-auto my-6 w-full max-w-md">
+                    {/* Bouncing Logo */}
+                    <div className="w-full">
+                      <BouncingLogo src="/topx-logo.svg" alt="Top X Logo" />
+                    </div>
 
-                  {/* Podium Logo */}
-                  <div className="w-full text-center">
-                    <div className="space-y-4 text-center">
-                      <div className="relative animate-bounce-shadow">
-                        {/* Season Banner */}
-                        <div className="absolute -top-2 -left-2 z-10 px-3 py-1 text-white bg-black border-2 border-black transform -rotate-12">
-                          <span className="text-sm font-bold tracking-wide">PRESEASON</span>
+                    {/* Podium Logo */}
+                    <div className="w-full text-center">
+                      <div className="space-y-4 text-center">
+                        <div className="relative animate-bounce-shadow">
+                          {/* Season Banner */}
+                          <div className="absolute -top-2 -left-2 z-10 px-3 py-1 text-white bg-black border-2 border-black transform -rotate-12">
+                            <span className="text-sm font-bold tracking-wide">PRESEASON</span>
+                          </div>
+                          <div className="py-4 border-4 bg-primary border-border">
+                            <h1
+                              className="text-6xl font-black tracking-tight text-black"
+                              style={{
+                                fontFamily: 'Inter, sans-serif',
+                                fontWeight: 900,
+                                letterSpacing: '-0.05em',
+                                lineHeight: '0.8',
+                              }}
+                            >
+                              PODIUM
+                            </h1>
+                          </div>
                         </div>
-                        <div className="py-4 border-4 bg-primary border-border">
-                          <h1
-                            className="text-6xl font-black tracking-tight text-black"
-                            style={{
-                              fontFamily: 'Inter, sans-serif',
-                              fontWeight: 900,
-                              letterSpacing: '-0.05em',
-                              lineHeight: '0.8',
-                            }}
-                          >
-                            PODIUM
-                          </h1>
+                        <div>
+                          <Card className="py-3 border-4 bg-card border-border">
+                            <p className="text-xl font-bold tracking-wide text-card-foreground">
+                              THE DAILY REDDIT GAMES
+                            </p>
+                          </Card>
                         </div>
                       </div>
-                      <div>
-                        <Card className="py-3 border-4 bg-card border-border">
-                          <p className="text-xl font-bold tracking-wide text-card-foreground">
-                            THE DAILY REDDIT GAMES
-                          </p>
-                        </Card>
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* User Welcome */}
-                  {showWelcome && (
-                    <Card className="relative w-full max-w-md">
-                      <CardHeader className="pb-2">
-                        <div className="flex justify-between items-center">
-                          <CardTitle className="flex-1 text-center">WELCOME!</CardTitle>
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={dismissWelcome}
-                            className="p-0 w-8 h-8 rounded-full hover:bg-gray-100"
-                            aria-label="Dismiss welcome message"
-                          >
-                            <X className="w-4 h-4" />
-                          </Button>
-                        </div>
-                      </CardHeader>
-                      <CardContent>
-                        <div className="text-center">
-                          <p className="text-lg font-medium text-card-foreground">
-                            CHOOSE A GAME TO PLAY!
-                          </p>
-                          <p className="mt-1 text-sm text-card-foreground">
-                            Each game can be played once per day!
-                          </p>
-                        </div>
-                      </CardContent>
-                    </Card>
-                  )}
-
-                  {/* Game Selection */}
-                  <div className="grid grid-cols-1 gap-6 w-full">
-                    {/* TOP X Game */}
-                    <div className="flex flex-col items-center space-y-2 w-full">
-                      <button
-                        onClick={() => handleGameSelect('topx')}
-                        className="relative overflow-hidden border-4 border-border shadow-lg hover:shadow-xl transition-all duration-200 hover:translate-x-[-2px] hover:translate-y-[-2px] w-full"
-                        style={{
-                          backgroundImage: 'url(/topx-button-logo.svg)',
-                          backgroundSize: 'cover',
-                          backgroundPosition: 'center',
-                          backgroundRepeat: 'no-repeat',
-                        }}
-                      >
-                        <div className="bg-black/20 py-8 flex items-center justify-center min-h-[100px]">
-                          <h2 className="text-4xl font-black tracking-wider text-white drop-shadow-lg">
-                            TOP X
-                          </h2>
-                        </div>
-                      </button>
-                      <h3 className="mt-2 mb-2 text-xl font-bold text-center text-card-foreground">
-                        Guess the top answers to trivia questions
-                      </h3>
                     </div>
 
-                    {/* LETTERED Game */}
-                    <div className="flex flex-col items-center space-y-2 w-full">
-                      <button
-                        onClick={() => handleGameSelect('lettered')}
-                        className="relative overflow-hidden border-4 border-border shadow-lg hover:shadow-xl transition-all duration-200 hover:translate-x-[-2px] hover:translate-y-[-2px] w-full"
-                        style={{
-                          backgroundImage: 'url(/letter-button-logo.svg)',
-                          backgroundSize: 'cover',
-                          backgroundPosition: 'center',
-                          backgroundRepeat: 'no-repeat',
-                        }}
-                      >
-                        <div className="py-8 flex items-center justify-center min-h-[100px]">
-                          <h2 className="p-2 -m-2 text-4xl font-black tracking-wider text-white bg-black">
-                            LETTERED
-                          </h2>
-                        </div>
-                      </button>
-                      <h3 className="mt-2 mb-2 text-xl font-bold text-center text-card-foreground">
-                        Complete the phrase in pieces
-                      </h3>
-                    </div>
+                    {/* User Welcome */}
+                    {showWelcome && (
+                      <Card className="relative w-full max-w-md">
+                        <CardHeader className="pb-2">
+                          <div className="flex justify-between items-center">
+                            <CardTitle className="flex-1 text-center">WELCOME!</CardTitle>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={dismissWelcome}
+                              className="p-0 w-8 h-8 rounded-full hover:bg-gray-100"
+                              aria-label="Dismiss welcome message"
+                            >
+                              <X className="w-4 h-4" />
+                            </Button>
+                          </div>
+                        </CardHeader>
+                        <CardContent>
+                          <div className="text-center">
+                            <p className="text-lg font-medium text-card-foreground">
+                              CHOOSE A GAME TO PLAY!
+                            </p>
+                            <p className="mt-1 text-sm text-card-foreground">
+                              Each game can be played once per day!
+                            </p>
+                          </div>
+                        </CardContent>
+                      </Card>
+                    )}
 
-                    {/* Custom Game */}
-                    <div className="flex flex-col items-center space-y-2 w-full">
-                      <button
-                        onClick={() => navigate('/custom')}
-                        className="relative overflow-hidden border-4 border-border shadow-lg hover:shadow-xl transition-all duration-200 hover:translate-x-[-2px] hover:translate-y-[-2px] w-full bg-gradient-to-r from-purple-500 to-pink-500"
-                      >
-                        <div className="py-8 flex items-center justify-center min-h-[100px]">
-                          <h2 className="p-2 -m-2 text-4xl font-black tracking-wider text-white bg-black/70 rounded">
-                            CUSTOM GAME
-                          </h2>
-                        </div>
-                      </button>
-                      <h3 className="mt-2 mb-2 text-xl font-bold text-center text-card-foreground">
-                        Create your own phrase puzzle
-                      </h3>
-                    </div>
-
-                    {/* Dev Game */}
-                    {isDevelopment() && (
+                    {/* Game Selection */}
+                    <div className="grid grid-cols-1 gap-6 w-full">
+                      {/* TOP X Game */}
                       <div className="flex flex-col items-center space-y-2 w-full">
                         <button
-                          onClick={() => handleGameSelect('dev')}
+                          onClick={() => handleGameSelect('topx')}
                           className="relative overflow-hidden border-4 border-border shadow-lg hover:shadow-xl transition-all duration-200 hover:translate-x-[-2px] hover:translate-y-[-2px] w-full"
+                          style={{
+                            backgroundImage: 'url(/topx-button-logo.svg)',
+                            backgroundSize: 'cover',
+                            backgroundPosition: 'center',
+                            backgroundRepeat: 'no-repeat',
+                          }}
+                        >
+                          <div className="bg-black/20 py-8 flex items-center justify-center min-h-[100px]">
+                            <h2 className="text-4xl font-black tracking-wider text-white drop-shadow-lg">
+                              TOP X
+                            </h2>
+                          </div>
+                        </button>
+                        <h3 className="mt-2 mb-2 text-xl font-bold text-center text-card-foreground">
+                          Guess the top answers to trivia questions
+                        </h3>
+                      </div>
+
+                      {/* LETTERED Game */}
+                      <div className="flex flex-col items-center space-y-2 w-full">
+                        <button
+                          onClick={() => handleGameSelect('lettered')}
+                          className="relative overflow-hidden border-4 border-border shadow-lg hover:shadow-xl transition-all duration-200 hover:translate-x-[-2px] hover:translate-y-[-2px] w-full"
+                          style={{
+                            backgroundImage: 'url(/letter-button-logo.svg)',
+                            backgroundSize: 'cover',
+                            backgroundPosition: 'center',
+                            backgroundRepeat: 'no-repeat',
+                          }}
                         >
                           <div className="py-8 flex items-center justify-center min-h-[100px]">
                             <h2 className="p-2 -m-2 text-4xl font-black tracking-wider text-white bg-black">
-                              DEV MODE
+                              LETTERED
                             </h2>
                           </div>
                         </button>
@@ -381,50 +346,91 @@ export const App = () => {
                           Complete the phrase in pieces
                         </h3>
                       </div>
-                    )}
+
+                      {/* Custom Game */}
+                      <div className="flex flex-col items-center space-y-2 w-full">
+                        <button
+                          onClick={() => navigate('/custom')}
+                          className="relative overflow-hidden border-4 border-border shadow-lg hover:shadow-xl transition-all duration-200 hover:translate-x-[-2px] hover:translate-y-[-2px] w-full"
+                          style={{
+                            background:
+                              'linear-gradient(-45deg, #8b5cf6, #ec4899, #f97316, #eab308, #22c55e, #06b6d4, #3b82f6, #6366f1, #a855f7, #d946ef)',
+                            backgroundSize: '400% 400%',
+                            animation: 'gradientShift 20s ease infinite',
+                          }}
+                        >
+                          <div className="py-8 flex items-center justify-center min-h-[100px]">
+                            <h2 className="p-2 -m-2 text-4xl font-black text-white bg-black rounded">
+                              CUSTOM
+                            </h2>
+                          </div>
+                        </button>
+                        <h3 className="mt-2 mb-2 text-xl font-bold text-center text-card-foreground">
+                          Create your own Podium games
+                        </h3>
+                      </div>
+
+                      {/* Dev Game */}
+                      {isDevelopment() && (
+                        <div className="flex flex-col items-center space-y-2 w-full">
+                          <button
+                            onClick={() => handleGameSelect('dev')}
+                            className="relative overflow-hidden border-4 border-border shadow-lg hover:shadow-xl transition-all duration-200 hover:translate-x-[-2px] hover:translate-y-[-2px] w-full"
+                          >
+                            <div className="py-8 flex items-center justify-center min-h-[100px]">
+                              <h2 className="p-2 -m-2 text-4xl font-black tracking-wider text-white bg-black">
+                                DEV MODE
+                              </h2>
+                            </div>
+                          </button>
+                          <h3 className="mt-2 mb-2 text-xl font-bold text-center text-card-foreground">
+                            Complete the phrase in pieces
+                          </h3>
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Footer - Inside constrained container */}
+                    <footer className="flex flex-wrap gap-2 justify-center mt-8 w-full">
+                      {/* Theme Toggle */}
+                      <ModeToggle />
+
+                      {/* Terms Button */}
+                      <Button variant="outline" onClick={() => navigate('/terms')}>
+                        TERMS
+                      </Button>
+
+                      {[
+                        {
+                          href: 'https://discord.com/invite/R7yu2wh9Qz',
+                          text: 'DISCORD',
+                          variant: 'outline' as const,
+                        },
+                      ].map((link) => (
+                        <Button key={link.text} variant="default" asChild>
+                          <a href={link.href} target="_blank" rel="noopener noreferrer">
+                            {link.text}
+                          </a>
+                        </Button>
+                      ))}
+
+                      {/* Dev Mode Button - only shows in development */}
+                      {isDevelopment() && (
+                        <Button variant="outline" onClick={handleDevModeClick}>
+                          <Settings className="mr-2 w-4 h-4" />
+                          DEV TOOLS
+                        </Button>
+                      )}
+                    </footer>
+
+                    {/* Toast notifications */}
+                    <Toaster position="top-center" />
                   </div>
-
-                  {/* Footer - Inside constrained container */}
-                  <footer className="flex flex-wrap gap-2 justify-center mt-8 w-full">
-                    {/* Theme Toggle */}
-                    <ModeToggle />
-
-                    {/* Terms Button */}
-                    <Button variant="outline" onClick={() => navigate('/terms')}>
-                      TERMS
-                    </Button>
-
-                    {[
-                      {
-                        href: 'https://discord.com/invite/R7yu2wh9Qz',
-                        text: 'DISCORD',
-                        variant: 'outline' as const,
-                      },
-                    ].map((link) => (
-                      <Button key={link.text} variant="default" asChild>
-                        <a href={link.href} target="_blank" rel="noopener noreferrer">
-                          {link.text}
-                        </a>
-                      </Button>
-                    ))}
-
-                    {/* Dev Mode Button - only shows in development */}
-                    {isDevelopment() && (
-                      <Button variant="outline" onClick={handleDevModeClick}>
-                        <Settings className="mr-2 w-4 h-4" />
-                        DEV TOOLS
-                      </Button>
-                    )}
-                  </footer>
-
-                  {/* Toast notifications */}
-                  <Toaster position="top-center" />
                 </div>
               </div>
-            </div>
-          }
-        />
-      </Routes>
+            }
+          />
+        </Routes>
       )}
     </>
   );
