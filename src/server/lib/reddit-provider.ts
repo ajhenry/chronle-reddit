@@ -1,10 +1,9 @@
 // Reddit provider - conditionally uses real or stubbed reddit API
 //
 // To use the stubbed reddit API for local development, set one of:
-// - NODE_ENV=local
 // - ENVIRONMENT=local
 // - USE_REDDIT_STUB=true
-// - NODE_ENV=development with HOST=localhost (default for local dev)
+// - LOCAL_MODE=true
 
 import { User } from '@devvit/web/server';
 import { redditStub } from './reddit-stub';
@@ -15,7 +14,11 @@ import { redditStub } from './reddit-stub';
  */
 const isLocalDevelopment = (): boolean => {
   // Only use stub in explicit local development scenarios
-  if (process.env.LOCAL_MODE === 'true') {
+  if (
+    process.env.LOCAL_MODE === 'true' ||
+    process.env.ENVIRONMENT === 'local' ||
+    process.env.USE_REDDIT_STUB === 'true'
+  ) {
     return true;
   }
 
