@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { useParams } from 'react-router-dom';
+import { useParams, useNavigate } from 'react-router-dom';
 import Confetti from 'react-confetti';
 import { GameLayout } from '../components/GameLayout';
 import { toast } from 'sonner';
@@ -25,7 +25,6 @@ import { cn } from '@sglara/cn';
 import { LetteredGameStateManager } from '../lib/lettered-game-state';
 import { apiFetch } from '../lib/utils';
 import { LetteredDailyGameResponse, LetteredPostGameResponse } from '../../shared/types/api';
-import { navigateTo } from '@devvit/web/client';
 
 // API functions for daily Lettered game
 const fetchTodaysGame = async (): Promise<LetteredDailyGameResponse> => {
@@ -235,6 +234,7 @@ interface UIState {
 
 export const LetteredPage = ({ onBack }: { onBack?: () => void }) => {
   const { gameId } = useParams<{ gameId?: string }>();
+  const navigate = useNavigate();
   const [showDevButtons, setShowDevButtons] = useState(false);
   const [, setShowGoldShimmer] = useState(false);
   const [showInstructions, setShowInstructions] = useState(false);
@@ -1040,7 +1040,7 @@ export const LetteredPage = ({ onBack }: { onBack?: () => void }) => {
               <InGameCustomButton className={cn('w-full', !gameId && 'sm:w-auto')} />
               {gameId && (
                 <Button
-                  onClick={() => navigateTo('https://www.reddit.com/r/podiumgame/')}
+                  onClick={() => navigate('/')}
                   variant="secondary"
                   className="self-start w-full"
                   type="button"

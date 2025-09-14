@@ -204,7 +204,7 @@ export const App = () => {
         <Route path="/dev" element={<DevPage onBack={handleBackFromDev} />} />
         <Route path="/admin" element={<AdminPage />} />
         <Route
-          path="/"
+          path="*"
           element={
             <div className="flex relative flex-col min-h-screen bg-background">
               {/* Main Container */}
@@ -247,36 +247,6 @@ export const App = () => {
                       </div>
                     </div>
                   </div>
-
-                  {/* User Welcome */}
-                  {showWelcome && (
-                    <Card className="relative w-full max-w-md">
-                      <CardHeader className="pb-2">
-                        <div className="flex justify-between items-center">
-                          <CardTitle className="flex-1 text-center">WELCOME!</CardTitle>
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={dismissWelcome}
-                            className="p-0 w-8 h-8 rounded-full hover:bg-gray-100"
-                            aria-label="Dismiss welcome message"
-                          >
-                            <X className="w-4 h-4" />
-                          </Button>
-                        </div>
-                      </CardHeader>
-                      <CardContent>
-                        <div className="text-center">
-                          <p className="text-lg font-medium text-card-foreground">
-                            CHOOSE A GAME TO PLAY!
-                          </p>
-                          <p className="mt-1 text-sm text-card-foreground">
-                            Each game can be played once per day!
-                          </p>
-                        </div>
-                      </CardContent>
-                    </Card>
-                  )}
 
                   {/* Game Selection */}
                   <div className="grid grid-cols-1 gap-6 w-full">
