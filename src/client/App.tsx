@@ -240,8 +240,8 @@ export const App = () => {
                       </div>
                       <div>
                         <Card className="py-3 border-4 bg-card border-border">
-                          <p className="text-xl font-bold tracking-wide text-card-foreground">
-                            THE DAILY REDDIT GAMES
+                          <p className="text-xl font-bold tracking-wide uppercase text-card-foreground">
+                            Daily Puzzle Games
                           </p>
                         </Card>
                       </div>

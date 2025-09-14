@@ -100,7 +100,7 @@ export const LeaderboardPage = ({ onBack }: LeaderboardPageProps) => {
     if (onBack) {
       onBack();
     } else {
-      void navigate('/');
+      void (window.history.length > 1 ? navigate(-1) : navigate('/'));
     }
   };
 

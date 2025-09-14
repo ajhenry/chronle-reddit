@@ -92,7 +92,7 @@ export const CustomGamePage = () => {
 
   const handleBack = (e?: React.MouseEvent) => {
     e?.preventDefault();
-    void navigate('/');
+    void (window.history.length > 1 ? navigate(-1) : navigate('/'));
   };
 
   return (

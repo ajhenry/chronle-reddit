@@ -13,11 +13,11 @@ export function PrivacyPage() {
           <Button
             variant="ghost"
             size="sm"
-            onClick={() => navigate('/')}
+            onClick={() => (window.history.length > 1 ? navigate(-1) : navigate('/'))}
             className="flex gap-2 items-center"
           >
             <ArrowLeft className="w-4 h-4" />
-            Back to Home
+            Back
           </Button>
         </div>
       </div>
