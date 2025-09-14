@@ -24,7 +24,7 @@ const router = Router();
 
 // Schema for custom lettered game creation
 const customLetteredSchema = z.object({
-  phrase: z.string().min(1).max(45).trim(),
+  phrase: z.string().min(1).max(70).trim(),
   category: z.string().max(50).default('Custom'),
 });
 
@@ -94,9 +94,9 @@ router.post('/api/custom/lettered', async (req, res): Promise<void> => {
     }
 
     // Validate phrase length constraints
-    if (cleanPhrase.length > 45) {
+    if (cleanPhrase.length > 70) {
       res.status(400).json({
-        error: 'Phrase must be 45 characters or less (including spaces)',
+        error: 'Phrase must be 70 characters or less (including spaces)',
       });
       return;
     }

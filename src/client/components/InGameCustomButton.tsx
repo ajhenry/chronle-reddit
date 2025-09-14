@@ -47,8 +47,8 @@ export const InGameCustomButton: React.FC<InGameCustomButtonProps> = ({ classNam
       return;
     }
 
-    if (cleanPhrase.length > 45) {
-      toast.error('Phrase must be 45 characters or less (including spaces)');
+    if (cleanPhrase.length > 70) {
+      toast.error('Phrase must be 70 characters or less (including spaces)');
       return;
     }
 
@@ -155,10 +155,10 @@ export const InGameCustomButton: React.FC<InGameCustomButtonProps> = ({ classNam
                     onChange={(e) => setFormData((prev) => ({ ...prev, phrase: e.target.value }))}
                     disabled={isLoading}
                     rows={3}
-                    maxLength={45}
+                    maxLength={70}
                   />
                   <div className="text-sm text-muted-foreground">
-                    {formData.phrase.length}/45 characters
+                    {formData.phrase.length}/70 characters
                   </div>
                 </div>
 
@@ -166,7 +166,7 @@ export const InGameCustomButton: React.FC<InGameCustomButtonProps> = ({ classNam
                   <h3 className="mb-2 font-semibold">Puzzle Requirements</h3>
                   <ul className="space-y-1 text-sm text-muted-foreground">
                     <li>
-                      <span className="text-xl text-primary">•</span> Maximum 45 characters total
+                      <span className="text-xl text-primary">•</span> Maximum 70 characters total
                       (including spaces)
                     </li>
                     <li>

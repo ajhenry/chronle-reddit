@@ -181,8 +181,8 @@ export const placePhraseOn9x9Grid = (grid: GridCell[][], phrase: string): GridCe
     );
   }
 
-  if (totalLetters > 45) {
-    throw new Error('Phrase has too many letters for 9x9 grid (max 45)');
+  if (totalLetters > 70) {
+    throw new Error('Phrase has too many letters for 9x9 grid (max 70)');
   }
 
   // Use the algorithm from lettered.md for 9x9 grid
