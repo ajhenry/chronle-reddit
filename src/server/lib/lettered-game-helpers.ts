@@ -23,21 +23,33 @@ export async function getOrCreateTodaysLetteredGame(): Promise<{
 }> {
   // We need to remove the solution in our return except for in dev mode
   try {
-    // First try to get today's game
-    const { data: existingGame, error: fetchError } = await supabase.rpc(
-      'get_todays_lettered_daily_game'
-    );
+    // Calculate today's date in EST
+    const today = new Date();
+    const estDate = new Date(today.toLocaleString('en-US', { timeZone: 'America/New_York' }));
+    const dayString = estDate.toISOString().split('T')[0]; // YYYY-MM-DD format
 
-    if (fetchError) {
+    // First try to get today's game using direct SQL
+    const { data: existingGame, error: fetchError } = await supabase
+      .from('daily_games')
+      .select(
+        `
+        *,
+        lettered_games (*)
+      `
+      )
+      .eq('day', dayString)
+      .single();
+
+    if (fetchError && fetchError.code !== 'PGRST116') {
       console.error("Error fetching today's lettered game:", fetchError);
       return { success: false, error: "Failed to fetch today's game", statusCode: 500 };
     }
 
-    if (existingGame && existingGame.length > 0) {
-      console.log('Lettered game found for today:', { existingGame: existingGame[0] });
+    if (existingGame && existingGame.lettered_games) {
+      console.log('Lettered game found for today:', { existingGame });
       // Game already exists for today
-      const dailyGame = existingGame[0];
-      const gameData = dailyGame.game_data as LetteredGameData;
+      const dailyGame = existingGame;
+      const gameData = existingGame.lettered_games as LetteredGameData;
 
       return {
         success: true,

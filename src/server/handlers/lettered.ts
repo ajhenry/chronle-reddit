@@ -12,6 +12,7 @@ import {
 import { calculateDecayedScore } from '../../shared/score-decay';
 import { ensureUserExistsAndGetId } from '../lib/user-helpers';
 import { getCurrentUTCTime, toUTCTimestamp } from '../lib/time';
+import { updateLetteredLeaderboards } from '../lib/leaderboard-helpers';
 import {
   getTodaysLetteredGame,
   getOrCreateUserLetteredSessionForToday,
@@ -182,13 +183,11 @@ router.get('/api/lettered/game', async (_req, res): Promise<void> => {
       placedPieces: mainBoardPlacedCount,
     });
 
-    let placedPieces: Record<string, { pieceId: string; position: GridPosition }> = {};
-
     if (latestSubmission) {
       const boardState = latestSubmission.boardState;
 
       // Extract placed pieces from the board state
-      placedPieces = Object.entries(boardState.placedPieces).reduce(
+      const placedPieces = Object.entries(boardState.placedPieces).reduce(
         (map, [pieceId, position]) => {
           map[pieceId] = {
             pieceId,
@@ -272,7 +271,7 @@ router.post('/api/lettered/:dailyGameId/session', async (req, res): Promise<void
       return;
     }
 
-    const { boardState, timestamp } = payloadValidation.data;
+    const { boardState } = payloadValidation.data;
 
     // Get today's daily lettered game
     const dailyLetterGame = await getTodaysLetteredGame();
@@ -383,7 +382,24 @@ router.post('/api/lettered/:dailyGameId/session', async (req, res): Promise<void
         moves: updatedSession.moves, // Use the updated moves count
       });
 
-      // TODO: Record the points in the leaderboard
+      // Update leaderboard tables with the final score
+      try {
+        // Calculate time elapsed since game start
+        const gameStartTime = toUTCTimestamp(session.startedAt);
+        const timeElapsed = Math.max(0, (getCurrentUTCTime() - gameStartTime) / 1000);
+
+        await updateLetteredLeaderboards(userId, currentScore, updatedSession.moves, timeElapsed);
+
+        console.log('Lettered leaderboard updated:', {
+          userId,
+          finalScore: currentScore,
+          moves: updatedSession.moves,
+          timeElapsed,
+        });
+      } catch (leaderboardError) {
+        // Don't fail the request if leaderboard update fails, just log it
+        console.error('Error updating lettered leaderboard:', leaderboardError);
+      }
     }
 
     const response = {

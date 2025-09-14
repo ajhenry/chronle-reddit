@@ -119,6 +119,113 @@ export type Season = {
   createdAt: string;
 };
 
+// New leaderboard types for season-based leaderboards
+export type SeasonLeaderboardEntry = {
+  rank: number;
+  userId: string;
+  redditHandle: string;
+  totalPoints: number;
+  gamesPlayed: number;
+  averageTopxScore: number | null;
+  averageTopxAttemptsUsed: number | null;
+  averageLetteredScore: number | null;
+  averageLetteredMovesUsed: number | null;
+  averageScore: number | null;
+};
+
+export type TopXLeaderboardEntry = {
+  rank: number;
+  userId: string;
+  redditHandle: string;
+  totalPoints: number;
+  gamesPlayed: number;
+  averageScore: number | null;
+  averageAttemptsUsed: number | null;
+  averageTime: number | null;
+};
+
+export type LetteredLeaderboardEntry = {
+  rank: number;
+  userId: string;
+  redditHandle: string;
+  totalPoints: number;
+  gamesPlayed: number;
+  averageScore: number | null;
+  averageMoves: number | null;
+  averageTime: number | null;
+};
+
+export type SeasonLeaderboardResponse = {
+  type: 'leaderboard';
+  seasonId: string;
+  seasonName: string;
+  entries: SeasonLeaderboardEntry[];
+  totalPlayers: number;
+  userRank?: number;
+  limit: number;
+  offset: number;
+};
+
+export type TopXLeaderboardResponse = {
+  type: 'topx_leaderboard';
+  seasonId: string;
+  seasonName: string;
+  entries: TopXLeaderboardEntry[];
+  totalPlayers: number;
+  userRank?: number;
+  limit: number;
+  offset: number;
+};
+
+export type LetteredLeaderboardResponse = {
+  type: 'lettered_leaderboard';
+  seasonId: string;
+  seasonName: string;
+  entries: LetteredLeaderboardEntry[];
+  totalPlayers: number;
+  userRank?: number;
+  limit: number;
+  offset: number;
+};
+
+// User statistics types
+export type UserStats = {
+  currentDailyStreak: number;
+  bestDailyStreak: number;
+  currentDailyLetteredStreak: number;
+  bestDailyLetteredStreak: number;
+  currentDailyTopxStreak: number;
+  bestDailyTopxStreak: number;
+  totalPoints: number;
+  totalGamesPlayed: number;
+  totalTopxGamesPlayed: number;
+  totalLetteredGamesPlayed: number;
+  totalTopxPoints: number;
+  totalLetteredPoints: number;
+  totalTopxWins: number;
+  totalLetteredWins: number;
+  totalTopxLosses: number;
+  totalLetteredLosses: number;
+  totalTopxWinRate?: number;
+  totalLetteredWinRate?: number;
+  totalTopxAverageScore?: number;
+  totalLetteredAverageScore?: number;
+};
+
+export type UserStatsResponse = {
+  type: 'user_stats';
+  userId: string;
+  stats: UserStats;
+};
+
+export type UserSeasonStatsResponse = {
+  type: 'user_season_stats';
+  userId: string;
+  seasonId: string;
+  stats: UserStats;
+};
+
+// Legacy types for backwards compatibility
 export type LeaderboardEntry = {
   rank: number;
   userId: string;
@@ -150,19 +257,6 @@ export type UserLeaderboardPositionResponse = {
   rank: number;
   totalPoints: number;
   gamesPlayed: number;
-  totalPlayers: number;
-};
-
-export type UserStatsResponse = {
-  type: 'user_stats';
-  userId: string;
-  seasonId: string;
-  totalScore: number;
-  gamesPlayed: number;
-  gamesWon: number;
-  currentStreak: number;
-  bestStreak: number;
-  rank: number;
   totalPlayers: number;
 };
 

@@ -8,7 +8,7 @@ import {
 } from '../../shared/types/api';
 import { calculateDecayedScore } from '../../shared/score-decay';
 import { supabase } from '../../shared/supabase-server';
-import { recordLeaderboardEntry } from '../lib/leaderboard-helpers';
+import { updateTopxLeaderboards } from '../lib/leaderboard-helpers';
 import { ensureUserExistsAndGetId } from '../lib/user-helpers';
 import { getCurrentUTCTime, toUTCTimestamp, getCurrentUTCISOString } from '../lib/time';
 import { logRouteInfo, logError } from '../lib/logging';
@@ -261,12 +261,40 @@ router.post('/api/topx/:gameId/attempt', async (req, res): Promise<void> => {
 
     if (gameCompleted && !session.isCompleted) {
       // Mark session as completed with current score
-      // Postgame endpoint will do final validation and leaderboard recording
       await updateTopXSession(session.id, {
         isCompleted: true,
         completedAt: getCurrentUTCISOString(),
         finalScore: currentScore,
       });
+
+      // Update leaderboard tables with the final score
+      try {
+        // Calculate time elapsed since game start
+        const gameStartTime = toUTCTimestamp(session.startedAt);
+        const timeElapsed = Math.max(0, (getCurrentUTCTime() - gameStartTime) / 1000);
+
+        await updateTopxLeaderboards(
+          userId,
+          currentScore,
+          currentIncorrectCount + (isCorrect ? 1 : 0),
+          timeElapsed
+        );
+
+        logRouteInfo('/api/topx/:gameId/attempt', {
+          result: 'leaderboard_updated',
+          userId,
+          finalScore: currentScore,
+          attemptsUsed: currentIncorrectCount + (isCorrect ? 1 : 0),
+          timeElapsed,
+        });
+      } catch (leaderboardError) {
+        // Don't fail the request if leaderboard update fails, just log it
+        logError('/api/topx/:gameId/attempt', leaderboardError, {
+          context: 'leaderboard_update_failed',
+          userId,
+          finalScore: currentScore,
+        });
+      }
     }
 
     const response: TopXSubmissionResponse = {
