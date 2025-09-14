@@ -152,7 +152,7 @@ router.post('/api/custom/lettered', async (req, res): Promise<void> => {
     try {
       const post = await reddit.submitCustomPost({
         subredditName: subredditName,
-        title: `${category.toUpperCase()} by ${username}`,
+        title: `LETTERED — ${category.toUpperCase()} by ${username}`,
         splash: {
           appDisplayName: 'Podium Game',
         },
