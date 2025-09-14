@@ -225,6 +225,25 @@ export type LetteredDailyGameResponse = {
   session?: LetteredGameSessionResponse;
 };
 
+// Types for custom game scores
+export interface CustomGameScore {
+  username: string;
+  gameId: string;
+  phrase: string;
+  score: number;
+  completedAt: string;
+  timeElapsed: number;
+  moves: number;
+  timestamp?: number; // Optional timestamp for sorting
+}
+
+export type LetteredCustomGameResponse = {
+  type: 'lettered_custom_game';
+  game: LetteredGameData;
+  isCompleted: boolean;
+  gameScore?: CustomGameScore;
+};
+
 export type LetteredSubmissionResponse = {
   type: 'lettered_submission';
   submissionId: string;

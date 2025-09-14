@@ -7,7 +7,7 @@ export const RESPONSIVE_CELL_SIZES: Record<
   Record<Breakpoint, { width: number; height: number }> | undefined
 > = {
   9: {
-    xs: { width: 36, height: 36 },
+    xs: { width: 32, height: 32 },
     sm: { width: 48, height: 48 },
     md: { width: 52, height: 52 },
     lg: { width: 64, height: 64 },

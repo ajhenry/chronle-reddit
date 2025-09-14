@@ -165,6 +165,7 @@ router.get('/api/lettered/game', async (_req, res): Promise<void> => {
     const gameStartTime = toUTCTimestamp(existingSession.startedAt);
     const now = getCurrentUTCTime();
     const elapsedSeconds = Math.max(0, (now - gameStartTime) / 1000);
+
     // Calculate current score based on pieces placed on main board only
     const mainGridHeight = letteredGame.grid.length;
     const mainGridWidth = letteredGame.grid[0]?.length || 0;
@@ -180,8 +181,8 @@ router.get('/api/lettered/game', async (_req, res): Promise<void> => {
       gameType: 'lettered',
       placedPieces: mainBoardPlacedCount,
     });
+
     let placedPieces: Record<string, { pieceId: string; position: GridPosition }> = {};
-    console.log('currentScore', currentScore);
 
     if (latestSubmission) {
       const boardState = latestSubmission.boardState;

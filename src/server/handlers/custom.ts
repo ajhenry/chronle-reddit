@@ -2,36 +2,69 @@ import { Router } from 'express';
 import { z } from 'zod';
 import { context } from '@devvit/web/server';
 import { reddit } from '../lib/reddit-provider';
-import { redis } from '@devvit/redis';
 import { generateMockGame } from '../lib/lettered-game-generator';
+import {
+  setCustomGame,
+  getCustomGame,
+  deleteCustomGame,
+  setPostToGameMapping,
+  getGameLeaderboard,
+  addScoreToGameLeaderboard,
+  getPlayerHistory,
+  addScoreToPlayerHistory,
+  addScoreToGlobalLeaderboard,
+  getPlayerScoreForGame,
+  getPlayerRankInGame,
+  CustomGameScore,
+} from '../database/redis';
+import { calculateDecayedScore, DEFAULT_INITIAL_SCORE } from '../../shared/score-decay';
+import { LetteredGameSessionResponse } from '../../shared/types/api';
 
 const router = Router();
-
-// Types for custom game scores
-interface CustomGameScore {
-  username: string;
-  gameId: string;
-  phrase: string;
-  score: number;
-  completedAt: string;
-  timeElapsed: number; // in seconds
-  moves: number;
-}
-
-interface CustomGameSession {
-  gameId: string;
-  username: string;
-  startedAt: string;
-  isCompleted: boolean;
-  finalScore?: number;
-  moves: number;
-  timeElapsed?: number;
-}
 
 // Schema for custom lettered game creation
 const customLetteredSchema = z.object({
   phrase: z.string().min(1).max(45).trim(),
   category: z.string().max(50).default('Custom'),
+});
+
+// Schema for game ID parameter
+const gameIdParamSchema = z.object({
+  gameId: z.string().min(1, 'Game ID is required'),
+});
+
+// Schema for score submission
+const scoreSubmissionSchema = z.object({
+  score: z.number().int().min(0),
+  timeElapsed: z.number().int().min(0),
+  moves: z.number().int().min(0),
+});
+
+// Schema for leaderboard query parameters
+const leaderboardQuerySchema = z.object({
+  limit: z
+    .string()
+    .optional()
+    .transform((val) => {
+      const parsed = parseInt(val || '10');
+      return Math.min(Math.max(parsed, 1), 100);
+    }),
+});
+
+// Schema for player history parameters
+const usernameParamSchema = z.object({
+  username: z.string().min(1, 'Username is required'),
+});
+
+// Schema for player history query parameters
+const historyQuerySchema = z.object({
+  limit: z
+    .string()
+    .optional()
+    .transform((val) => {
+      const parsed = parseInt(val || '20');
+      return Math.min(Math.max(parsed, 1), 100);
+    }),
 });
 
 router.post('/api/custom/lettered', async (req, res): Promise<void> => {
@@ -87,9 +120,7 @@ router.post('/api/custom/lettered', async (req, res): Promise<void> => {
 
     // Store game data in Redis
     try {
-      await redis.set(gameId, JSON.stringify(gameData));
-      await redis.expire(gameId, 60 * 60 * 24 * 7); // Expire in 7 days
-      console.log(`Stored custom game in Redis with ID: ${gameId}`);
+      await setCustomGame(gameId, gameData);
     } catch (redisError) {
       console.error('Failed to store game in Redis:', redisError);
       res.status(500).json({
@@ -138,20 +169,7 @@ router.post('/api/custom/lettered', async (req, res): Promise<void> => {
       console.log(`Post URL: ${post.url}`);
 
       // Store mapping from post ID to game ID in Redis for context detection
-      // Try storing with both full ID and short ID (without t3_)
-      const postToGameKey = `custom-lettered:post:${post.id}`;
-      await redis.set(postToGameKey, gameId);
-      await redis.expire(postToGameKey, 60 * 60 * 24 * 7); // Same expiration as game data
-      console.log(`Stored post-to-game mapping: ${post.id} -> ${gameId}`);
-
-      // Also store without t3_ prefix if it exists
-      if (post.id.startsWith('t3_')) {
-        const shortId = post.id.replace('t3_', '');
-        const altKey = `custom-lettered:post:${shortId}`;
-        await redis.set(altKey, gameId);
-        await redis.expire(altKey, 60 * 60 * 24 * 7);
-        console.log(`Stored alternate mapping: ${shortId} -> ${gameId}`);
-      }
+      await setPostToGameMapping(post.id, gameId);
 
       res.json({
         status: 'success',
@@ -166,7 +184,7 @@ router.post('/api/custom/lettered', async (req, res): Promise<void> => {
 
       // Clean up Redis entry if post creation failed
       try {
-        await redis.del(gameId);
+        await deleteCustomGame(gameId);
       } catch (cleanupError) {
         console.error('Failed to cleanup Redis entry:', cleanupError);
       }
@@ -187,31 +205,40 @@ router.post('/api/custom/lettered', async (req, res): Promise<void> => {
 // Get custom game data from Redis
 router.get('/api/custom/lettered/:gameId', async (req, res): Promise<void> => {
   try {
-    const { gameId } = req.params;
-
-    if (!gameId) {
+    // Validate gameId parameter
+    const paramValidation = gameIdParamSchema.safeParse(req.params);
+    if (!paramValidation.success) {
       res.status(400).json({
-        error: 'Game ID is required',
+        error: 'Invalid game ID',
+        details: paramValidation.error.issues,
       });
       return;
     }
 
+    const { gameId } = paramValidation.data;
+
+    const username = (await reddit.getCurrentUsername()) || 'anonymous';
+
     // Retrieve game data from Redis
     try {
-      const gameDataStr = await redis.get(gameId);
+      const gameData = await getCustomGame(gameId);
 
-      if (!gameDataStr) {
+      // We also need to add the session data to the game data
+      // Fetch the postgame data
+      const postgameData = await getPlayerScoreForGame(username, gameId);
+
+      if (!gameData) {
         res.status(404).json({
           error: 'Game not found or expired',
         });
         return;
       }
 
-      const gameData = JSON.parse(gameDataStr);
-
       res.json({
         status: 'success',
         gameData,
+        isCompleted: postgameData?.completedAt !== null,
+        gameScore: postgameData,
       });
     } catch (redisError) {
       console.error('Failed to retrieve game from Redis:', redisError);
@@ -231,20 +258,38 @@ router.get('/api/custom/lettered/:gameId', async (req, res): Promise<void> => {
 // Submit score for custom game
 router.post('/api/custom/lettered/:gameId/score', async (req, res): Promise<void> => {
   try {
-    const { gameId } = req.params;
-    const { score, timeElapsed, moves } = req.body;
-
-    if (
-      !gameId ||
-      typeof score !== 'number' ||
-      typeof timeElapsed !== 'number' ||
-      typeof moves !== 'number'
-    ) {
+    // Validate gameId parameter
+    const paramValidation = gameIdParamSchema.safeParse(req.params);
+    if (!paramValidation.success) {
       res.status(400).json({
-        error: 'Missing required fields: gameId, score, timeElapsed, moves',
+        error: 'Invalid game ID',
+        details: paramValidation.error.issues,
       });
       return;
     }
+
+    // Validate request body
+    const bodyValidation = scoreSubmissionSchema.safeParse(req.body);
+    if (!bodyValidation.success) {
+      res.status(400).json({
+        error: 'Invalid score data',
+        details: bodyValidation.error.issues,
+      });
+      return;
+    }
+
+    const { gameId } = paramValidation.data;
+    const { timeElapsed } = bodyValidation.data;
+    const { moves } = bodyValidation.data;
+
+    // We need to calculate the decayed score ourselves because we don't trust the client
+    // We will take the move count though and use that to calculate the decayed score
+    const score = calculateDecayedScore({
+      initialScore: DEFAULT_INITIAL_SCORE,
+      elapsedSeconds: 0,
+      gameType: 'lettered',
+      placedPieces: moves,
+    });
 
     // Get username from Reddit context
     let username = 'anonymous';
@@ -257,16 +302,23 @@ router.post('/api/custom/lettered/:gameId/score', async (req, res): Promise<void
       console.error('Error getting username from context:', error);
     }
 
+    // Check if they already have a score for this game
+    const existingScore = await getPlayerScoreForGame(username, gameId);
+    if (existingScore) {
+      res.status(400).json({
+        error: 'You already have a score for this game',
+      });
+      return;
+    }
+
     // Verify game exists
-    const gameDataStr = await redis.get(gameId);
-    if (!gameDataStr) {
+    const gameData = await getCustomGame(gameId);
+    if (!gameData) {
       res.status(404).json({
         error: 'Game not found or expired',
       });
       return;
     }
-
-    const gameData = JSON.parse(gameDataStr);
 
     // Create score entry
     const scoreEntry: CustomGameScore = {
@@ -279,38 +331,10 @@ router.post('/api/custom/lettered/:gameId/score', async (req, res): Promise<void
       moves,
     };
 
-    // Store score in Redis using simple key-value storage
-    const timestamp = Date.now();
-
-    // Store in game-specific leaderboard
-    const gameLeaderboardKey = `custom-lettered:leaderboard:${gameId}`;
-    const existingScoresStr = (await redis.get(gameLeaderboardKey)) || '[]';
-    const existingScores = JSON.parse(existingScoresStr);
-    existingScores.push({ ...scoreEntry, timestamp });
-    // Keep top 100 scores for each game
-    const sortedScores = existingScores.sort((a: any, b: any) => b.score - a.score).slice(0, 100);
-    await redis.set(gameLeaderboardKey, JSON.stringify(sortedScores));
-    await redis.expire(gameLeaderboardKey, 60 * 60 * 24 * 30); // Keep for 30 days
-
-    // Store in player's personal custom game history
-    const playerHistoryKey = `custom-lettered:player:${username}`;
-    const playerHistoryStr = (await redis.get(playerHistoryKey)) || '[]';
-    const playerHistory = JSON.parse(playerHistoryStr);
-    playerHistory.push({ ...scoreEntry, timestamp });
-    // Keep last 100 games for each player
-    const trimmedHistory = playerHistory.slice(-100);
-    await redis.set(playerHistoryKey, JSON.stringify(trimmedHistory));
-    await redis.expire(playerHistoryKey, 60 * 60 * 24 * 30); // Keep for 30 days
-
-    // Store in global custom games leaderboard (all players, all custom games)
-    const globalLeaderboardKey = 'custom-lettered:global-leaderboard';
-    const existingGlobalStr = (await redis.get(globalLeaderboardKey)) || '[]';
-    const existingGlobal = JSON.parse(existingGlobalStr);
-    existingGlobal.push({ ...scoreEntry, timestamp });
-    // Keep top 1000 scores globally
-    const sortedGlobal = existingGlobal.sort((a: any, b: any) => b.score - a.score).slice(0, 1000);
-    await redis.set(globalLeaderboardKey, JSON.stringify(sortedGlobal));
-    await redis.expire(globalLeaderboardKey, 60 * 60 * 24 * 30); // Keep for 30 days
+    // Store score in Redis using helper functions
+    await addScoreToGameLeaderboard(gameId, scoreEntry);
+    await addScoreToPlayerHistory(username, scoreEntry);
+    await addScoreToGlobalLeaderboard(scoreEntry);
 
     console.log(`Stored custom game score: ${username} scored ${score} on game ${gameId}`);
 
@@ -330,23 +354,36 @@ router.post('/api/custom/lettered/:gameId/score', async (req, res): Promise<void
 // Get leaderboard for a specific custom game
 router.get('/api/custom/lettered/:gameId/leaderboard', async (req, res): Promise<void> => {
   try {
-    const { gameId } = req.params;
-    const limit = Math.min(parseInt(req.query.limit as string) || 10, 100);
-
-    if (!gameId) {
+    // Validate gameId parameter
+    const paramValidation = gameIdParamSchema.safeParse(req.params);
+    if (!paramValidation.success) {
       res.status(400).json({
-        error: 'Game ID is required',
+        error: 'Invalid game ID',
+        details: paramValidation.error.issues,
       });
       return;
     }
 
-    // Get top scores for this specific game (use simple key-value storage for leaderboards)
-    const gameLeaderboardKey = `custom-lettered:leaderboard:${gameId}`;
-    const existingScoresStr = (await redis.get(gameLeaderboardKey)) || '[]';
-    const existingScores = JSON.parse(existingScoresStr);
+    // Validate query parameters
+    const queryValidation = leaderboardQuerySchema.safeParse(req.query);
+    if (!queryValidation.success) {
+      res.status(400).json({
+        error: 'Invalid query parameters',
+        details: queryValidation.error.issues,
+      });
+      return;
+    }
+
+    const { gameId } = paramValidation.data;
+    const { limit } = queryValidation.data;
+
+    // Get top scores for this specific game
+    const existingScores = await getGameLeaderboard(gameId);
 
     // Sort by score descending and get top scores
-    const scores = existingScores.sort((a: any, b: any) => b.score - a.score).slice(0, limit);
+    const scores = existingScores
+      .sort((a: CustomGameScore, b: CustomGameScore) => b.score - a.score)
+      .slice(0, limit);
 
     res.json({
       status: 'success',
@@ -365,24 +402,35 @@ router.get('/api/custom/lettered/:gameId/leaderboard', async (req, res): Promise
 // Get player's custom game history
 router.get('/api/custom/lettered/player/:username/history', async (req, res): Promise<void> => {
   try {
-    const { username } = req.params;
-    const limit = Math.min(parseInt(req.query.limit as string) || 20, 100);
-
-    if (!username) {
+    // Validate username parameter
+    const paramValidation = usernameParamSchema.safeParse(req.params);
+    if (!paramValidation.success) {
       res.status(400).json({
-        error: 'Username is required',
+        error: 'Invalid username',
+        details: paramValidation.error.issues,
       });
       return;
     }
 
+    // Validate query parameters
+    const queryValidation = historyQuerySchema.safeParse(req.query);
+    if (!queryValidation.success) {
+      res.status(400).json({
+        error: 'Invalid query parameters',
+        details: queryValidation.error.issues,
+      });
+      return;
+    }
+
+    const { username } = paramValidation.data;
+    const { limit } = queryValidation.data;
+
     // Get player's game history
-    const playerHistoryKey = `custom-lettered:player:${username}`;
-    const historyStr = (await redis.get(playerHistoryKey)) || '[]';
-    const history = JSON.parse(historyStr);
+    const history = await getPlayerHistory(username);
 
     // Sort by timestamp descending and limit
     const sortedHistory = history
-      .sort((a: any, b: any) => b.timestamp - a.timestamp)
+      .sort((a: CustomGameScore, b: CustomGameScore) => (b.timestamp || 0) - (a.timestamp || 0))
       .slice(0, limit);
 
     res.json({
@@ -399,43 +447,20 @@ router.get('/api/custom/lettered/player/:username/history', async (req, res): Pr
   }
 });
 
-// Get global custom games leaderboard
-router.get('/api/custom/lettered/global-leaderboard', async (req, res): Promise<void> => {
-  try {
-    const limit = Math.min(parseInt(req.query.limit as string) || 20, 100);
-
-    // Get top scores across all custom games
-    const globalLeaderboardKey = 'custom-lettered:global-leaderboard';
-    const existingGlobalStr = (await redis.get(globalLeaderboardKey)) || '[]';
-    const existingGlobal = JSON.parse(existingGlobalStr);
-
-    // Sort by score descending and get top scores
-    const scores = existingGlobal.sort((a: any, b: any) => b.score - a.score).slice(0, limit);
-
-    res.json({
-      status: 'success',
-      leaderboard: scores,
-      count: scores.length,
-    });
-  } catch (error) {
-    console.error('Error getting global custom game leaderboard:', error);
-    res.status(500).json({
-      error: 'Failed to get global leaderboard',
-    });
-  }
-});
-
 // Get postgame stats for a custom game
 router.get('/api/custom/lettered/:gameId/postgame', async (req, res): Promise<void> => {
   try {
-    const { gameId } = req.params;
-
-    if (!gameId) {
+    // Validate gameId parameter
+    const paramValidation = gameIdParamSchema.safeParse(req.params);
+    if (!paramValidation.success) {
       res.status(400).json({
-        error: 'Game ID is required',
+        error: 'Invalid game ID',
+        details: paramValidation.error.issues,
       });
       return;
     }
+
+    const { gameId } = paramValidation.data;
 
     // Get username from Reddit context
     let username = 'anonymous';
@@ -447,27 +472,16 @@ router.get('/api/custom/lettered/:gameId/postgame', async (req, res): Promise<vo
     }
 
     // Verify game exists and get game data
-    const gameDataStr = await redis.get(gameId);
-    if (!gameDataStr) {
+    const gameData = await getCustomGame(gameId);
+    if (!gameData) {
       res.status(404).json({
         error: 'Game not found or expired',
       });
       return;
     }
 
-    const gameData = JSON.parse(gameDataStr);
-
     // Get player's score for this game from their history
-    const playerHistoryKey = `custom-lettered:player:${username}`;
-    const playerHistoryStr = (await redis.get(playerHistoryKey)) || '[]';
-    const playerHistory = JSON.parse(playerHistoryStr);
-
-    // Find the latest score for this game ID
-    const playerScore = playerHistory
-      .filter((score: any) => score.gameId === gameId)
-      .sort(
-        (a: any, b: any) => new Date(b.completedAt).getTime() - new Date(a.completedAt).getTime()
-      )[0];
+    const playerScore = await getPlayerScoreForGame(username, gameId);
 
     if (!playerScore) {
       res.status(404).json({
@@ -477,13 +491,13 @@ router.get('/api/custom/lettered/:gameId/postgame', async (req, res): Promise<vo
     }
 
     // Get game leaderboard to show player ranking
-    const gameLeaderboardKey = `custom-lettered:leaderboard:${gameId}`;
-    const existingScoresStr = (await redis.get(gameLeaderboardKey)) || '[]';
-    const existingScores = JSON.parse(existingScoresStr);
-    const sortedScores = existingScores.sort((a: any, b: any) => b.score - a.score);
+    const existingScores = await getGameLeaderboard(gameId);
+    const sortedScores = existingScores.sort(
+      (a: CustomGameScore, b: CustomGameScore) => b.score - a.score
+    );
 
     // Find player's rank
-    const playerRank = sortedScores.findIndex((score: any) => score.username === username) + 1;
+    const playerRank = await getPlayerRankInGame(username, gameId);
 
     // Create postgame response similar to regular games
     const postgameResponse = {
@@ -502,7 +516,7 @@ router.get('/api/custom/lettered/:gameId/postgame', async (req, res): Promise<vo
 
     console.log(
       `Custom game postgame data: Player ${username} rank ${playerRank}/${sortedScores.length}, leaderboard:`,
-      sortedScores.slice(0, 3).map((s: any) => `${s.username}:${s.score}`)
+      sortedScores.slice(0, 3).map((s: CustomGameScore) => `${s.username}:${s.score}`)
     );
 
     res.json(postgameResponse);
