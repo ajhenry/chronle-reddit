@@ -10,6 +10,7 @@ import type {
   UserStatsResponse,
   LeaderboardEntry,
 } from '../../shared/types/api';
+import { getUserSeasonStats, getUserSeasonRank } from '../database/leaderboard';
 
 const router = Router();
 
@@ -265,25 +266,56 @@ router.get('/api/user-stats/:seasonId', async (req, res): Promise<void> => {
 
     const { seasonId } = req.params;
 
-    // Since game_sessions table is removed, return default values
-    const totalScore = 0;
-    const gamesPlayed = 0;
-    const gamesWon = 0;
-    const currentStreak = 0;
-    const bestStreak = 0;
-    const rank = 0;
-    const totalPlayers = 0;
+    // Fetch user season stats from database
+    const userSeasonStats = await getUserSeasonStats(userId, seasonId);
+
+    // Get user's rank in the season
+    const rank = await getUserSeasonRank(seasonId, userId);
+
+    // Get total players count for the season
+    const { count: totalPlayers, error: countError } = await supabase
+      .from('season_leaderboard')
+      .select('*', { count: 'exact', head: true })
+      .eq('season_id', seasonId);
+
+    if (countError) {
+      console.error('Error fetching total players count:', countError);
+    }
+
+    // Use actual stats from database, with defaults if no data exists
+    const stats = userSeasonStats || {
+      currentDailyStreak: 0,
+      bestDailyStreak: 0,
+      currentDailyLetteredStreak: 0,
+      bestDailyLetteredStreak: 0,
+      currentDailyTopxStreak: 0,
+      bestDailyTopxStreak: 0,
+      totalPoints: 0,
+      totalGamesPlayed: 0,
+      totalTopxGamesPlayed: 0,
+      totalLetteredGamesPlayed: 0,
+      totalTopxPoints: 0,
+      totalLetteredPoints: 0,
+      totalTopxWins: 0,
+      totalLetteredWins: 0,
+      totalTopxLosses: 0,
+      totalLetteredLosses: 0,
+      totalTopxWinRate: null,
+      totalLetteredWinRate: null,
+      totalTopxAverageScore: null,
+      totalLetteredAverageScore: null,
+    };
 
     const response: UserStatsResponse = {
       type: 'user_stats',
       userId,
       seasonId,
-      totalScore,
-      gamesPlayed,
-      gamesWon,
-      currentStreak,
-      bestStreak,
-      rank,
+      totalScore: stats.totalPoints,
+      gamesPlayed: stats.totalGamesPlayed,
+      gamesWon: stats.totalTopxWins + stats.totalLetteredWins,
+      currentStreak: stats.currentDailyStreak, // Overall streak considering any game type
+      bestStreak: stats.bestDailyStreak, // Best overall streak
+      rank: rank || 0,
       totalPlayers: totalPlayers || 0,
     };
 

@@ -14,15 +14,11 @@ import {
   TableRow,
 } from '../components/ui/table';
 import pluralize from 'pluralize';
-import { Trophy, Medal, Award, Users, User, ArrowLeft } from 'lucide-react';
+import { Trophy, Medal, Award, Users, ArrowLeft } from 'lucide-react';
 import {
   SeasonLeaderboardEntry,
-  TopXLeaderboardEntry,
-  LetteredLeaderboardEntry,
   UserStats,
   SeasonLeaderboardResponse,
-  TopXLeaderboardResponse,
-  LetteredLeaderboardResponse,
   UserStatsResponse,
 } from '../../shared/types/api';
 import { apiFetch } from '../lib/utils';
@@ -45,20 +41,6 @@ export const LeaderboardPage = ({ onBack }: LeaderboardPageProps) => {
   const [seasonError, setSeasonError] = useState<string | null>(null);
   const [seasonUserRank, setSeasonUserRank] = useState<number | null>(null);
   const [seasonTotalPlayers, setSeasonTotalPlayers] = useState(0);
-
-  // TopX Leaderboard State
-  const [topxEntries, setTopxEntries] = useState<TopXLeaderboardEntry[]>([]);
-  const [topxLoading, setTopxLoading] = useState(true);
-  const [topxError, setTopxError] = useState<string | null>(null);
-  const [topxUserRank, setTopxUserRank] = useState<number | null>(null);
-  const [topxTotalPlayers, setTopxTotalPlayers] = useState(0);
-
-  // Lettered Leaderboard State
-  const [letteredEntries, setLetteredEntries] = useState<LetteredLeaderboardEntry[]>([]);
-  const [letteredLoading, setLetteredLoading] = useState(true);
-  const [letteredError, setLetteredError] = useState<string | null>(null);
-  const [letteredUserRank, setLetteredUserRank] = useState<number | null>(null);
-  const [letteredTotalPlayers, setLetteredTotalPlayers] = useState(0);
 
   // Fetch user stats
   useEffect(() => {
@@ -114,62 +96,6 @@ export const LeaderboardPage = ({ onBack }: LeaderboardPageProps) => {
     fetchSeasonLeaderboard().catch(console.error);
   }, []);
 
-  // Fetch TopX leaderboard
-  useEffect(() => {
-    const fetchTopXLeaderboard = async () => {
-      try {
-        setTopxLoading(true);
-        setTopxError(null);
-
-        const response = await apiFetch('/api/leaderboard/topx');
-        if (!response.ok) {
-          throw new Error('Failed to fetch TopX leaderboard');
-        }
-
-        const data: TopXLeaderboardResponse = await response.json();
-        setTopxEntries(data.entries);
-        setTopxTotalPlayers(data.totalPlayers);
-        setTopxUserRank(data.userRank || null);
-      } catch (error) {
-        console.error('Error fetching TopX leaderboard:', error);
-        setTopxError(error instanceof Error ? error.message : 'Failed to load TopX leaderboard');
-      } finally {
-        setTopxLoading(false);
-      }
-    };
-
-    fetchTopXLeaderboard().catch(console.error);
-  }, []);
-
-  // Fetch Lettered leaderboard
-  useEffect(() => {
-    const fetchLetteredLeaderboard = async () => {
-      try {
-        setLetteredLoading(true);
-        setLetteredError(null);
-
-        const response = await apiFetch('/api/leaderboard/lettered');
-        if (!response.ok) {
-          throw new Error('Failed to fetch Lettered leaderboard');
-        }
-
-        const data: LetteredLeaderboardResponse = await response.json();
-        setLetteredEntries(data.entries);
-        setLetteredTotalPlayers(data.totalPlayers);
-        setLetteredUserRank(data.userRank || null);
-      } catch (error) {
-        console.error('Error fetching Lettered leaderboard:', error);
-        setLetteredError(
-          error instanceof Error ? error.message : 'Failed to load Lettered leaderboard'
-        );
-      } finally {
-        setLetteredLoading(false);
-      }
-    };
-
-    fetchLetteredLeaderboard().catch(console.error);
-  }, []);
-
   const handleBack = () => {
     if (onBack) {
       onBack();
@@ -210,28 +136,6 @@ export const LeaderboardPage = ({ onBack }: LeaderboardPageProps) => {
             totalPlayers={seasonTotalPlayers}
             loading={seasonLoading}
             error={seasonError}
-          />
-
-          {/* TopX Leaderboard */}
-          <GameLeaderboardTab
-            entries={topxEntries}
-            userRank={topxUserRank}
-            totalPlayers={topxTotalPlayers}
-            loading={topxLoading}
-            error={topxError}
-            gameName="TopX"
-            gameIcon={<img src="/topx-logo.svg" alt="TopX" className="w-4 h-4" />}
-          />
-
-          {/* Lettered Leaderboard */}
-          <GameLeaderboardTab
-            entries={letteredEntries}
-            userRank={letteredUserRank}
-            totalPlayers={letteredTotalPlayers}
-            loading={letteredLoading}
-            error={letteredError}
-            gameName="Lettered"
-            gameIcon={<img src="/lettered-logo.svg" alt="Lettered" className="w-4 h-4" />}
           />
         </div>
       </div>
@@ -420,7 +324,7 @@ const UserStatsTab = ({ stats, loading, error }: UserStatsTabProps) => {
                   <TooltipContent>Percentage of TopX games won (Wins ÷ Total Games)</TooltipContent>
                 </Tooltip>
                 <span className="font-semibold">
-                  {stats.totalTopxWinRate ? `${(stats.totalTopxWinRate * 100).toFixed(1)}%` : 'N/A'}
+                  {stats.totalTopxWinRate ? `${stats.totalTopxWinRate.toFixed(0)}%` : 'N/A'}
                 </span>
               </div>
               <div className="flex justify-between">
@@ -496,9 +400,7 @@ const UserStatsTab = ({ stats, loading, error }: UserStatsTabProps) => {
                   </TooltipContent>
                 </Tooltip>
                 <span className="font-semibold">
-                  {stats.totalLetteredWinRate
-                    ? `${(stats.totalLetteredWinRate * 100).toFixed(1)}%`
-                    : 'N/A'}
+                  {stats.totalLetteredWinRate ? `${stats.totalLetteredWinRate.toFixed(1)}%` : 'N/A'}
                 </span>
               </div>
               <div className="flex justify-between">
@@ -618,9 +520,9 @@ const SeasonLeaderboardTab = ({
       </div>
 
       <p className="max-w-2xl text-sm text-muted-foreground">
-        Compete with players across all game modes this season. Rankings are based on total points
-        earned, with higher scores placing you higher on the leaderboard. Keep playing daily to
-        climb the ranks!
+        Compete with players across all games this season. Rankings are based on total points earned
+        from both TopX and Lettered games, with higher scores placing you higher on the leaderboard.
+        Keep playing daily to climb the ranks!
       </p>
 
       {entries.length === 0 ? (
@@ -713,184 +615,5 @@ const SeasonLeaderboardTab = ({
         </div>
       )}
     </div>
-  );
-};
-
-// Generic Game Leaderboard Tab Component
-interface GameLeaderboardTabProps {
-  entries: (TopXLeaderboardEntry | LetteredLeaderboardEntry)[];
-  userRank: number | null;
-  totalPlayers: number;
-  loading: boolean;
-  error: string | null;
-  gameName: string;
-  gameIcon: React.ReactNode;
-}
-
-const GameLeaderboardTab = ({
-  entries,
-  userRank,
-  totalPlayers,
-  loading,
-  error,
-  gameName,
-  gameIcon,
-}: GameLeaderboardTabProps) => {
-  if (loading) {
-    return (
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex gap-2 items-center">
-            {gameIcon}
-            {gameName} Leaderboard
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="space-y-4">
-            {Array.from({ length: 10 }).map((_, i) => (
-              <div
-                key={i}
-                className="flex justify-between items-center p-3 rounded-lg border sm:p-4"
-              >
-                <div className="flex flex-1 gap-3 items-center min-w-0 sm:gap-4">
-                  <Skeleton className="flex-shrink-0 w-6 h-6 sm:h-8 sm:w-8" />
-                  <div className="flex-1 space-y-2 min-w-0">
-                    <Skeleton className="w-20 h-4 sm:w-24" />
-                    <Skeleton className="w-12 h-3 sm:w-16" />
-                  </div>
-                </div>
-                <Skeleton className="flex-shrink-0 w-16 h-6" />
-              </div>
-            ))}
-          </div>
-        </CardContent>
-      </Card>
-    );
-  }
-
-  if (error) {
-    return (
-      <Card>
-        <CardContent className="py-8">
-          <div className="text-center text-muted-foreground">
-            <p>{error}</p>
-          </div>
-        </CardContent>
-      </Card>
-    );
-  }
-
-  const getRankIcon = (rank: number) => {
-    switch (rank) {
-      case 1:
-        return <Trophy className="w-5 h-5 text-yellow-500" />;
-      case 2:
-        return <Medal className="w-5 h-5 text-gray-400" />;
-      case 3:
-        return <Award className="w-5 h-5 text-amber-600" />;
-      default:
-        return <span className="text-sm font-bold text-muted-foreground">#{rank}</span>;
-    }
-  };
-
-  const getRankBadgeVariant = (rank: number) => {
-    switch (rank) {
-      case 1:
-        return 'default' as const;
-      case 2:
-        return 'secondary' as const;
-      case 3:
-        return 'outline' as const;
-      default:
-        return 'outline' as const;
-    }
-  };
-
-  return (
-    <Card>
-      <CardHeader>
-        <div className="flex flex-col gap-2 justify-between items-start sm:flex-row sm:items-center">
-          <CardTitle className="flex gap-2 items-center">
-            {gameIcon}
-            {gameName} Leaderboard
-          </CardTitle>
-          <div className="flex gap-2 items-center text-sm text-muted-foreground">
-            <Users className="w-4 h-4" />
-            {totalPlayers} {pluralize('player', totalPlayers)}
-          </div>
-        </div>
-      </CardHeader>
-      <CardContent>
-        {entries.length === 0 ? (
-          <div className="py-8 text-center text-muted-foreground">
-            No players yet for {gameName}.
-          </div>
-        ) : (
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead className="w-16">Rank</TableHead>
-                <TableHead>Player</TableHead>
-                <TableHead className="text-center">Games</TableHead>
-                <TableHead className="text-right">Points</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {entries.map((entry) => (
-                <TableRow key={entry.userId}>
-                  <TableCell className="font-medium">
-                    <div className="flex gap-2 items-center">
-                      {getRankIcon(entry.rank)}
-                      {entry.rank <= 3 && (
-                        <Badge variant={getRankBadgeVariant(entry.rank)} className="text-xs">
-                          {entry.rank === 1 ? '1st' : entry.rank === 2 ? '2nd' : '3rd'}
-                        </Badge>
-                      )}
-                      {entry.rank > 3 && <span>#{entry.rank}</span>}
-                    </div>
-                  </TableCell>
-                  <TableCell>
-                    <div>
-                      <div className="font-semibold">{entry.redditHandle}</div>
-                      <div className="text-sm text-muted-foreground">
-                        Avg Points: {entry.averageScore?.toFixed(1) || 'N/A'}
-                      </div>
-                    </div>
-                  </TableCell>
-                  <TableCell className="text-center">{entry.gamesPlayed}</TableCell>
-                  <TableCell className="font-bold text-right">
-                    {entry.totalPoints.toLocaleString()}
-                  </TableCell>
-                </TableRow>
-              ))}
-
-              {/* Show user's position if not in top 10 */}
-              {userRank && userRank > 10 && (
-                <TableRow className="bg-primary/5 border-primary/20">
-                  <TableCell className="font-medium">
-                    <div className="flex gap-2 items-center">
-                      {getRankIcon(userRank)}
-                      <Badge variant="outline" className="text-xs">
-                        #{userRank}
-                      </Badge>
-                    </div>
-                  </TableCell>
-                  <TableCell>
-                    <div>
-                      <div className="font-semibold">You</div>
-                      <div className="text-sm text-muted-foreground">
-                        Keep playing to climb the rankings!
-                      </div>
-                    </div>
-                  </TableCell>
-                  <TableCell className="text-center">-</TableCell>
-                  <TableCell className="font-bold text-right text-primary">Your Position</TableCell>
-                </TableRow>
-              )}
-            </TableBody>
-          </Table>
-        )}
-      </CardContent>
-    </Card>
   );
 };
