@@ -17,6 +17,7 @@ import { isDevelopment } from './lib/dev-utils';
 import { ModeToggle } from './components/mode-toggle';
 import { ScrollToTop } from './components/ScrollToTop';
 import { AdminBanner } from './components/AdminBanner';
+import { HomeLoadingAnimation } from './components/HomeLoadingAnimation';
 import { apiFetch } from './lib/utils';
 import type { User } from '../shared/types/api';
 
@@ -202,9 +203,7 @@ export const App = () => {
 
       {/* Show loading while checking for custom game context */}
       {isCheckingContext ? (
-        <div className="flex justify-center items-center min-h-screen">
-          <div className="text-lg">Loading...</div>
-        </div>
+        <HomeLoadingAnimation />
       ) : (
         <Routes>
           <Route path="/topx" element={<TopXPage onBack={handleBackToMenu} />} />
