@@ -175,14 +175,10 @@ export async function getSeasonLeaderboard(
   limit: number = 10,
   offset: number = 0
 ): Promise<{ entries: SeasonLeaderboardEntry[]; totalPlayers: number }> {
+  // First, get the leaderboard entries
   const { data: rankings, error } = await supabase
     .from('season_leaderboard')
-    .select(
-      `
-      *,
-      users!inner(handle)
-    `
-    )
+    .select('*')
     .eq('season_id', seasonId)
     .order('total_points', { ascending: false })
     .range(offset, offset + limit - 1);
@@ -191,8 +187,22 @@ export async function getSeasonLeaderboard(
     throw new Error(`Failed to fetch season leaderboard: ${error.message}`);
   }
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const { count: totalPlayers, error: countError } = await (supabase as any)
+  // Get user handles for the leaderboard entries
+  const userIds = rankings?.map((entry) => entry.user_id) || [];
+  const { data: users, error: usersError } = await supabase
+    .from('users')
+    .select('id, handle')
+    .in('id', userIds);
+
+  if (usersError) {
+    throw new Error(`Failed to fetch user handles: ${usersError.message}`);
+  }
+
+  // Create a map of user IDs to handles
+  const userHandleMap = new Map(users?.map((user) => [user.id, user.handle]) || []);
+
+  // Get total count
+  const { count: totalPlayers, error: countError } = await supabase
     .from('season_leaderboard')
     .select('*', { count: 'exact', head: true })
     .eq('season_id', seasonId);
@@ -201,10 +211,12 @@ export async function getSeasonLeaderboard(
     throw new Error(`Failed to count season players: ${countError.message}`);
   }
 
+  // Combine the data
   return {
-    entries: (rankings || []).map((entry, index) =>
-      convertSeasonLeaderboardEntry(entry, offset + index + 1)
-    ),
+    entries: (rankings || []).map((entry, index) => {
+      const handle = userHandleMap.get(entry.user_id) || 'Unknown User';
+      return convertSeasonLeaderboardEntry({ ...entry, users: { handle } }, offset + index + 1);
+    }),
     totalPlayers: totalPlayers || 0,
   };
 }
@@ -240,14 +252,10 @@ export async function getTopXLeaderboard(
   limit: number = 10,
   offset: number = 0
 ): Promise<{ entries: TopXLeaderboardEntry[]; totalPlayers: number }> {
+  // First, get the leaderboard entries
   const { data: rankings, error } = await supabase
     .from('topx_leaderboard')
-    .select(
-      `
-      *,
-      users!inner(handle)
-    `
-    )
+    .select('*')
     .eq('season_id', seasonId)
     .order('total_points', { ascending: false })
     .range(offset, offset + limit - 1);
@@ -256,6 +264,21 @@ export async function getTopXLeaderboard(
     throw new Error(`Failed to fetch TopX leaderboard: ${error.message}`);
   }
 
+  // Get user handles for the leaderboard entries
+  const userIds = rankings?.map((entry) => entry.user_id) || [];
+  const { data: users, error: usersError } = await supabase
+    .from('users')
+    .select('id, handle')
+    .in('id', userIds);
+
+  if (usersError) {
+    throw new Error(`Failed to fetch user handles: ${usersError.message}`);
+  }
+
+  // Create a map of user IDs to handles
+  const userHandleMap = new Map(users?.map((user) => [user.id, user.handle]) || []);
+
+  // Get total count
   const { count: totalPlayers, error: countError } = await supabase
     .from('topx_leaderboard')
     .select('*', { count: 'exact', head: true })
@@ -265,10 +288,12 @@ export async function getTopXLeaderboard(
     throw new Error(`Failed to count TopX players: ${countError.message}`);
   }
 
+  // Combine the data
   return {
-    entries: (rankings || []).map((entry, index) =>
-      convertTopXLeaderboardEntry(entry, offset + index + 1)
-    ),
+    entries: (rankings || []).map((entry, index) => {
+      const handle = userHandleMap.get(entry.user_id) || 'Unknown User';
+      return convertTopXLeaderboardEntry({ ...entry, users: { handle } }, offset + index + 1);
+    }),
     totalPlayers: totalPlayers || 0,
   };
 }
@@ -304,14 +329,10 @@ export async function getLetteredLeaderboard(
   limit: number = 10,
   offset: number = 0
 ): Promise<{ entries: LetteredLeaderboardEntry[]; totalPlayers: number }> {
+  // First, get the leaderboard entries
   const { data: rankings, error } = await supabase
     .from('lettered_leaderboard')
-    .select(
-      `
-      *,
-      users!inner(handle)
-    `
-    )
+    .select('*')
     .eq('season_id', seasonId)
     .order('total_points', { ascending: false })
     .range(offset, offset + limit - 1);
@@ -320,6 +341,21 @@ export async function getLetteredLeaderboard(
     throw new Error(`Failed to fetch Lettered leaderboard: ${error.message}`);
   }
 
+  // Get user handles for the leaderboard entries
+  const userIds = rankings?.map((entry) => entry.user_id) || [];
+  const { data: users, error: usersError } = await supabase
+    .from('users')
+    .select('id, handle')
+    .in('id', userIds);
+
+  if (usersError) {
+    throw new Error(`Failed to fetch user handles: ${usersError.message}`);
+  }
+
+  // Create a map of user IDs to handles
+  const userHandleMap = new Map(users?.map((user) => [user.id, user.handle]) || []);
+
+  // Get total count
   const { count: totalPlayers, error: countError } = await supabase
     .from('lettered_leaderboard')
     .select('*', { count: 'exact', head: true })
@@ -329,10 +365,12 @@ export async function getLetteredLeaderboard(
     throw new Error(`Failed to count Lettered players: ${countError.message}`);
   }
 
+  // Combine the data
   return {
-    entries: (rankings || []).map((entry, index) =>
-      convertLetteredLeaderboardEntry(entry, offset + index + 1)
-    ),
+    entries: (rankings || []).map((entry, index) => {
+      const handle = userHandleMap.get(entry.user_id) || 'Unknown User';
+      return convertLetteredLeaderboardEntry({ ...entry, users: { handle } }, offset + index + 1);
+    }),
     totalPlayers: totalPlayers || 0,
   };
 }

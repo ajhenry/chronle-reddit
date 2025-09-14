@@ -231,7 +231,7 @@ export const Leaderboard = ({ seasonId, currentUserId, onClose }: LeaderboardPro
                         {entry.userId === currentUserId && <Badge variant="outline">You</Badge>}
                       </div>
                       <div className="text-sm text-muted-foreground">
-                        {entry.gamesPlayed} games • {entry.winRate.toFixed(1)}% win rate
+                        {entry.gamesPlayed} games • {(entry.winRate * 100).toFixed(1)}% win rate
                       </div>
                     </div>
                   </div>

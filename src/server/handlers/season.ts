@@ -160,61 +160,80 @@ router.get('/api/leaderboard/:seasonId', async (req, res): Promise<void> => {
     const { seasonId } = req.params;
     const { limit = '50', offset = '0' } = req.query;
 
-    // Get leaderboard data with unique best score per user
-    const { data: leaderboardData, error } = await supabase
+    // First, get the leaderboard data
+    const { data: sessionsData, error } = await supabase
       .from('lettered_sessions')
-      .select(`
-        user_id,
-        users!inner(reddit_handle),
-        final_score,
-        completed_at
-      `)
+      .select('user_id, final_score, completed_at')
       .eq('season_id', seasonId)
       .not('final_score', 'is', null)
       .order('final_score', { ascending: false })
       .limit(parseInt(limit as string))
-      .range(parseInt(offset as string), parseInt(offset as string) + parseInt(limit as string) - 1);
+      .range(
+        parseInt(offset as string),
+        parseInt(offset as string) + parseInt(limit as string) - 1
+      );
 
     if (error) {
       console.error('Error fetching leaderboard:', error);
-      res.status(500).json({
-        status: 'error',
-        message: 'Failed to fetch leaderboard',
-      });
-      return;
+      return res.status(500).json({ error: 'Failed to fetch leaderboard' });
     }
+
+    // Get user handles for the sessions
+    const userIds = sessionsData?.map((session) => session.user_id) || [];
+    const { data: users, error: usersError } = await supabase
+      .from('users')
+      .select('id, handle')
+      .in('id', userIds);
+
+    if (usersError) {
+      console.error('Error fetching user handles:', usersError);
+      return res.status(500).json({ error: 'Failed to fetch user data' });
+    }
+
+    // Create a map of user IDs to handles
+    const userHandleMap = new Map(users?.map((user) => [user.id, user.handle]) || []);
+
+    // Combine the data
+    const leaderboardData = sessionsData?.map((session) => ({
+      ...session,
+      users: {
+        handle: userHandleMap.get(session.user_id) || 'Unknown User',
+      },
+    }));
 
     // Group by user and keep only their best score
     const userBestScores = new Map();
     leaderboardData?.forEach((entry: any) => {
       const userId = entry.user_id;
       const currentBest = userBestScores.get(userId);
-      
+
       if (!currentBest || entry.final_score > currentBest.final_score) {
         userBestScores.set(userId, {
           userId: userId,
-          redditHandle: entry.users.reddit_handle,
+          redditHandle: entry.users.handle,
           bestScore: entry.final_score,
-          completedAt: entry.completed_at
+          completedAt: entry.completed_at,
         });
       }
     });
 
     // Convert to array and sort by best score
-    const uniqueEntries = Array.from(userBestScores.values())
-      .sort((a, b) => b.bestScore - a.bestScore);
+    const uniqueEntries = Array.from(userBestScores.values()).sort(
+      (a, b) => b.bestScore - a.bestScore
+    );
 
     const totalPlayers = uniqueEntries.length;
 
-    const entries: LeaderboardEntry[] = uniqueEntries.map((entry: any, index: number) => ({
-      rank: parseInt(offset as string) + index + 1,
-      userId: entry.userId,
-      redditHandle: entry.redditHandle,
-      totalPoints: entry.bestScore,
-      gamesPlayed: 1, // Since we're showing best score only
-      latestGame: entry.completedAt,
-      averageScore: entry.bestScore,
-    })) || [];
+    const entries: LeaderboardEntry[] =
+      uniqueEntries.map((entry: any, index: number) => ({
+        rank: parseInt(offset as string) + index + 1,
+        userId: entry.userId,
+        redditHandle: entry.redditHandle,
+        totalPoints: entry.bestScore,
+        gamesPlayed: 1, // Since we're showing best score only
+        latestGame: entry.completedAt,
+        averageScore: entry.bestScore,
+      })) || [];
 
     const response: LeaderboardResponse = {
       type: 'leaderboard',

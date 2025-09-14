@@ -4,7 +4,7 @@ import { apiFetch } from '../lib/utils';
 // Reddit user type - moved from shared types since client shouldn't depend on Supabase types
 export interface RedditUser {
   id: string;
-  reddit_handle: string;
+  handle: string;
   created_at: string;
   updated_at: string;
   last_seen_at: string;

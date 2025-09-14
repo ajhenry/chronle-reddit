@@ -6,10 +6,10 @@ import { LetteredPage } from './pages/lettered';
 import { TermsPage } from './pages/terms';
 import { AdminPage } from './pages/admin';
 import { CustomGamePage } from './pages/custom';
+import { LeaderboardPage } from './pages/leaderboard';
 import { Card, CardHeader, CardTitle, CardContent } from './components/ui/card';
 import { Button } from './components/ui/button';
 import { BouncingLogo } from './components/BouncingLogo';
-import { Leaderboard } from './components/Leaderboard';
 
 import { Toaster } from 'sonner';
 import { X, Settings } from 'lucide-react';
@@ -24,7 +24,6 @@ import type { User } from '../shared/types/api';
 export const App = () => {
   const navigate = useNavigate();
   const [showWelcome, setShowWelcome] = useState<boolean>(false);
-  const [currentSeasonId, setCurrentSeasonId] = useState<string | null>(null);
   const [userInfo, setUserInfo] = useState<User | null>(null);
   const [isCheckingContext, setIsCheckingContext] = useState<boolean>(true);
   // userInfo is stored for potential future use and debugging
@@ -95,23 +94,6 @@ export const App = () => {
 
     void initializeApp();
   }, [navigate]);
-
-  // Fetch current season ID
-  useEffect(() => {
-    const fetchCurrentSeason = async () => {
-      try {
-        const response = await fetch('/api/season/current');
-        if (response.ok) {
-          const data = await response.json();
-          setCurrentSeasonId(data.season.id);
-        }
-      } catch (error) {
-        console.error('Error fetching current season:', error);
-      }
-    };
-
-    void fetchCurrentSeason();
-  }, []);
 
   // Check game status and create games if needed
   useEffect(() => {
@@ -214,13 +196,7 @@ export const App = () => {
         <Route path="/custom" element={<CustomGamePage />} />
         <Route
           path="/leaderboard"
-          element={
-            <div className="p-4 min-h-screen bg-background">
-              {currentSeasonId && (
-                <Leaderboard seasonId={currentSeasonId} onClose={handleBackFromLeaderboard} />
-              )}
-            </div>
-          }
+          element={<LeaderboardPage onBack={handleBackFromLeaderboard} />}
         />
         <Route path="/terms" element={<TermsPage />} />
         <Route path="/dev" element={<DevPage onBack={handleBackFromDev} />} />
@@ -395,6 +371,11 @@ export const App = () => {
                   <footer className="flex flex-wrap gap-2 justify-center mt-8 w-full">
                     {/* Theme Toggle */}
                     <ModeToggle />
+
+                    {/* Leaderboard Button */}
+                    <Button variant="outline" onClick={() => navigate('/leaderboard')}>
+                      LEADERBOARD
+                    </Button>
 
                     {/* Terms Button */}
                     <Button variant="outline" onClick={() => navigate('/terms')}>
