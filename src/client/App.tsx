@@ -59,25 +59,20 @@ export const App = () => {
         const response = await apiFetch('/api/context');
         if (response.ok) {
           const data = await response.json();
-          console.log('Context data received:', data);
 
           const metadata = data.context?.metadata;
           const debug = data.context?.debug;
 
-          console.log('Debug info:', debug);
-          console.log('Metadata:', metadata);
-
           // If this is a custom game post, redirect to the custom game IMMEDIATELY
           if (metadata?.customGameId && metadata?.gameType === 'lettered') {
-            console.log('Redirecting to custom game:', metadata.customGameId);
-            navigate(`/lettered/${metadata.customGameId}`);
+            console.log('Redirecting to custom game:', { gameId: metadata.customGameId });
+            await navigate(`/lettered/${metadata.customGameId}`);
             setIsCheckingContext(false);
-            return; // Exit early - don't show homepage
           } else if (debug?.gameId) {
-            console.log('Found custom game ID in context:', debug.gameId);
+            console.log('Found custom game ID in context:', { gameId: debug.gameId });
             // Navigate directly to the custom game
-            navigate(`/lettered/${debug.gameId}`);
-            return; // Exit early to prevent loading homepage
+            await navigate(`/lettered/${debug.gameId}`);
+            setIsCheckingContext(false);
           } else {
             console.log('No custom game detected, proceeding with normal flow');
           }
@@ -98,7 +93,7 @@ export const App = () => {
       }
     };
 
-    initializeApp();
+    void initializeApp();
   }, [navigate]);
 
   // Fetch current season ID
