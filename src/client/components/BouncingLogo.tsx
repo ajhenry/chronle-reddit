@@ -2,15 +2,29 @@ import React, { useState, useEffect, useRef } from 'react';
 import { motion } from 'framer-motion';
 
 interface BouncingLogoProps {
-  src: string;
-  alt: string;
+  initialLogoIndex?: number;
   className?: string;
 }
 
-export const BouncingLogo: React.FC<BouncingLogoProps> = ({ src, alt, className = '' }) => {
+interface LogoItem {
+  src: string;
+  alt: string;
+}
+
+const GAME_LOGOS: LogoItem[] = [
+  { src: '/topx-logo.svg', alt: 'TopX Logo' },
+  { src: '/lettered-logo.svg', alt: 'Lettered Logo' },
+  { src: '/podium-logo.svg', alt: 'Podium Logo' },
+];
+
+export const BouncingLogo: React.FC<BouncingLogoProps> = ({
+  initialLogoIndex = 0,
+  className = '',
+}) => {
   const [position, setPosition] = useState({ x: 0, y: 0 });
   const [velocity, setVelocity] = useState({ x: 1, y: 1 });
   const [containerDimensions, setContainerDimensions] = useState({ width: 0, height: 0 });
+  const [currentLogoIndex, setCurrentLogoIndex] = useState(initialLogoIndex % GAME_LOGOS.length);
   const containerRef = useRef<HTMLDivElement>(null);
 
   const logoWidth = 60; // Reduced from 80
@@ -43,16 +57,24 @@ export const BouncingLogo: React.FC<BouncingLogoProps> = ({ src, alt, className 
         let newY = prev.y + velocity.y;
         let newVelX = velocity.x;
         let newVelY = velocity.y;
+        let bounced = false;
 
         // Bounce off walls
         if (newX <= 0 || newX >= containerDimensions.width - logoWidth) {
           newVelX = -velocity.x;
           newX = newX <= 0 ? 0 : containerDimensions.width - logoWidth;
+          bounced = true;
         }
 
         if (newY <= 0 || newY >= containerDimensions.height - logoHeight) {
           newVelY = -velocity.y;
           newY = newY <= 0 ? 0 : containerDimensions.height - logoHeight;
+          bounced = true;
+        }
+
+        // Change logo on bounce
+        if (bounced) {
+          setCurrentLogoIndex((prevIndex) => (prevIndex + 1) % GAME_LOGOS.length);
         }
 
         setVelocity({ x: newVelX, y: newVelY });
@@ -67,7 +89,7 @@ export const BouncingLogo: React.FC<BouncingLogoProps> = ({ src, alt, className 
   return (
     <div
       ref={containerRef}
-      className="relative overflow-hidden w-full"
+      className="overflow-hidden relative w-full"
       style={{
         height: `${containerDimensions.height}px`,
       }}
@@ -88,9 +110,9 @@ export const BouncingLogo: React.FC<BouncingLogoProps> = ({ src, alt, className 
         }}
       >
         <img
-          src={src}
-          alt={alt}
-          className="w-full h-full object-contain"
+          src={GAME_LOGOS[currentLogoIndex]?.src || '/topx-logo.svg'}
+          alt={GAME_LOGOS[currentLogoIndex]?.alt || 'Logo'}
+          className="object-contain w-full h-full"
           style={{
             filter: 'drop-shadow(2px 2px 0px rgba(0, 0, 0, 0.8))',
           }}

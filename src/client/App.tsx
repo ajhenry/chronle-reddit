@@ -213,7 +213,7 @@ export const App = () => {
                 <div className="flex flex-col flex-1 gap-8 justify-center items-center mx-auto my-6 w-full max-w-md">
                   {/* Bouncing Logo */}
                   <div className="w-full">
-                    <BouncingLogo src="/topx-logo.svg" alt="Top X Logo" />
+                    <BouncingLogo initialLogoIndex={0} />
                   </div>
 
                   {/* Podium Logo */}
