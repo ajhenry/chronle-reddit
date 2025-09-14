@@ -4,6 +4,7 @@ import { TopXPage } from './pages/topx';
 import { DevPage } from './pages/dev';
 import { LetteredPage } from './pages/lettered';
 import { TermsPage } from './pages/terms';
+import { PrivacyPage } from './pages/privacy';
 import { AdminPage } from './pages/admin';
 import { CustomGamePage } from './pages/custom';
 import { LeaderboardPage } from './pages/leaderboard';
@@ -199,6 +200,7 @@ export const App = () => {
           element={<LeaderboardPage onBack={handleBackFromLeaderboard} />}
         />
         <Route path="/terms" element={<TermsPage />} />
+        <Route path="/privacy" element={<PrivacyPage />} />
         <Route path="/dev" element={<DevPage onBack={handleBackFromDev} />} />
         <Route path="/admin" element={<AdminPage />} />
         <Route
@@ -382,19 +384,10 @@ export const App = () => {
                       TERMS
                     </Button>
 
-                    {[
-                      {
-                        href: 'https://discord.com/invite/R7yu2wh9Qz',
-                        text: 'DISCORD',
-                        variant: 'outline' as const,
-                      },
-                    ].map((link) => (
-                      <Button key={link.text} variant="default" asChild>
-                        <a href={link.href} target="_blank" rel="noopener noreferrer">
-                          {link.text}
-                        </a>
-                      </Button>
-                    ))}
+                    {/* Privacy Policy Button */}
+                    <Button variant="outline" onClick={() => navigate('/privacy')}>
+                      PRIVACY
+                    </Button>
 
                     {/* Dev Mode Button - only shows in development */}
                     {isDevelopment() && (

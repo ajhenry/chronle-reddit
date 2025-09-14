@@ -26,9 +26,7 @@ export function TermsPage() {
       <div className="container px-4 py-8 mx-auto max-w-4xl">
         <div className="max-w-none prose prose-slate dark:prose-invert prose-lg sm:prose-xl text-foreground">
           <h1 className="mb-2 text-4xl font-bold">Terms of Service</h1>
-          <p className="mb-8 text-lg text-muted-foreground">
-            Last updated: {new Date().toLocaleDateString()}
-          </p>
+          <p className="mb-8 text-lg text-muted-foreground">Last updated: 9/10/2025</p>
 
           <h2>Welcome to Podium</h2>
           <p>
