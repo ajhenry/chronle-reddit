@@ -25,6 +25,7 @@ import { cn } from '@sglara/cn';
 import { LetteredGameStateManager } from '../lib/lettered-game-state';
 import { apiFetch } from '../lib/utils';
 import { LetteredDailyGameResponse, LetteredPostGameResponse } from '../../shared/types/api';
+import { navigateTo } from '@devvit/web/client';
 
 // API functions for daily Lettered game
 const fetchTodaysGame = async (): Promise<LetteredDailyGameResponse> => {
@@ -1003,8 +1004,15 @@ export const LetteredPage = ({ onBack }: { onBack?: () => void }) => {
       {/* Completion Banner for Reloaded Games */}
       {isReloadedCompletedGame && (
         <div className="p-4 mb-4 rounded-lg border-2 border-foreground">
-          <div className="flex flex-col gap-3 sm:flex-row sm:justify-between sm:items-center">
-            <div className="flex items-center space-x-3">
+          <div
+            className={cn(
+              'flex flex-col gap-3',
+              !gameId
+                ? 'items-start sm:items-center sm:flex-row sm:justify-between'
+                : 'sm:items-start'
+            )}
+          >
+            <div className="flex items-start space-x-3">
               <div>
                 <div className="font-semibold text-foreground">Puzzle Solved</div>
                 <div className="text-sm text-muted-foreground">
@@ -1014,14 +1022,33 @@ export const LetteredPage = ({ onBack }: { onBack?: () => void }) => {
                 </div>
               </div>
             </div>
-            <Button
-              onClick={() => setUIState((prev) => ({ ...prev, showGameOverModal: true }))}
-              variant="outline"
-              className="self-start w-full sm:self-auto sm:w-auto"
-              type="button"
+            <div
+              className={cn(
+                'flex flex-col gap-2 w-full sm:w-auto sm:flex-row',
+                !gameId ? 'sm:flex-row' : 'sm:w-full'
+              )}
             >
-              View Stats
-            </Button>
+              <Button
+                onClick={() => setUIState((prev) => ({ ...prev, showGameOverModal: true }))}
+                variant="outline"
+                className={cn('self-start w-full', !gameId && 'sm:w-auto')}
+                type="button"
+              >
+                View Stats
+              </Button>
+              {/* In-Game Custom Game Button */}
+              <InGameCustomButton className={cn('w-full', !gameId && 'sm:w-auto')} />
+              {gameId && (
+                <Button
+                  onClick={() => navigateTo('https://www.reddit.com/r/podiumgame/')}
+                  variant="secondary"
+                  className="self-start w-full"
+                  type="button"
+                >
+                  Play Daily Podium
+                </Button>
+              )}
+            </div>
           </div>
         </div>
       )}
@@ -1031,11 +1058,6 @@ export const LetteredPage = ({ onBack }: { onBack?: () => void }) => {
         <div className="text-2xl font-black tracking-wide uppercase text-foreground">
           {gameData.category}
         </div>
-      </div>
-
-      {/* In-Game Custom Game Button */}
-      <div className="flex justify-center mb-6">
-        <InGameCustomButton className="max-w-sm" />
       </div>
 
       {/* Game Content */}

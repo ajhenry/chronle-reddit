@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { motion } from 'framer-motion';
+import { useParams } from 'react-router-dom';
 
 interface LetteredLoadingAnimationProps {
   className?: string;
@@ -19,6 +20,9 @@ export const LetteredLoadingAnimation: React.FC<LetteredLoadingAnimationProps> =
   const [phase, setPhase] = useState<'placing' | 'removing'>('placing');
   const [placedPieces, setPlacedPieces] = useState<MockPiece[]>([]);
   const [cycleCount, setCycleCount] = useState(0);
+  // get the gameid param from the url
+  const { gameId } = useParams<{ gameId?: string }>();
+  console.log('gameId', gameId);
 
   // Mock pieces for the animation - spelling "LETTERED" in diagonal pattern
   const mockPieces: MockPiece[] = [
@@ -170,7 +174,15 @@ export const LetteredLoadingAnimation: React.FC<LetteredLoadingAnimationProps> =
 
       {/* Loading text */}
       <div className="text-xl font-bold text-card-foreground">
-        Loading today's <span className="text-primary">Lettered</span>
+        {gameId ? (
+          <>
+            Loading custom <span className="text-primary">Lettered</span>
+          </>
+        ) : (
+          <>
+            Loading today's <span className="text-primary">Lettered</span>
+          </>
+        )}
       </div>
     </div>
   );

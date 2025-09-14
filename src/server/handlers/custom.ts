@@ -237,7 +237,7 @@ router.get('/api/custom/lettered/:gameId', async (req, res): Promise<void> => {
       res.json({
         status: 'success',
         gameData,
-        isCompleted: postgameData?.completedAt !== null,
+        isCompleted: postgameData?.completedAt,
         gameScore: postgameData,
       });
     } catch (redisError) {
@@ -286,7 +286,7 @@ router.post('/api/custom/lettered/:gameId/score', async (req, res): Promise<void
     // We will take the move count though and use that to calculate the decayed score
     const score = calculateDecayedScore({
       initialScore: DEFAULT_INITIAL_SCORE,
-      elapsedSeconds: 0,
+      elapsedSeconds: timeElapsed,
       gameType: 'lettered',
       placedPieces: moves,
     });
