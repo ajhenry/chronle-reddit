@@ -74,7 +74,7 @@ export const PostGameModal: React.FC<PostGameModalProps> = ({
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
       <DialogContent
-        className="p-0 border-4 border-black bg-card sm:max-w-lg h-auto max-h-[100vh] flex flex-col mt-4 overflow-y-visible"
+        className="p-0 border-4 border-black bg-card sm:max-w-xl h-[75vh] max-h-[90vh] flex flex-col mt-4 overflow-y-visible"
         hideCloseButton
       >
         <DialogClose className="absolute top-4 right-4 z-30 text-white rounded-sm transition-colors hover:text-white/80 focus:outline-none focus:ring-2 focus:ring-white focus:ring-offset-2 focus:ring-offset-black disabled:pointer-events-none">
@@ -172,16 +172,14 @@ export const PostGameModal: React.FC<PostGameModalProps> = ({
           {/* Leaderboard Display for Custom Games */}
           {isCustomGame && leaderboard && leaderboard.length > 0 && (
             <div className="p-4 border-4 border-black shadow-lg bg-white">
-              <div className="mb-3 text-lg font-black text-center text-black">
-                LEADERBOARD
-              </div>
+              <div className="mb-3 text-lg font-black text-center text-black">LEADERBOARD</div>
               <div className="space-y-2">
                 {leaderboard.slice(0, 5).map((entry, index) => (
-                  <div 
+                  <div
                     key={`${entry.username}-${entry.score}`}
                     className={`flex justify-between items-center p-2 border-2 border-black ${
-                      entry.username === 'You' || index === (playerRank ? playerRank - 1 : -1) 
-                        ? 'bg-yellow-300 font-bold' 
+                      entry.username === 'You' || index === (playerRank ? playerRank - 1 : -1)
+                        ? 'bg-yellow-300 font-bold'
                         : 'bg-gray-100'
                     }`}
                   >

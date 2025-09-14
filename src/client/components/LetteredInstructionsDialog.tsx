@@ -332,7 +332,7 @@ export const LetteredInstructionsDialog: React.FC<LetteredInstructionsDialogProp
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent
-        className="p-0 border-4 border-black bg-card sm:max-w-4xl h-auto max-h-[90vh] flex flex-col mt-4 overflow-y-visible"
+        className="p-0 border-4 border-black bg-card sm:max-w-4xl h-[90vh] max-h-[95vh] flex flex-col mt-4 overflow-y-visible"
         hideCloseButton
       >
         <DialogClose className="absolute top-4 right-4 z-30 text-white rounded-sm transition-colors hover:text-white/80 focus:outline-none focus:ring-2 focus:ring-white focus:ring-offset-2 focus:ring-offset-black disabled:pointer-events-none">
