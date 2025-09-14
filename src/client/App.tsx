@@ -19,6 +19,8 @@ import { ModeToggle } from './components/mode-toggle';
 import { ScrollToTop } from './components/ScrollToTop';
 import { AdminBanner } from './components/AdminBanner';
 import { HomeLoadingAnimation } from './components/HomeLoadingAnimation';
+import { GameResetCountdown } from './components/GameResetCountdown';
+import { UserLeaderboardStats } from './components/UserLeaderboardStats';
 import { apiFetch } from './lib/utils';
 import type { User } from '../shared/types/api';
 
@@ -244,6 +246,11 @@ export const App = () => {
                             Daily Puzzle Games
                           </p>
                         </Card>
+                      </div>
+
+                      {/* Game Reset Countdown */}
+                      <div className="w-full">
+                        <GameResetCountdown />
                       </div>
                     </div>
                   </div>

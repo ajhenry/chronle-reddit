@@ -435,3 +435,43 @@ export async function getUserSeasonStats(
 
   return seasonStats ? convertUserSeasonStats(seasonStats) : null;
 }
+
+export interface UserLeaderboardData {
+  userId: string;
+  username: string;
+  imageUrl: string | null;
+  rank: number | null;
+  totalPoints: number;
+  totalGamesPlayed: number;
+}
+
+export async function getUserLeaderboardData(
+  seasonId: string,
+  userId: string
+): Promise<UserLeaderboardData | null> {
+  // Get user rank
+  const rank = await getUserSeasonRank(seasonId, userId);
+
+  // Get user stats
+  const userStats = await getUserStats(userId);
+
+  // Get user info
+  const { data: userData, error: userError } = await supabase
+    .from('users')
+    .select('handle, image_url')
+    .eq('id', userId)
+    .single();
+
+  if (userError) {
+    throw new Error(`Failed to fetch user information: ${userError.message}`);
+  }
+
+  return {
+    userId,
+    username: userData.handle,
+    imageUrl: userData.image_url,
+    rank,
+    totalPoints: userStats?.totalPoints || 0,
+    totalGamesPlayed: userStats?.totalGamesPlayed || 0,
+  };
+}

@@ -254,10 +254,12 @@ export type LeaderboardResponse = {
 
 export type UserLeaderboardPositionResponse = {
   type: 'user_leaderboard_position';
-  rank: number;
+  userId: string;
+  username: string;
+  imageUrl: string | null;
+  rank: number | null;
   totalPoints: number;
-  gamesPlayed: number;
-  totalPlayers: number;
+  totalGamesPlayed: number;
 };
 
 export type EraseTopXResultsResponse = {

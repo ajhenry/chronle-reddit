@@ -11,6 +11,7 @@ import {
   getUserLetteredRank,
   getUserStats,
   getUserSeasonStats,
+  getUserLeaderboardData,
 } from '../database/leaderboard';
 
 const router = Router();
@@ -321,6 +322,59 @@ router.get('/api/stats/user/season/:seasonId', async (req, res): Promise<void> =
     res.status(500).json({
       status: 'error',
       message: 'Failed to fetch user season statistics',
+    });
+  }
+});
+
+// GET /api/leaderboard/user - Returns current user's leaderboard position and stats
+router.get('/api/leaderboard/user', async (_req, res): Promise<void> => {
+  try {
+    logRouteInfo('/api/leaderboard/user', { action: 'fetch_user_leaderboard_position' });
+
+    const userId = await ensureUserExistsAndGetId();
+
+    if (!userId) {
+      logRouteInfo('/api/leaderboard/user', { result: 'unauthenticated' });
+      res.status(401).json({
+        status: 'error',
+        message: 'User not authenticated with Reddit',
+      });
+      return;
+    }
+
+    // Get current active season
+    const currentSeason = await getCurrentActiveSeason();
+
+    // Get user's leaderboard data
+    const userLeaderboardData = await getUserLeaderboardData(currentSeason.id, userId);
+
+    if (!userLeaderboardData) {
+      logRouteInfo('/api/leaderboard/user', { result: 'no_data' });
+      res.status(404).json({
+        status: 'error',
+        message: 'User leaderboard data not found',
+      });
+      return;
+    }
+
+    const response = {
+      type: 'user_leaderboard_position',
+      ...userLeaderboardData,
+    };
+
+    logRouteInfo('/api/leaderboard/user', {
+      result: 'success',
+      userId,
+      rank: userLeaderboardData.rank,
+      totalPoints: userLeaderboardData.totalPoints,
+    });
+
+    res.json(response);
+  } catch (error) {
+    logError('/api/leaderboard/user', error);
+    res.status(500).json({
+      status: 'error',
+      message: 'Failed to fetch user leaderboard position',
     });
   }
 });
