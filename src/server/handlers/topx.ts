@@ -11,6 +11,7 @@ import { supabase } from '../../shared/supabase-server';
 import { recordLeaderboardEntry } from '../lib/leaderboard-helpers';
 import { ensureUserExistsAndGetId } from '../lib/user-helpers';
 import { getCurrentUTCTime, toUTCTimestamp, getCurrentUTCISOString } from '../lib/time';
+import { logRouteInfo, logError } from '../lib/logging';
 import {
   getTopXSubmissionsForToday,
   getUserTopXSessionForToday,
@@ -37,11 +38,13 @@ const router = Router();
 
 // GET /api/topx/game - Returns the current day's game or results of the game
 router.get('/api/topx/game', async (_req, res): Promise<void> => {
-  console.log('GET /api/topx/game');
   try {
+    logRouteInfo('/api/topx/game', { action: 'get_daily_game' });
+
     const userId = await ensureUserExistsAndGetId();
 
     if (!userId) {
+      logRouteInfo('/api/topx/game', { result: 'unauthenticated' });
       res.status(401).json({
         status: 'error',
         message: 'User not authenticated with Reddit',
@@ -49,16 +52,10 @@ router.get('/api/topx/game', async (_req, res): Promise<void> => {
       return;
     }
 
-    console.log('userId', userId);
-
     const dailyGame = await getOrCreateTodaysGame();
-    console.log('dailyGame', dailyGame);
     const dailyTopXGame = await getTodaysTopXGame();
-    console.log('dailyTopXGame', dailyTopXGame);
     const incorrectSubmissionCount = await getIncorrectTopXSubmissionCountForToday(userId);
-    console.log('incorrectSubmissionCount', incorrectSubmissionCount);
     const existingSession = await getOrCreateTodaysTopXSession(userId);
-    console.log('existingSession', existingSession);
 
     // Calculate current score using same algorithm as client
     const gameStartTime = toUTCTimestamp(existingSession.startedAt);
@@ -104,11 +101,18 @@ router.get('/api/topx/game', async (_req, res): Promise<void> => {
       },
     };
 
-    console.log('response', response);
+    logRouteInfo('/api/topx/game', {
+      result: 'success',
+      userId,
+      gameId: dailyGame.id,
+      sessionId: existingSession.id,
+      currentScore,
+      attemptsLeft: calculatedAttemptsLeft,
+    });
 
     res.json(response);
   } catch (error) {
-    console.error('Error in /api/topx/game:', error);
+    logError('/api/topx/game', error);
     res.status(500).json({
       status: 'error',
       message: "Failed to fetch today's daily game",
@@ -118,12 +122,21 @@ router.get('/api/topx/game', async (_req, res): Promise<void> => {
 
 // POST /api/topx/attempt - Saves a user's attempt along with the timestamp submitted
 router.post('/api/topx/:gameId/attempt', async (req, res): Promise<void> => {
-  console.log('POST /api/topx/:gameId/attempt', { body: req.body, params: req.params });
   try {
+    const { gameId } = req.params;
+
+    logRouteInfo('/api/topx/:gameId/attempt', {
+      action: 'submit_attempt',
+      gameId,
+    });
+
     // Validate payload with Zod
     const payloadValidation = topxAttemptSchema.safeParse(req.body);
     if (!payloadValidation.success) {
-      console.error('Payload validation failed:', { error: payloadValidation.error });
+      logError('/api/topx/:gameId/attempt', payloadValidation.error, {
+        context: 'payload_validation',
+        gameId,
+      });
       res.status(400).json({
         status: 'error',
         message: 'Invalid payload structure',
@@ -133,10 +146,13 @@ router.post('/api/topx/:gameId/attempt', async (req, res): Promise<void> => {
     }
 
     const { answer, timestamp } = payloadValidation.data;
-    const { gameId } = req.params;
     const userId = await ensureUserExistsAndGetId();
 
     if (!userId) {
+      logRouteInfo('/api/topx/:gameId/attempt', {
+        result: 'unauthenticated',
+        gameId,
+      });
       res.status(401).json({
         status: 'error',
         message: 'User not authenticated with Reddit',
@@ -146,10 +162,14 @@ router.post('/api/topx/:gameId/attempt', async (req, res): Promise<void> => {
 
     const dailyGame = await getOrCreateTodaysGame();
     const dailyTopXGame = await getTodaysTopXGame();
-    console.log('dailyGame', dailyTopXGame, gameId);
 
     if (dailyGame.id !== gameId) {
-      console.error('Game ID is not for the current daily game', dailyTopXGame.id, gameId);
+      logError('/api/topx/:gameId/attempt', new Error('Game ID mismatch'), {
+        context: 'game_id_validation',
+        providedGameId: gameId,
+        currentGameId: dailyGame.id,
+        userId,
+      });
       res.status(400).json({
         status: 'error',
         message: 'Game ID is not for the current daily game',
@@ -209,9 +229,6 @@ router.post('/api/topx/:gameId/attempt', async (req, res): Promise<void> => {
     );
     const isCorrect = solutionIndex !== -1;
 
-    console.log(`🔍 Validating submission: "${trimmedAnswer}"`);
-    console.log(`📍 Solution index: ${solutionIndex}, Is correct: ${isCorrect}`);
-
     const submissionData: Omit<TopXSubmission, 'id'> = {
       gameSessionId: session.id,
       answer: trimmedAnswer,
@@ -260,9 +277,23 @@ router.post('/api/topx/:gameId/attempt', async (req, res): Promise<void> => {
       gameCompleted: gameCompleted && !session.isCompleted,
     };
 
+    logRouteInfo('/api/topx/:gameId/attempt', {
+      result: 'success',
+      userId,
+      gameId,
+      submissionId: submission.id,
+      answer: trimmedAnswer,
+      isCorrect,
+      score: currentScore,
+      attemptsLeft: updatedAttemptsLeft,
+      gameCompleted: gameCompleted && !session.isCompleted,
+    });
+
     res.json(response);
   } catch (error) {
-    console.error('Error submitting answer:', error);
+    logError('/api/topx/:gameId/attempt', error, {
+      gameId: req.params.gameId,
+    });
     res.status(500).json({
       status: 'error',
       message: 'Failed to submit answer',
@@ -273,9 +304,12 @@ router.post('/api/topx/:gameId/attempt', async (req, res): Promise<void> => {
 // GET /api/topx/postgame - Returns the results that were validated on the server
 router.get('/api/topx/postgame', async (_req, res): Promise<void> => {
   try {
+    logRouteInfo('/api/topx/postgame', { action: 'get_postgame_results' });
+
     const userId = await ensureUserExistsAndGetId();
 
     if (!userId) {
+      logRouteInfo('/api/topx/postgame', { result: 'unauthenticated' });
       res.status(401).json({
         status: 'error',
         message: 'User not authenticated with Reddit',
@@ -286,6 +320,11 @@ router.get('/api/topx/postgame', async (_req, res): Promise<void> => {
     const session = await getOrCreateTodaysTopXSession(userId);
 
     if (!session.isCompleted) {
+      logRouteInfo('/api/topx/postgame', {
+        result: 'game_not_completed',
+        userId,
+        sessionId: session.id,
+      });
       res.status(400).json({
         status: 'error',
         message: 'Game session is not completed',
@@ -312,9 +351,17 @@ router.get('/api/topx/postgame', async (_req, res): Promise<void> => {
       isValid: true,
     };
 
+    logRouteInfo('/api/topx/postgame', {
+      result: 'success',
+      userId,
+      sessionId: session.id,
+      finalScore,
+      totalCorrect: correctAnswers.length,
+    });
+
     res.json(response);
   } catch (error) {
-    console.error('Error getting postgame results:', error);
+    logError('/api/topx/postgame', error);
     res.status(500).json({
       status: 'error',
       message: 'Failed to get postgame results',

@@ -49,7 +49,10 @@ router.post('/api/custom/lettered', async (req, res): Promise<void> => {
     const { phrase, category } = validationResult.data;
 
     // Clean and validate phrase (only letters and spaces)
-    const cleanPhrase = phrase.replace(/[^a-zA-Z\s]/g, '').toUpperCase().trim();
+    const cleanPhrase = phrase
+      .replace(/[^a-zA-Z\s]/g, '')
+      .toUpperCase()
+      .trim();
     if (!cleanPhrase) {
       res.status(400).json({
         error: 'Phrase must contain at least one letter',
@@ -67,7 +70,7 @@ router.post('/api/custom/lettered', async (req, res): Promise<void> => {
 
     // Validate word length constraints (max 9 letters per word)
     const words = cleanPhrase.split(/\s+/);
-    const longWords = words.filter(word => word.length > 9);
+    const longWords = words.filter((word) => word.length > 9);
     if (longWords.length > 0) {
       res.status(400).json({
         error: `Words must be 9 letters or less. Found: ${longWords.join(', ')}`,
@@ -118,7 +121,7 @@ router.post('/api/custom/lettered', async (req, res): Promise<void> => {
     try {
       const post = await reddit.submitCustomPost({
         subredditName: subredditName,
-        title: `Custom puzzle by ${username}`,
+        title: `${category.toUpperCase()} by ${username}`,
         splash: {
           appDisplayName: 'Podium Game',
         },
@@ -140,7 +143,7 @@ router.post('/api/custom/lettered', async (req, res): Promise<void> => {
       await redis.set(postToGameKey, gameId);
       await redis.expire(postToGameKey, 60 * 60 * 24 * 7); // Same expiration as game data
       console.log(`Stored post-to-game mapping: ${post.id} -> ${gameId}`);
-      
+
       // Also store without t3_ prefix if it exists
       if (post.id.startsWith('t3_')) {
         const shortId = post.id.replace('t3_', '');
@@ -160,7 +163,7 @@ router.post('/api/custom/lettered', async (req, res): Promise<void> => {
       });
     } catch (postError) {
       console.error('Failed to create Reddit post:', postError);
-      
+
       // Clean up Redis entry if post creation failed
       try {
         await redis.del(gameId);
@@ -196,7 +199,7 @@ router.get('/api/custom/lettered/:gameId', async (req, res): Promise<void> => {
     // Retrieve game data from Redis
     try {
       const gameDataStr = await redis.get(gameId);
-      
+
       if (!gameDataStr) {
         res.status(404).json({
           error: 'Game not found or expired',
@@ -231,7 +234,12 @@ router.post('/api/custom/lettered/:gameId/score', async (req, res): Promise<void
     const { gameId } = req.params;
     const { score, timeElapsed, moves } = req.body;
 
-    if (!gameId || typeof score !== 'number' || typeof timeElapsed !== 'number' || typeof moves !== 'number') {
+    if (
+      !gameId ||
+      typeof score !== 'number' ||
+      typeof timeElapsed !== 'number' ||
+      typeof moves !== 'number'
+    ) {
       res.status(400).json({
         error: 'Missing required fields: gameId, score, timeElapsed, moves',
       });
@@ -241,8 +249,10 @@ router.post('/api/custom/lettered/:gameId/score', async (req, res): Promise<void
     // Get username from Reddit context
     let username = 'anonymous';
     try {
-      username = await reddit.getCurrentUsername() || 'anonymous';
-      console.log(`Custom game score submission - Username retrieved: ${username} for game ${gameId} with score ${score}`);
+      username = (await reddit.getCurrentUsername()) || 'anonymous';
+      console.log(
+        `Custom game score submission - Username retrieved: ${username} for game ${gameId} with score ${score}`
+      );
     } catch (error) {
       console.error('Error getting username from context:', error);
     }
@@ -271,22 +281,20 @@ router.post('/api/custom/lettered/:gameId/score', async (req, res): Promise<void
 
     // Store score in Redis using simple key-value storage
     const timestamp = Date.now();
-    
+
     // Store in game-specific leaderboard
     const gameLeaderboardKey = `custom-lettered:leaderboard:${gameId}`;
-    const existingScoresStr = await redis.get(gameLeaderboardKey) || '[]';
+    const existingScoresStr = (await redis.get(gameLeaderboardKey)) || '[]';
     const existingScores = JSON.parse(existingScoresStr);
     existingScores.push({ ...scoreEntry, timestamp });
     // Keep top 100 scores for each game
-    const sortedScores = existingScores
-      .sort((a: any, b: any) => b.score - a.score)
-      .slice(0, 100);
+    const sortedScores = existingScores.sort((a: any, b: any) => b.score - a.score).slice(0, 100);
     await redis.set(gameLeaderboardKey, JSON.stringify(sortedScores));
     await redis.expire(gameLeaderboardKey, 60 * 60 * 24 * 30); // Keep for 30 days
 
     // Store in player's personal custom game history
     const playerHistoryKey = `custom-lettered:player:${username}`;
-    const playerHistoryStr = await redis.get(playerHistoryKey) || '[]';
+    const playerHistoryStr = (await redis.get(playerHistoryKey)) || '[]';
     const playerHistory = JSON.parse(playerHistoryStr);
     playerHistory.push({ ...scoreEntry, timestamp });
     // Keep last 100 games for each player
@@ -296,13 +304,11 @@ router.post('/api/custom/lettered/:gameId/score', async (req, res): Promise<void
 
     // Store in global custom games leaderboard (all players, all custom games)
     const globalLeaderboardKey = 'custom-lettered:global-leaderboard';
-    const existingGlobalStr = await redis.get(globalLeaderboardKey) || '[]';
+    const existingGlobalStr = (await redis.get(globalLeaderboardKey)) || '[]';
     const existingGlobal = JSON.parse(existingGlobalStr);
     existingGlobal.push({ ...scoreEntry, timestamp });
     // Keep top 1000 scores globally
-    const sortedGlobal = existingGlobal
-      .sort((a: any, b: any) => b.score - a.score)
-      .slice(0, 1000);
+    const sortedGlobal = existingGlobal.sort((a: any, b: any) => b.score - a.score).slice(0, 1000);
     await redis.set(globalLeaderboardKey, JSON.stringify(sortedGlobal));
     await redis.expire(globalLeaderboardKey, 60 * 60 * 24 * 30); // Keep for 30 days
 
@@ -336,13 +342,11 @@ router.get('/api/custom/lettered/:gameId/leaderboard', async (req, res): Promise
 
     // Get top scores for this specific game (use simple key-value storage for leaderboards)
     const gameLeaderboardKey = `custom-lettered:leaderboard:${gameId}`;
-    const existingScoresStr = await redis.get(gameLeaderboardKey) || '[]';
+    const existingScoresStr = (await redis.get(gameLeaderboardKey)) || '[]';
     const existingScores = JSON.parse(existingScoresStr);
-    
+
     // Sort by score descending and get top scores
-    const scores = existingScores
-      .sort((a: any, b: any) => b.score - a.score)
-      .slice(0, limit);
+    const scores = existingScores.sort((a: any, b: any) => b.score - a.score).slice(0, limit);
 
     res.json({
       status: 'success',
@@ -373,7 +377,7 @@ router.get('/api/custom/lettered/player/:username/history', async (req, res): Pr
 
     // Get player's game history
     const playerHistoryKey = `custom-lettered:player:${username}`;
-    const historyStr = await redis.get(playerHistoryKey) || '[]';
+    const historyStr = (await redis.get(playerHistoryKey)) || '[]';
     const history = JSON.parse(historyStr);
 
     // Sort by timestamp descending and limit
@@ -402,13 +406,11 @@ router.get('/api/custom/lettered/global-leaderboard', async (req, res): Promise<
 
     // Get top scores across all custom games
     const globalLeaderboardKey = 'custom-lettered:global-leaderboard';
-    const existingGlobalStr = await redis.get(globalLeaderboardKey) || '[]';
+    const existingGlobalStr = (await redis.get(globalLeaderboardKey)) || '[]';
     const existingGlobal = JSON.parse(existingGlobalStr);
-    
+
     // Sort by score descending and get top scores
-    const scores = existingGlobal
-      .sort((a: any, b: any) => b.score - a.score)
-      .slice(0, limit);
+    const scores = existingGlobal.sort((a: any, b: any) => b.score - a.score).slice(0, limit);
 
     res.json({
       status: 'success',
@@ -438,7 +440,7 @@ router.get('/api/custom/lettered/:gameId/postgame', async (req, res): Promise<vo
     // Get username from Reddit context
     let username = 'anonymous';
     try {
-      username = await reddit.getCurrentUsername() || 'anonymous';
+      username = (await reddit.getCurrentUsername()) || 'anonymous';
       console.log(`Custom game postgame - Username retrieved: ${username} for game ${gameId}`);
     } catch (error) {
       console.error('Error getting username from context:', error);
@@ -457,13 +459,15 @@ router.get('/api/custom/lettered/:gameId/postgame', async (req, res): Promise<vo
 
     // Get player's score for this game from their history
     const playerHistoryKey = `custom-lettered:player:${username}`;
-    const playerHistoryStr = await redis.get(playerHistoryKey) || '[]';
+    const playerHistoryStr = (await redis.get(playerHistoryKey)) || '[]';
     const playerHistory = JSON.parse(playerHistoryStr);
-    
+
     // Find the latest score for this game ID
     const playerScore = playerHistory
       .filter((score: any) => score.gameId === gameId)
-      .sort((a: any, b: any) => new Date(b.completedAt).getTime() - new Date(a.completedAt).getTime())[0];
+      .sort(
+        (a: any, b: any) => new Date(b.completedAt).getTime() - new Date(a.completedAt).getTime()
+      )[0];
 
     if (!playerScore) {
       res.status(404).json({
@@ -474,10 +478,10 @@ router.get('/api/custom/lettered/:gameId/postgame', async (req, res): Promise<vo
 
     // Get game leaderboard to show player ranking
     const gameLeaderboardKey = `custom-lettered:leaderboard:${gameId}`;
-    const existingScoresStr = await redis.get(gameLeaderboardKey) || '[]';
+    const existingScoresStr = (await redis.get(gameLeaderboardKey)) || '[]';
     const existingScores = JSON.parse(existingScoresStr);
     const sortedScores = existingScores.sort((a: any, b: any) => b.score - a.score);
-    
+
     // Find player's rank
     const playerRank = sortedScores.findIndex((score: any) => score.username === username) + 1;
 
@@ -496,8 +500,10 @@ router.get('/api/custom/lettered/:gameId/postgame', async (req, res): Promise<vo
       leaderboard: sortedScores.slice(0, 10), // Top 10 for display
     };
 
-    console.log(`Custom game postgame data: Player ${username} rank ${playerRank}/${sortedScores.length}, leaderboard:`, 
-                sortedScores.slice(0, 3).map((s: any) => `${s.username}:${s.score}`));
+    console.log(
+      `Custom game postgame data: Player ${username} rank ${playerRank}/${sortedScores.length}, leaderboard:`,
+      sortedScores.slice(0, 3).map((s: any) => `${s.username}:${s.score}`)
+    );
 
     res.json(postgameResponse);
   } catch (error) {

@@ -270,7 +270,7 @@ export const LetteredPage = ({ onBack }: { onBack?: () => void }) => {
   const gameStateManagerRef = useRef<LetteredGameStateManager | null>(null);
 
   // State for UI updates from game state manager
-  const [gameScore, setGameScore] = useState(gameId ? 5000 : DEFAULT_INITIAL_SCORE);
+  const [gameScore, setGameScore] = useState(DEFAULT_INITIAL_SCORE);
   const [placedPieces, setPlacedPieces] = useState<Map<string, GridPosition>>(new Map());
   const [gameComplete, setGameComplete] = useState(false);
   const [gameWon, setGameWon] = useState(false);
@@ -387,7 +387,7 @@ export const LetteredPage = ({ onBack }: { onBack?: () => void }) => {
         setMoves(apiSessionData.moves);
       } else {
         // For new games (no session data) or custom games, set the appropriate initial score
-        initialScoreForManager = gameId ? 5000 : DEFAULT_INITIAL_SCORE;
+        initialScoreForManager = DEFAULT_INITIAL_SCORE;
       }
 
       // Initialize game state manager with new game and session data

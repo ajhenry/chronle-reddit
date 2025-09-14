@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { LeaderboardResponse, UserLeaderboardPositionResponse } from '../../shared/types/api';
 import { supabase } from '../../shared/supabase-server';
 import { ensureUserExistsAndGetId } from '../lib/user-helpers';
+import { logRouteInfo, logError } from '../lib/logging';
 
 const router = Router();
 
@@ -14,6 +15,12 @@ router.get('/api/leaderboard', async (req, res): Promise<void> => {
     const limitNum = Math.min(Math.max(1, parseInt(limit as string) || 50), 100);
     const offsetNum = Math.max(0, parseInt(offset as string) || 0);
 
+    logRouteInfo('/api/leaderboard', {
+      action: 'fetch_leaderboard',
+      limit: limitNum,
+      offset: offsetNum,
+    });
+
     // Get leaderboard rankings using the database function
     const { data: rankings, error } = await supabase.rpc('get_leaderboard_rankings', {
       limit_count: limitNum,
@@ -21,7 +28,7 @@ router.get('/api/leaderboard', async (req, res): Promise<void> => {
     });
 
     if (error) {
-      console.error('Error fetching leaderboard rankings:', error);
+      logError('/api/leaderboard', error, { context: 'fetching_rankings' });
       res.status(500).json({
         status: 'error',
         message: 'Failed to fetch leaderboard rankings',
@@ -35,7 +42,7 @@ router.get('/api/leaderboard', async (req, res): Promise<void> => {
       .select('user_id', { count: 'exact', head: true });
 
     if (countError) {
-      console.error('Error counting total players:', countError);
+      logError('/api/leaderboard', countError, { context: 'counting_players' });
     }
 
     const response: LeaderboardResponse = {
@@ -52,9 +59,15 @@ router.get('/api/leaderboard', async (req, res): Promise<void> => {
       totalPlayers: totalPlayers || 0,
     };
 
+    logRouteInfo('/api/leaderboard', {
+      result: 'success',
+      entriesCount: response.entries.length,
+      totalPlayers: response.totalPlayers,
+    });
+
     res.json(response);
   } catch (error) {
-    console.error('Error in /api/leaderboard:', error);
+    logError('/api/leaderboard', error);
     res.status(500).json({
       status: 'error',
       message: 'Failed to fetch leaderboard',
@@ -65,9 +78,12 @@ router.get('/api/leaderboard', async (req, res): Promise<void> => {
 // GET /api/leaderboard/position - Returns the current user's leaderboard position
 router.get('/api/leaderboard/position', async (_req, res): Promise<void> => {
   try {
+    logRouteInfo('/api/leaderboard/position', { action: 'fetch_user_position' });
+
     const userId = await ensureUserExistsAndGetId();
 
     if (!userId) {
+      logRouteInfo('/api/leaderboard/position', { result: 'unauthenticated' });
       res.status(401).json({
         status: 'error',
         message: 'User not authenticated with Reddit',
@@ -81,7 +97,7 @@ router.get('/api/leaderboard/position', async (_req, res): Promise<void> => {
     });
 
     if (error) {
-      console.error('Error fetching user leaderboard position:', error);
+      logError('/api/leaderboard/position', error, { userId });
       res.status(500).json({
         status: 'error',
         message: 'Failed to fetch leaderboard position',
@@ -91,6 +107,10 @@ router.get('/api/leaderboard/position', async (_req, res): Promise<void> => {
 
     if (!position || position.length === 0) {
       // User hasn't completed any games yet
+      logRouteInfo('/api/leaderboard/position', {
+        result: 'no_games_played',
+        userId,
+      });
       res.json({
         type: 'user_leaderboard_position',
         rank: 0,
@@ -110,9 +130,17 @@ router.get('/api/leaderboard/position', async (_req, res): Promise<void> => {
       totalPlayers: Number(userPosition.total_players),
     };
 
+    logRouteInfo('/api/leaderboard/position', {
+      result: 'success',
+      userId,
+      rank: response.rank,
+      totalPoints: response.totalPoints,
+      gamesPlayed: response.gamesPlayed,
+    });
+
     res.json(response);
   } catch (error) {
-    console.error('Error in /api/leaderboard/position:', error);
+    logError('/api/leaderboard/position', error);
     res.status(500).json({
       status: 'error',
       message: 'Failed to fetch leaderboard position',

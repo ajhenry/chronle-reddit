@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { motion } from 'framer-motion';
 import { Dialog, DialogContent, DialogClose } from './ui/dialog';
 import { Button } from './ui/button';
-import { DEFAULT_INITIAL_SCORE } from '../../shared/score-decay';
+import { calculateDecayAmount, DEFAULT_INITIAL_SCORE } from '../../shared/score-decay';
 
 interface LetteredInstructionsDialogProps {
   open: boolean;
@@ -149,25 +149,28 @@ export const LetteredInstructionsDialog: React.FC<LetteredInstructionsDialogProp
   const [transformStep, setTransformStep] = useState(0);
   const [currentScore, setCurrentScore] = useState(DEFAULT_INITIAL_SCORE);
   const countdownRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const [startTime, setStartTime] = useState(Date.now());
 
   // Score countdown effect - rapid decay while dialog is open
   useEffect(() => {
     if (!open && animationPhase !== 'idle') return;
 
     countdownRef.current = setInterval(() => {
-      setCurrentScore((prevScore) => {
-        const newScore = Math.max(0, prevScore - 15); // Decrease by 15 points every 100ms for rapid effect
+      setCurrentScore((prevAmount) => {
+        const newScore =
+          prevAmount - calculateDecayAmount('lettered', (Date.now() - startTime) / 1000);
         return newScore;
       });
-    }, 100); // Update every 100ms for rapid countdown
+    }, 1000); // Update every 100ms for rapid countdown
 
     return () => clearInterval(countdownRef.current!);
-  }, [animationPhase, open]);
+  }, [animationPhase, open, startTime]);
 
   // Reset score when animation loops back to idle
   useEffect(() => {
     if (animationPhase === 'idle' && open) {
       setCurrentScore(DEFAULT_INITIAL_SCORE);
+      setStartTime(Date.now());
     }
     if (animationPhase === 'complete' && open) {
       clearInterval(countdownRef.current!);

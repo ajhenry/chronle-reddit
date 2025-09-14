@@ -21,6 +21,7 @@ export const getUserByRedditHandle = async (redditHandle: string): Promise<User>
     .eq('handle', redditHandle)
     .single();
   if (error) {
+    console.error('Failed to get user by reddit handle:', { error });
     throw error;
   }
   return convertUser(data);
@@ -50,10 +51,12 @@ export const createUser = async (
 export const getOrCreateUser = async (
   userData: Omit<User, 'id' | 'createdAt' | 'updatedAt' | 'admin'>
 ): Promise<User> => {
+  console.log('getOrCreateUser', { userData });
   try {
     const user = await getUserByRedditHandle(userData.handle);
     return user;
   } catch (error) {
+    console.error('Failed to get user:', { error });
     return createUser(userData);
   }
 };

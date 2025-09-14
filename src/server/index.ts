@@ -1,5 +1,6 @@
 import express from 'express';
 import { Devvit } from '@devvit/public-api';
+import { apiLoggingMiddleware } from './lib/logging';
 import userRoutes from './handlers/user';
 import postRoutes from './handlers/post';
 import gameRoutes from './handlers/game';
@@ -33,6 +34,9 @@ app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 // Middleware for plain text body parsing
 app.use(express.text());
+
+// API logging middleware for all routes
+app.use('/api', apiLoggingMiddleware);
 
 // CORS middleware for local development
 if (isLocal) {
