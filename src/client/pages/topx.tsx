@@ -605,7 +605,6 @@ export const TopXPage = ({ onBack }: { onBack?: () => void }) => {
       console.log('Game completed with final score:', result.finalScore);
     } catch (err) {
       console.error('Error completing game:', err);
-      toast.error('Failed to complete game');
     }
   };
 
@@ -685,7 +684,6 @@ export const TopXPage = ({ onBack }: { onBack?: () => void }) => {
       }
     } catch (error) {
       console.error('Error erasing game results:', error);
-      toast.error('Failed to erase game results');
     }
   };
 
