@@ -3,6 +3,7 @@ import { Button } from '../components/ui/button';
 import { ArrowLeft, Settings } from 'lucide-react';
 import { DraggableItem, Grid, GridPosition } from '../components/tile-grid/tile-grid';
 import { useState, useCallback } from 'react';
+import { toast } from 'sonner';
 
 interface DevPageProps {
   onBack?: () => void;
@@ -400,6 +401,15 @@ export const DevPage = ({ onBack }: DevPageProps) => {
                   onClick={() => console.log('Dev action 3')}
                 >
                   Debug Action 3
+                </Button>
+                <Button
+                  variant="outline"
+                  className="w-full"
+                  onClick={() =>
+                    toast('Hello from the dev page! This is a toast notification at the top.')
+                  }
+                >
+                  Create Toast
                 </Button>
               </div>
             </CardContent>

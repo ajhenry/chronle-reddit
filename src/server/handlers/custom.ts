@@ -152,7 +152,7 @@ router.post('/api/custom/lettered', async (req, res): Promise<void> => {
     try {
       const post = await reddit.submitCustomPost({
         subredditName: subredditName,
-        title: `LETTERED — ${category.toUpperCase()} by ${username}`,
+        title: `LETTERED - ${category.toUpperCase()} by ${username}`,
         splash: {
           appDisplayName: 'Podium Game',
         },
@@ -281,15 +281,17 @@ router.post('/api/custom/lettered/:gameId/score', async (req, res): Promise<void
     const { gameId } = paramValidation.data;
     const { timeElapsed } = bodyValidation.data;
     const { moves } = bodyValidation.data;
+    const { score } = bodyValidation.data;
 
     // We need to calculate the decayed score ourselves because we don't trust the client
     // We will take the move count though and use that to calculate the decayed score
-    const score = calculateDecayedScore({
-      initialScore: DEFAULT_INITIAL_SCORE,
-      elapsedSeconds: timeElapsed,
-      gameType: 'lettered',
-      placedPieces: 0, // TODO: Maybe we should fix this?
-    });
+    // TODO: MAKE THIS WORK AGAIN
+    // const score = calculateDecayedScore({
+    //   initialScore: DEFAULT_INITIAL_SCORE,
+    //   elapsedSeconds: timeElapsed,
+    //   gameType: 'lettered',
+    //   placedPieces: 0, // TODO: Maybe we should fix this?
+    // });
 
     // Get username from Reddit context
     let username = 'anonymous';
