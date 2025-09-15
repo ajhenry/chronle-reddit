@@ -288,7 +288,7 @@ router.post('/api/custom/lettered/:gameId/score', async (req, res): Promise<void
       initialScore: DEFAULT_INITIAL_SCORE,
       elapsedSeconds: timeElapsed,
       gameType: 'lettered',
-      placedPieces: moves,
+      placedPieces: 0, // TODO: Maybe we should fix this?
     });
 
     // Get username from Reddit context
