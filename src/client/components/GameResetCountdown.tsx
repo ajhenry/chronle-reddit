@@ -13,12 +13,15 @@ export const GameResetCountdown = () => {
   }
 
   const formatTime = (hours: number, minutes: number): string => {
+    const hourText = hours === 1 ? `${hours} hr` : `${hours} hrs`;
+    const minuteText = minutes === 1 ? `${minutes} min` : `${minutes} mins`;
+
     if (hours === 0) {
-      return `${minutes} mins`;
+      return minuteText;
     } else if (minutes === 0) {
-      return `${hours} hrs`;
+      return hourText;
     } else {
-      return `${hours} hrs ${minutes} mins`;
+      return `${hourText} ${minuteText}`;
     }
   };
 

@@ -611,7 +611,6 @@ export const TopXPage = ({ onBack }: { onBack?: () => void }) => {
 
   const resetGame = async () => {
     // For daily games, we just reload the page since you can only play once per day
-    window.location.reload();
   };
 
   // Development functions
@@ -706,8 +705,7 @@ export const TopXPage = ({ onBack }: { onBack?: () => void }) => {
       <GameLayout
         gameTitle="Top X"
         score={0}
-        attempts={0}
-        maxAttempts={gameData?.maxAttempts ?? 5}
+        moves={0}
         onBack={handleBackToMenu}
         logoSrc="/topx-logo.svg"
       >
@@ -724,8 +722,7 @@ export const TopXPage = ({ onBack }: { onBack?: () => void }) => {
       <GameLayout
         gameTitle="Top X"
         score={0}
-        attempts={0}
-        maxAttempts={gameData?.maxAttempts ?? 5}
+        moves={0}
         onBack={handleBackToMenu}
         logoSrc="/topx-logo.svg"
       >
@@ -741,10 +738,8 @@ export const TopXPage = ({ onBack }: { onBack?: () => void }) => {
     <GameLayout
       gameTitle="Top X"
       score={gameState.score}
-      attempts={gameState.attempts}
-      maxAttempts={gameState.maxAttempts}
       onBack={handleBackToMenu}
-      onLeaderboard={() => console.log('Leaderboard clicked')}
+      onLeaderboard={() => setShowGameOverModal(true)}
       logoSrc="/topx-logo.svg"
       className={isMobile && !gameState.gameComplete ? 'pb-16' : ''}
     >

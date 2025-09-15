@@ -74,7 +74,7 @@ export const PostGameModal: React.FC<PostGameModalProps> = ({
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
       <DialogContent
-        className="p-0 border-4 border-black bg-card sm:max-w-xl h-[75vh] max-h-[90vh] flex flex-col mt-4 overflow-y-visible"
+        className="flex overflow-y-visible flex-col p-0 mt-4 mb-4 w-full h-full border-4 border-black bg-card sm:max-w-xl sm:mb-0 max-h-[800px]"
         hideCloseButton
       >
         <DialogClose className="absolute top-4 right-4 z-30 text-white rounded-sm transition-colors hover:text-white/80 focus:outline-none focus:ring-2 focus:ring-white focus:ring-offset-2 focus:ring-offset-black disabled:pointer-events-none">
@@ -171,7 +171,7 @@ export const PostGameModal: React.FC<PostGameModalProps> = ({
 
           {/* Leaderboard Display for Custom Games */}
           {isCustomGame && leaderboard && leaderboard.length > 0 && (
-            <div className="p-4 border-4 border-black shadow-lg bg-white">
+            <div className="p-4 bg-white border-4 border-black shadow-lg">
               <div className="mb-3 text-lg font-black text-center text-black">LEADERBOARD</div>
               <div className="space-y-2">
                 {leaderboard.slice(0, 5).map((entry, index) => (
@@ -183,7 +183,7 @@ export const PostGameModal: React.FC<PostGameModalProps> = ({
                         : 'bg-gray-100'
                     }`}
                   >
-                    <div className="flex items-center gap-2">
+                    <div className="flex gap-2 items-center">
                       <span className="font-black text-black">#{index + 1}</span>
                       <span className="font-bold text-black">{entry.username}</span>
                     </div>
@@ -192,7 +192,7 @@ export const PostGameModal: React.FC<PostGameModalProps> = ({
                 ))}
               </div>
               {playerRank && totalPlayers && (
-                <div className="mt-3 text-center text-sm font-bold text-black">
+                <div className="mt-3 text-sm font-bold text-center text-black">
                   Your Rank: #{playerRank} of {totalPlayers} players
                 </div>
               )}

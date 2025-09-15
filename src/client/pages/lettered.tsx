@@ -834,7 +834,7 @@ export const LetteredPage = ({ onBack }: { onBack?: () => void }) => {
   };
 
   const resetGame = () => {
-    window.location.reload();
+    // void navigate(0);
   };
 
   // Development functions
@@ -1040,7 +1040,13 @@ export const LetteredPage = ({ onBack }: { onBack?: () => void }) => {
               <InGameCustomButton className={cn('w-full', !gameId && 'sm:w-auto')} />
               {gameId && (
                 <Button
-                  onClick={() => navigate('/')}
+                  onClick={() => {
+                    const date = new Date();
+                    date.setTime(date.getTime() + 24 * 60 * 60 * 1000);
+                    const expires = `expires=${date.toUTCString()}`;
+                    document.cookie = `dailyMode=true;${expires};path=/`;
+                    void navigate('/?dailyMode=true');
+                  }}
                   variant="secondary"
                   className="self-start w-full"
                   type="button"

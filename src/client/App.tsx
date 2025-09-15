@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Routes, Route, useNavigate } from 'react-router-dom';
+import { Routes, Route, useNavigate, useSearchParams } from 'react-router-dom';
 import { TopXPage } from './pages/topx';
 import { DevPage } from './pages/dev';
 import { LetteredPage } from './pages/lettered';
@@ -24,20 +24,19 @@ import { UserLeaderboardStats } from './components/UserLeaderboardStats';
 import { apiFetch } from './lib/utils';
 import type { User } from '../shared/types/api';
 
+const getCookie = (name: string): string | null => {
+  const value = `; ${document.cookie}`;
+  const parts = value.split(`; ${name}=`);
+  if (parts.length === 2) return parts.pop()?.split(';').shift() || null;
+  return null;
+};
+
 export const App = () => {
   const navigate = useNavigate();
   const [showWelcome, setShowWelcome] = useState<boolean>(false);
   const [userInfo, setUserInfo] = useState<User | null>(null);
   const [isCheckingContext, setIsCheckingContext] = useState<boolean>(true);
-  // userInfo is stored for potential future use and debugging
-
-  // Cookie utilities
-  const getCookie = (name: string): string | null => {
-    const value = `; ${document.cookie}`;
-    const parts = value.split(`; ${name}=`);
-    if (parts.length === 2) return parts.pop()?.split(';').shift() || null;
-    return null;
-  };
+  const dailyMode = getCookie('dailyMode') === 'true';
 
   const setCookie = (name: string, value: string, days: number): void => {
     const date = new Date();
@@ -49,11 +48,6 @@ export const App = () => {
   // Check if welcome was dismissed on mount and handle custom game context
   useEffect(() => {
     const initializeApp = async () => {
-      console.log('App initializing with URL:', window.location.href);
-      console.log('Pathname:', window.location.pathname);
-      console.log('Search params:', window.location.search);
-      console.log('Hash:', window.location.hash);
-
       // FIRST: Check for custom game context BEFORE doing anything else
       try {
         // ALWAYS check context - don't restrict to homepage only
@@ -62,11 +56,13 @@ export const App = () => {
         if (response.ok) {
           const data = await response.json();
 
+          console.log('dailyMode', dailyMode);
+          console.log('getCookie', getCookie('dailyMode'));
           const metadata = data.context?.metadata;
           const debug = data.context?.debug;
 
           // If this is a custom game post, redirect to the custom game IMMEDIATELY
-          if (metadata?.customGameId && metadata?.gameType === 'lettered') {
+          if (metadata?.customGameId && metadata?.gameType === 'lettered' && !dailyMode) {
             console.log('Redirecting to custom game:', { gameId: metadata.customGameId });
             await navigate(`/lettered/${metadata.customGameId}`);
             setIsCheckingContext(false);
@@ -96,7 +92,7 @@ export const App = () => {
     };
 
     void initializeApp();
-  }, [navigate]);
+  }, []);
 
   // Check game status and create games if needed
   useEffect(() => {
