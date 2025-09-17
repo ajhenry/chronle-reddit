@@ -15,6 +15,7 @@
     "dev:client": "cd src/client && vite build --watch",
     "dev:devvit": "devvit playtest",
     "dev:server": "cd src/server && vite build --watch",
+    "dev:reddit": "REDDIT_MODE=true concurrently -k -p \"[{name}]\" -n \"CLIENT,SERVER,DEVVIT\" -c \"blue,green,magenta\" \"npm run dev:client\" \"npm run dev:server\" \"npm run dev:devvit\"",
     "dev:vite": "cd src/client && vite --port 7474",
     "local": "LOCAL_MODE=true concurrently -k -p \"[{name}]\" -n \"SERVER,VITE\" -c \"green,blue\" \"npm run local:server\" \"npm run dev:vite\"",
     "local:server": "nodemon",
@@ -24,7 +25,7 @@
     "login": "devvit login",
     "launch": "npm run build && npm run deploy && devvit publish",
     "prettier": "prettier-package-json --write ./package.json && prettier --write .",
-    "test": "vitest",
+    "test": "vitest --no-watch",
     "test:ui": "vitest --ui",
     "test:run": "vitest run",
     "type-check": "tsc --build"

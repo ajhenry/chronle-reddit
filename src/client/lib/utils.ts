@@ -20,14 +20,38 @@ export const getApiBaseUrl = (): string => {
 export const apiFetch = async (endpoint: string, options?: RequestInit): Promise<Response> => {
   const baseUrl = getApiBaseUrl();
   const url = baseUrl + endpoint;
+  const maxRetries = 3;
 
-  return fetch(url, {
-    ...options,
-    headers: {
-      'Content-Type': 'application/json',
-      ...options?.headers,
-    },
-  });
+  for (let attempt = 0; attempt <= maxRetries; attempt++) {
+    try {
+      const response = await fetch(url, {
+        ...options,
+        headers: {
+          'Content-Type': 'application/json',
+          ...options?.headers,
+        },
+      });
+
+      // Don't retry on 200 (success) or 400 (client error)
+      if (response.status === 200 || response.status === 400 || attempt === maxRetries) {
+        return response;
+      }
+
+      // For other status codes, retry after a brief delay
+      if (attempt < maxRetries) {
+        await new Promise((resolve) => setTimeout(resolve, 1000 * (attempt + 1))); // Exponential backoff
+      }
+    } catch (error) {
+      // Network errors - retry if attempts remaining
+      if (attempt === maxRetries) {
+        throw error;
+      }
+      await new Promise((resolve) => setTimeout(resolve, 1000 * (attempt + 1))); // Exponential backoff
+    }
+  }
+
+  // This should never be reached, but TypeScript requires it
+  throw new Error('Unexpected retry loop exit');
 };
 
 /**

@@ -2254,6 +2254,7 @@ export {
   generatePiecesWithBacktracking,
   validateBoardState,
   validateConnectivity,
+  PIECE_COLOR_CLASSES,
 };
 
 // Generate initial piece positions for the extended area (below main grid)
@@ -2543,6 +2544,7 @@ export const generateMockGame = (
       initialPiecePositions,
       solution,
       solutionHash,
+      seed: seed ?? null,
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
     };
@@ -2649,6 +2651,7 @@ const generateFallbackGame = (category: string, phrase: string): LetteredGameDat
     initialPiecePositions,
     solution,
     solutionHash,
+    seed: null, // fallback games don't use seeds
     createdAt: new Date().toISOString(),
     updatedAt: new Date().toISOString(),
   };

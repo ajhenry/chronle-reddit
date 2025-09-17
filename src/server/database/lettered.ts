@@ -16,6 +16,7 @@ export interface LetteredGame {
   initialPiecePositions: Record<string, GridPosition>;
   solution: Record<string, GridPosition>;
   solutionHash: string;
+  seed: number | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -87,6 +88,7 @@ const convertLetteredGame = (
     initialPiecePositions: game.initial_piece_positions as Record<string, GridPosition>,
     solution: game.solution as Record<string, GridPosition>,
     solutionHash: game.solution_hash,
+    seed: game.seed,
     createdAt: game.created_at,
     updatedAt: game.updated_at,
   };
@@ -105,6 +107,7 @@ export const createLetteredGame = async (game: LetteredGame): Promise<LetteredGa
       initial_piece_positions: game.initialPiecePositions,
       solution: game.solution,
       solution_hash: game.solutionHash,
+      seed: game.seed,
     })
     .select()
     .single();

@@ -12,9 +12,11 @@ import topxRoutes from './handlers/topx';
 import customRoutes from './handlers/custom';
 import contextRoutes from './handlers/context';
 
-// Environment detection - use LOCAL_MODE flag for local development
-// Set LOCAL_MODE=true to use regular Express server instead of Reddit's server
+// Environment detection
+// LOCAL_MODE=true: Use Express server + stubbed Reddit API for local development
+// REDDIT_MODE=true: Use Reddit server + real Reddit API but with development features enabled
 const isLocal = process.env.LOCAL_MODE === 'true';
+const isRedditDev = process.env.REDDIT_MODE === 'true';
 
 Devvit.addSettings([
   {
@@ -38,8 +40,8 @@ app.use(express.text());
 // API logging middleware for all routes
 app.use('/api', apiLoggingMiddleware);
 
-// CORS middleware for local development
-if (isLocal) {
+// CORS middleware for local development and Reddit development mode
+if (isLocal || isRedditDev) {
   app.use((req, res, next) => {
     res.header('Access-Control-Allow-Origin', '*');
     res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
@@ -67,10 +69,15 @@ app.use(leaderboardRoutes);
 app.use(topxRoutes);
 app.use(customRoutes);
 app.use(contextRoutes);
-// Health check endpoint for local development
-if (isLocal) {
+// Health check endpoint for development modes
+if (isLocal || isRedditDev) {
   app.get('/health', (_req, res) => {
-    res.json({ status: 'ok', message: 'Local development server is running' });
+    const mode = isLocal ? 'Local development' : 'Reddit development';
+    res.json({
+      status: 'ok',
+      message: `${mode} server is running`,
+      environment: isLocal ? 'local' : 'reddit-dev',
+    });
   });
 }
 
@@ -104,12 +111,18 @@ if (isLocal) {
     });
   });
 } else {
-  // Use Reddit's server for production
+  // Use Reddit's server for production and Reddit development mode
   void (async () => {
     try {
       const { createServer, getServerPort } = await import('@devvit/web/server');
       const port = getServerPort();
       const server = createServer(app);
+
+      if (isRedditDev) {
+        console.log('🚀 Reddit development server running (with development features enabled)');
+        console.log(`📊 Health check: http://localhost:${port}/health`);
+      }
+
       server.on('error', (err) => console.error(`server error; ${err.stack}`));
       server.listen(port);
     } catch (error) {

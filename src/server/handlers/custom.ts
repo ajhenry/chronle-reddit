@@ -113,7 +113,8 @@ router.post('/api/custom/lettered', async (req, res): Promise<void> => {
 
     // Generate game data using the lettered-game-generator
     console.log(`Generating custom lettered game for phrase: "${cleanPhrase}"`);
-    const gameData = generateMockGame(category, cleanPhrase);
+    const seed = Math.floor(Math.random() * 1000000);
+    const gameData = generateMockGame(category, cleanPhrase, seed);
 
     // Create unique game ID for Redis storage
     const gameId = `custom-lettered:${Date.now()}:${Math.random().toString(36).substr(2, 9)}`;

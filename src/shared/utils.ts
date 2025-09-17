@@ -1,4 +1,4 @@
-const isDevelopment = () => process.env.LOCAL_MODE === 'true';
+const isDevelopment = () => process.env.LOCAL_MODE === 'true' || process.env.REDDIT_MODE === 'true';
 
 /**
  * Generates all valid combinations of a solution array with empty slots allowed.
