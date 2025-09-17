@@ -2,6 +2,7 @@ import { describe, it, expect, beforeEach, vi } from 'vitest';
 import {
   createEmptyGrid,
   create9x9Grid,
+  createConfigurableGrid,
   placePhraseOn9x9Grid,
   trimBoard,
   addPreFilledLetters,
@@ -51,6 +52,33 @@ describe('Lettered Game Generator', () => {
 
       it('should initialize all cells as unused', () => {
         const grid = createEmptyGrid();
+        grid.forEach((row) => {
+          row.forEach((cell) => {
+            expect(cell.isUnused).toBe(true);
+            expect(cell.letter).toBeNull();
+            expect(cell.isLetter).toBe(false);
+            expect(cell.isPreFilled).toBe(false);
+            expect(cell.isSpace).toBe(false);
+          });
+        });
+      });
+    });
+
+    describe('createConfigurableGrid', () => {
+      it('should create a grid with specified dimensions', () => {
+        const grid = createConfigurableGrid(5, 7);
+        expect(grid).toHaveLength(5);
+        expect(grid[0]).toHaveLength(7);
+      });
+
+      it('should enforce max 9 columns', () => {
+        const grid = createConfigurableGrid(5, 15); // Try to create 15 columns
+        expect(grid).toHaveLength(5);
+        expect(grid[0]).toHaveLength(9); // Should be limited to 9
+      });
+
+      it('should initialize all cells as unused', () => {
+        const grid = createConfigurableGrid(3, 4);
         grid.forEach((row) => {
           row.forEach((cell) => {
             expect(cell.isUnused).toBe(true);

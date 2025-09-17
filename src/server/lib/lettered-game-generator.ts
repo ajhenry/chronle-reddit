@@ -147,12 +147,15 @@ export const printBoard = (grid: GridCell[][], title: string = 'Board'): void =>
   );
 };
 
-// Create an empty 9x9 grid for initial phrase placement
-export const create9x9Grid = (): GridCell[][] => {
-  return Array(9)
+// Create a configurable grid with max 9 columns and variable rows
+export const createConfigurableGrid = (rows: number, columns: number = 9): GridCell[][] => {
+  // Enforce max 9 columns as requested
+  const actualColumns = Math.min(columns, 9);
+
+  return Array(rows)
     .fill(null)
     .map(() =>
-      Array(9)
+      Array(actualColumns)
         .fill(null)
         .map(() => ({
           letter: null,
@@ -164,16 +167,40 @@ export const create9x9Grid = (): GridCell[][] => {
     );
 };
 
-// Place a phrase on a 9x9 grid for initial layout following lettered.md algorithm
-export const placePhraseOn9x9Grid = (grid: GridCell[][], phrase: string): GridCell[][] => {
+// Create an empty 9x9 grid for initial phrase placement (backward compatibility)
+export const create9x9Grid = (): GridCell[][] => {
+  return createConfigurableGrid(9, 9);
+};
+
+/**
+ * Example usage of configurable grid system:
+ *
+ * // Create a 12x9 grid (12 rows, 9 columns max)
+ * const largeGrid = createConfigurableGrid(12, 9);
+ *
+ * // Place a phrase on the configurable grid
+ * const placedGrid = placePhraseOnGrid(largeGrid, "YOUR PHRASE HERE");
+ *
+ * // The system will automatically:
+ * // - Enforce max 9 columns
+ * // - Calculate appropriate letter limits based on grid size
+ * // - Use dynamic bounds checking throughout all algorithms
+ */
+
+// Place a phrase on a configurable grid (max 9 columns, variable rows)
+export const placePhraseOnGrid = (grid: GridCell[][], phrase: string): GridCell[][] => {
   const words = phrase
     .toUpperCase()
     .split(' ')
     .filter((word) => word.length > 0);
   const totalLetters = words.join('').length;
 
-  // Check for individual words that are too long
-  const maxWordLength = 9;
+  // Get grid dimensions
+  const gridRows = grid.length;
+  const gridCols = grid[0]?.length || 9;
+
+  // Check for individual words that are too long (max 9 characters per word)
+  const maxWordLength = Math.min(9, gridCols);
   const longWords = words.filter((word) => word.length > maxWordLength);
   if (longWords.length > 0) {
     throw new Error(
@@ -181,24 +208,30 @@ export const placePhraseOn9x9Grid = (grid: GridCell[][], phrase: string): GridCe
     );
   }
 
-  if (totalLetters > 70) {
-    throw new Error('Phrase has too many letters for 9x9 grid (max 70)');
+  // Calculate maximum letters based on grid size (allow more letters for larger grids)
+  const maxLetters = gridRows * gridCols;
+  if (totalLetters > maxLetters) {
+    throw new Error(
+      `Phrase has too many letters for ${gridRows}x${gridCols} grid (max ${maxLetters})`
+    );
   }
 
-  // Use the algorithm from lettered.md for 9x9 grid
-  const result = generatePhraseLayoutOn9x9Grid(grid, words);
+  // Use the configurable algorithm for grid layout
+  const result = generatePhraseLayoutOnGrid(grid, words);
   if (!result) {
-    throw new Error('Could not generate valid layout for phrase on 9x9 grid');
+    throw new Error(`Could not generate valid layout for phrase on ${gridRows}x${gridCols} grid`);
   }
 
   return result;
 };
 
-// Generate phrase layout on 9x9 grid following lettered.md algorithm exactly
-const generatePhraseLayoutOn9x9Grid = (
-  grid: GridCell[][],
-  words: string[]
-): GridCell[][] | null => {
+// Place a phrase on a 9x9 grid for initial layout following lettered.md algorithm (backward compatibility)
+export const placePhraseOn9x9Grid = (grid: GridCell[][], phrase: string): GridCell[][] => {
+  return placePhraseOnGrid(grid, phrase);
+};
+
+// Generate phrase layout on configurable grid following lettered.md algorithm
+const generatePhraseLayoutOnGrid = (grid: GridCell[][], words: string[]): GridCell[][] | null => {
   const newGrid = grid.map((row) => row.map((cell) => ({ ...cell })));
 
   // Create a more balanced layout by intelligently grouping words
@@ -207,9 +240,21 @@ const generatePhraseLayoutOn9x9Grid = (
   return balancedLayout;
 };
 
+// Generate phrase layout on 9x9 grid following lettered.md algorithm exactly (backward compatibility)
+const generatePhraseLayoutOn9x9Grid = (
+  grid: GridCell[][],
+  words: string[]
+): GridCell[][] | null => {
+  return generatePhraseLayoutOnGrid(grid, words);
+};
+
 // Create a balanced phrase layout that groups words more intelligently
 const createBalancedPhraseLayout = (grid: GridCell[][], words: string[]): GridCell[][] | null => {
   const newGrid = grid.map((row) => row.map((cell) => ({ ...cell })));
+
+  // Get grid dimensions
+  const gridRows = grid.length;
+  const gridCols = grid[0]?.length || 9;
 
   // Group words intelligently for better balance
   const wordGroups = groupWordsForBalance(words);
@@ -222,15 +267,15 @@ const createBalancedPhraseLayout = (grid: GridCell[][], words: string[]): GridCe
   let currentRow = 1; // Start at row 1 for better balance
 
   for (const wordGroup of wordGroups) {
-    if (currentRow >= 8) {
+    if (currentRow >= gridRows - 1) {
       return null; // Not enough space
     }
 
     const groupText = wordGroup.join(' ');
     const groupLength = groupText.length;
 
-    // Center the group in the row (aim for ~8 character width)
-    const targetWidth = 8;
+    // Center the group in the row (use available column width)
+    const targetWidth = Math.min(8, gridCols);
     const startCol = Math.max(0, Math.floor((targetWidth - groupLength) / 2));
 
     console.log(`📍 Placing group "${groupText}" at row ${currentRow}, start col ${startCol}`);
@@ -241,7 +286,7 @@ const createBalancedPhraseLayout = (grid: GridCell[][], words: string[]): GridCe
       const char = groupText[i];
       if (char === ' ') {
         // Place space
-        if (currentRow >= 0 && currentRow < 9 && col >= 0 && col < 9) {
+        if (currentRow >= 0 && currentRow < gridRows && col >= 0 && col < gridCols) {
           const spaceCell = newGrid[currentRow]?.[col];
           if (spaceCell) {
             spaceCell.letter = null;
@@ -253,7 +298,7 @@ const createBalancedPhraseLayout = (grid: GridCell[][], words: string[]): GridCe
         }
       } else {
         // Place letter
-        if (currentRow >= 0 && currentRow < 9 && col >= 0 && col < 9 && char) {
+        if (currentRow >= 0 && currentRow < gridRows && col >= 0 && col < gridCols && char) {
           const cell = newGrid[currentRow]?.[col];
           if (cell) {
             cell.letter = char;
@@ -1287,7 +1332,7 @@ const generatePiecesWithExactAlgorithm = (
     );
 
     // Generate piece using the backtracking algorithm from lettered.md
-    const piece = generateSinglePieceWithBacktracking(startingLetter, gridCopy, usedLetters);
+    const piece = generateSinglePieceWithBacktracking(startingLetter, gridCopy, usedLetters, 9, 9);
 
     if (!piece || piece.letters.length < 2) {
       console.log(
@@ -1417,7 +1462,9 @@ const findNextAvailableLetterForPiece = (
 const generateSinglePieceWithBacktracking = (
   startingLetter: { letter: string; position: GridPosition },
   gridCopy: Array<{ letter: string; position: GridPosition }>,
-  usedLetters: Set<string>
+  usedLetters: Set<string>,
+  gridRows: number,
+  gridCols: number
 ): LetterPiece | null => {
   console.log(
     `🔧 Individual Piece Debug: Starting piece generation from ${startingLetter.letter} at (${startingLetter.position.row},${startingLetter.position.col})`
@@ -1471,7 +1518,12 @@ const generateSinglePieceWithBacktracking = (
           col: currentPos.col + direction.col,
         };
 
-        if (nextPos.row < 0 || nextPos.row >= 9 || nextPos.col < 0 || nextPos.col >= 9) {
+        if (
+          nextPos.row < 0 ||
+          nextPos.row >= gridRows ||
+          nextPos.col < 0 ||
+          nextPos.col >= gridCols
+        ) {
           continue;
         }
 
@@ -1512,8 +1564,13 @@ const generateSinglePieceWithBacktracking = (
         `${indent}➡️ Trying direction ${direction.name}: (${nextPos.row},${nextPos.col})`
       );
 
-      // Check bounds (assuming 9x9 grid)
-      if (nextPos.row < 0 || nextPos.row >= 9 || nextPos.col < 0 || nextPos.col >= 9) {
+      // Check bounds (using dynamic grid dimensions)
+      if (
+        nextPos.row < 0 ||
+        nextPos.row >= gridRows ||
+        nextPos.col < 0 ||
+        nextPos.col >= gridCols
+      ) {
         console.log(`${indent}🚫 Out of bounds`);
         continue;
       }
@@ -2486,13 +2543,13 @@ export const generateMockGame = (
   try {
     console.log(`\n🎮 Generating game for phrase: "${phrase}"\n`);
 
-    // Step 1: Generate proper square phrase using a standard 9x9 grid
-    console.log('Step 1: Creating initial 9x9 grid...');
-    const initialGrid = create9x9Grid();
-    printBoard(initialGrid, 'Step 1: Initial 9x9 Grid');
+    // Step 1: Generate proper square phrase using a configurable grid
+    console.log('Step 1: Creating initial configurable grid...');
+    const initialGrid = createConfigurableGrid(100, 9); // Start with 9x9 for compatibility
+    printBoard(initialGrid, 'Step 1: Initial Configurable Grid');
 
     console.log('Step 2: Placing phrase on grid...');
-    const placedGrid = placePhraseOn9x9Grid(initialGrid, phrase);
+    const placedGrid = placePhraseOnGrid(initialGrid, phrase);
     printBoard(placedGrid, 'Step 2: After Placing Phrase');
 
     // Step 3: Add pre-filled letters (anchor letters) to create the square puzzle
