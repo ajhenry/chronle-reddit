@@ -883,7 +883,8 @@ export const LetteredPage = ({ onBack }: { onBack?: () => void }) => {
   };
 
   const pieceTileClass = (piece: LetterPiece) => {
-    const baseClass = 'text-primary-foreground transition-all touch-none duration-500';
+    const baseClass =
+      'text-primary-foreground transition-all touch-none duration-500 overflow-hidden';
     return cn(
       baseClass,
       !(
