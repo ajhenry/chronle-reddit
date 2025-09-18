@@ -117,8 +117,8 @@ export const DevPage = ({ onBack }: DevPageProps) => {
               content: cell.letter,
               disabled: true, // Anchor letters are immovable
               className: getTileClassName
-                ? getTileClassName(anchorPiece)
-                : 'bg-foreground text-background border border-muted',
+                ? cn(getTileClassName(anchorPiece), 'bg-black')
+                : 'bg-black text-background border border-muted',
             });
           }
         }
@@ -303,25 +303,28 @@ export const DevPage = ({ onBack }: DevPageProps) => {
   }, [phrase, seed]);
 
   // Handle layout changes from the grid (matching lettered game) - disabled for dev page
-  const handleGridLayoutChange = useCallback((layout: (string | null)[][]) => {
-    if (!generatedGame) return;
+  const handleGridLayoutChange = useCallback(
+    (layout: (string | null)[][]) => {
+      if (!generatedGame) return;
 
-    // Convert layout to piece positions
-    const newPlacedPieces = new Map<string, { row: number; col: number }>();
+      // Convert layout to piece positions
+      const newPlacedPieces = new Map<string, { row: number; col: number }>();
 
-    layout.forEach((row, rowIndex) => {
-      row.forEach((itemId, colIndex) => {
-        if (itemId) {
-          const piece = generatedGame.pieces.find((p) => p.id === itemId);
-          if (piece) {
-            newPlacedPieces.set(itemId, { row: rowIndex, col: colIndex });
+      layout.forEach((row, rowIndex) => {
+        row.forEach((itemId, colIndex) => {
+          if (itemId) {
+            const piece = generatedGame.pieces.find((p) => p.id === itemId);
+            if (piece) {
+              newPlacedPieces.set(itemId, { row: rowIndex, col: colIndex });
+            }
           }
-        }
+        });
       });
-    });
 
-    // setPlacedPieces(newPlacedPieces);
-  }, []);
+      // setPlacedPieces(newPlacedPieces);
+    },
+    [generatedGame]
+  );
 
   return (
     <div className="p-2 min-h-screen sm:p-4 bg-background">

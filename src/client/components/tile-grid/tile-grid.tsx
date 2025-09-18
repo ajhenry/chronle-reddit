@@ -591,7 +591,7 @@ const GridCell = React.memo(({ x, y, className = '', style }: GridCellProps) => 
     <div
       id={cellId}
       className={cn(
-        'relative border transition-colors border-border dark:border-transparent',
+        'relative border-2 border-white transition-colors dark:border-transparent',
         combinedClassName
       )}
       style={cellStyle}

@@ -2059,7 +2059,7 @@ const selectOptimalAnchorsWithConnectivityCheck = (
   }
 
   // For every 8 letters, select 1 from every 8 randomly and mark it as used
-  const maxDistanceBetweenAnchors = letterPositions.length < 16 ? 6 : 4;
+  const maxDistanceBetweenAnchors = letterPositions.length < 16 ? 6 : 8;
   for (let i = 0; i < letterPositions.length; i += maxDistanceBetweenAnchors) {
     const randomIndex = Math.floor(Math.random() * maxDistanceBetweenAnchors);
     const selectedLetter = letterPositions[i + randomIndex];

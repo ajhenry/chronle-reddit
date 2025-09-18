@@ -170,8 +170,8 @@ const convertGridDataToItems = ({
             cursor: 'default', // Override disabled cursor
           },
           className: getTileClassName
-            ? getTileClassName(anchorPiece)
-            : 'bg-foreground text-background border border-muted',
+            ? cn(getTileClassName(anchorPiece), 'bg-black text-white border-2 border-white')
+            : 'bg-black text-background border border-muted',
         });
       }
     }
