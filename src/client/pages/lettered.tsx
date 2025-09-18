@@ -25,6 +25,7 @@ import { cn } from '@sglara/cn';
 import { LetteredGameStateManager } from '../lib/lettered-game-state';
 import { apiFetch } from '../lib/utils';
 import { LetteredDailyGameResponse, LetteredPostGameResponse } from '../../shared/types/api';
+import { useTheme } from 'src/components/theme-provider';
 
 // API functions for daily Lettered game
 const fetchTodaysGame = async (): Promise<LetteredDailyGameResponse> => {
@@ -170,7 +171,7 @@ const convertGridDataToItems = ({
             cursor: 'default', // Override disabled cursor
           },
           className: getTileClassName
-            ? cn(getTileClassName(anchorPiece), 'bg-black text-white border-2 border-white')
+            ? cn(getTileClassName(anchorPiece), 'text-white')
             : 'bg-black text-background border border-muted',
         });
       }
@@ -252,6 +253,7 @@ export const LetteredPage = ({ onBack }: { onBack?: () => void }) => {
     lastValidPreviewPosition: null,
     isValidPreview: false,
   });
+  const { theme } = useTheme();
 
   // Flag to track if this is a reloaded completed game
   const [isReloadedCompletedGame, setIsReloadedCompletedGame] = useState(false);
@@ -858,6 +860,7 @@ export const LetteredPage = ({ onBack }: { onBack?: () => void }) => {
 
   const boardTileClass = (x: number, y: number) => {
     const baseClass = 'bg-card hover:bg-accent transition-colors';
+
     // Style board tiles based on the lettered grid data
     const cell = gameData?.grid[y]?.[x];
     if (!cell) {
@@ -870,7 +873,8 @@ export const LetteredPage = ({ onBack }: { onBack?: () => void }) => {
 
     // Don't style cells that have pre-filled anchor letters (they're rendered as pieces)
     if (cell.isPreFilled) {
-      return cn(baseClass, 'bg-gray-200');
+      console.log('isPreFilled', cell);
+      return cn(baseClass, 'bg-gray-900 text-white !border-0 !border-border');
     }
 
     // Make unoccupied spaces gray-700
@@ -879,7 +883,7 @@ export const LetteredPage = ({ onBack }: { onBack?: () => void }) => {
     }
 
     // For cells with letters that will be filled by pieces, use gray-200
-    return cn(baseClass, 'bg-gray-200');
+    return cn(baseClass, 'bg-gray-200', theme === 'light' ? '!border-2 !border-gray-700' : '');
   };
 
   const pieceTileClass = (piece: LetterPiece) => {
@@ -1002,8 +1006,31 @@ export const LetteredPage = ({ onBack }: { onBack?: () => void }) => {
         </div>
       )}
 
+      {/* In-Game Custom Game Button */}
+      {!isReloadedCompletedGame && !postGameStats && (
+        <div className="flex flex-row justify-center mb-8 space-x-2">
+          <InGameCustomButton className={cn('w-auto')} />
+          {gameId && (
+            <Button
+              onClick={() => {
+                const date = new Date();
+                date.setTime(date.getTime() + 24 * 60 * 60 * 1000);
+                const expires = `expires=${date.toUTCString()}`;
+                document.cookie = `dailyMode=true;${expires};path=/`;
+                void navigate('/?dailyMode=true');
+              }}
+              variant="outline"
+              className="self-start w-auto"
+              type="button"
+            >
+              Play Daily Podium
+            </Button>
+          )}
+        </div>
+      )}
+
       {/* Completion Banner for Reloaded Games */}
-      {isReloadedCompletedGame && (
+      {(isReloadedCompletedGame || postGameStats) && (
         <div className="p-4 mb-4 rounded-lg border-2 border-foreground">
           <div
             className={cn(

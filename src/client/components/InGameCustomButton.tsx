@@ -11,14 +11,14 @@ export const InGameCustomButton: React.FC<InGameCustomButtonProps> = ({ classNam
   const navigate = useNavigate();
 
   const handleClick = () => {
-    navigate('/custom');
+    void navigate('/custom');
   };
 
   return (
     <div className={className || ''}>
       <Button
         onClick={handleClick}
-        className="w-full text-white bg-gradient-to-r from-purple-500 to-pink-500 border-0 hover:from-purple-600 hover:to-pink-600"
+        className="w-full text-white bg-gradient-to-r from-purple-500 to-pink-500 border-0 sm:w-auto hover:from-purple-600 hover:to-pink-600"
       >
         <Plus className="mr-1 w-4 h-4" />
         Create Game
