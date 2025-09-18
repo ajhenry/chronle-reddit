@@ -85,6 +85,14 @@ export const isValidPiecePlacement = (
       (!cell?.isLetter || cell?.isSpace || cell?.isUnused)
     ) {
       return false; // Non-pre-filled cells must have letters and be valid
+    } else if (
+      !cell?.isPreFilled &&
+      pieceLetter &&
+      cell?.isLetter &&
+      cell?.letter &&
+      pieceLetter !== cell.letter
+    ) {
+      return false; // Non-pre-filled cells with letters must match exactly
     }
   }
 

@@ -599,9 +599,9 @@ const GridCell = React.memo(({ x, y, className = '', style }: GridCellProps) => 
       data-occupied={isOccupied}
       data-item-id={cellData?.occupyingItemId}
     >
-      {/* Coordinate labels - disabled */}
+      {/* Coordinate labels for dev mode */}
       {isDevelopment() && (
-        <div className="absolute top-0 left-0 text-[8px] font-mono text-muted-foreground/60 leading-none p-0.5 pointer-events-none select-none">
+        <div className="absolute top-0 left-0 text-[10px] font-mono text-red-600 font-bold leading-none p-0.5 pointer-events-none select-none bg-white/80 rounded">
           {x},{y}
         </div>
       )}

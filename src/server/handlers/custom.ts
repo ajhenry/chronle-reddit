@@ -40,6 +40,12 @@ const scoreSubmissionSchema = z.object({
   moves: z.number().int().min(0),
 });
 
+// Schema for dev game generation (no posting to Reddit)
+const devLetteredSchema = z.object({
+  phrase: z.string().min(1).max(70).trim(),
+  seed: z.number().int().min(0).optional(),
+});
+
 // Schema for leaderboard query parameters
 const leaderboardQuerySchema = z.object({
   limit: z
@@ -197,6 +203,68 @@ router.post('/api/custom/lettered', async (req, res): Promise<void> => {
     }
   } catch (error) {
     console.error('Error creating custom lettered game:', error);
+    res.status(500).json({
+      error: 'Internal server error',
+    });
+  }
+});
+
+// Dev endpoint for generating lettered games without creating Reddit posts
+router.post('/api/dev/lettered', async (req, res): Promise<void> => {
+  console.log('🔍 Generating dev lettered game');
+  try {
+    // Validate request body
+    const validationResult = devLetteredSchema.safeParse(req.body);
+    if (!validationResult.success) {
+      res.status(400).json({
+        error: 'Invalid input',
+        details: validationResult.error.issues,
+      });
+      return;
+    }
+
+    const { phrase, seed } = validationResult.data;
+
+    // Clean and validate phrase (only letters and spaces)
+    const cleanPhrase = phrase
+      .replace(/[^a-zA-Z\s]/g, '')
+      .toUpperCase()
+      .trim();
+    if (!cleanPhrase) {
+      res.status(400).json({
+        error: 'Phrase must contain at least one letter',
+      });
+      return;
+    }
+
+    // Validate phrase length constraints
+    if (cleanPhrase.length > 70) {
+      res.status(400).json({
+        error: 'Phrase must be 70 characters or less (including spaces)',
+      });
+      return;
+    }
+
+    // Validate word length constraints (max 9 letters per word)
+    const words = cleanPhrase.split(/\s+/);
+    const longWords = words.filter((word) => word.length > 9);
+    if (longWords.length > 0) {
+      res.status(400).json({
+        error: `Words must be 9 letters or less. Found: ${longWords.join(', ')}`,
+      });
+      return;
+    }
+
+    // Generate game data using the lettered-game-generator
+    console.log(`Generating dev lettered game for phrase: "${cleanPhrase}" with seed: ${seed}`);
+    const gameData = generateMockGame('Dev Test', cleanPhrase, seed);
+
+    res.json({
+      status: 'success',
+      gameData,
+    });
+  } catch (error) {
+    console.error('Error generating dev lettered game:', error);
     res.status(500).json({
       error: 'Internal server error',
     });

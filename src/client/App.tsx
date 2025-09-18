@@ -363,7 +363,7 @@ export const App = () => {
                     </Button>
 
                     {/* Dev Mode Button - only shows in development */}
-                    {isDevelopment() && (
+                    {(isDevelopment() || userInfo?.admin) && (
                       <Button variant="outline" onClick={handleDevModeClick}>
                         <Settings className="mr-2 w-4 h-4" />
                         DEV TOOLS

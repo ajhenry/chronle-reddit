@@ -1,12 +1,22 @@
 import { Router } from 'express';
 import { context } from '@devvit/web/server';
 import { redis } from '@devvit/redis';
+import { isDevelopment } from '../../shared/utils';
 
 const router = Router();
 
 // Get post context and metadata
 router.get('/api/context', async (_req, res): Promise<void> => {
   console.log(`/api/context`);
+
+  if (isDevelopment()) {
+    res.json({
+      status: 'success',
+      context: {
+        subredditName: 'test',
+      },
+    });
+  }
   try {
     // Access the post context to get metadata
     const postContext = context;

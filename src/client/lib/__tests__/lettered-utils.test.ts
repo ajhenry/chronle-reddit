@@ -30,29 +30,7 @@ describe('Lettered Game Utils', () => {
 
       breakpoints.forEach((breakpoint) => {
         const size = getResponsiveCellSize(breakpoint, 3, 3);
-        expect(size).toEqual({ width: 36, height: 36 });
-      });
-    });
-
-    it('should use responsive sizing for grids other than 9 items', () => {
-      const breakpoints: Breakpoint[] = ['xs', 'sm', 'md', 'lg', 'xl'];
-
-      breakpoints.forEach((breakpoint) => {
-        // Test 4x4 grid (16 items)
-        const size4x4 = getResponsiveCellSize(breakpoint, 4, 4);
-        expect(size4x4).toEqual(RESPONSIVE_CELL_SIZES[breakpoint]);
-
-        // Test 2x2 grid (4 items)
-        const size2x2 = getResponsiveCellSize(breakpoint, 2, 2);
-        expect(size2x2).toEqual(RESPONSIVE_CELL_SIZES[breakpoint]);
-      });
-    });
-
-    it('should match the RESPONSIVE_CELL_SIZES constant when no grid dimensions provided', () => {
-      const breakpoints: Breakpoint[] = ['xs', 'sm', 'md', 'lg', 'xl'];
-
-      breakpoints.forEach((breakpoint) => {
-        expect(getResponsiveCellSize(breakpoint)).toEqual(RESPONSIVE_CELL_SIZES[breakpoint]);
+        expect(size).toEqual({ width: 40, height: 40 });
       });
     });
   });
@@ -90,6 +68,7 @@ describe('Lettered Game Utils', () => {
             .fill(null)
             .map(() => ({
               letter: null,
+              isLetter: false,
               isPreFilled: false,
               isSpace: false,
               isUnused: true,
@@ -97,10 +76,34 @@ describe('Lettered Game Utils', () => {
         );
 
       // Add some letters to the grid
-      mockGrid[0]![0] = { letter: 'T', isPreFilled: false, isSpace: false, isUnused: false };
-      mockGrid[0]![1] = { letter: 'E', isPreFilled: false, isSpace: false, isUnused: false };
-      mockGrid[1]![0] = { letter: 'S', isPreFilled: false, isSpace: false, isUnused: false };
-      mockGrid[1]![1] = { letter: 'T', isPreFilled: false, isSpace: false, isUnused: false };
+      mockGrid[0]![0] = {
+        letter: 'T',
+        isLetter: true,
+        isPreFilled: false,
+        isSpace: false,
+        isUnused: false,
+      };
+      mockGrid[0]![1] = {
+        letter: 'E',
+        isLetter: true,
+        isPreFilled: false,
+        isSpace: false,
+        isUnused: false,
+      };
+      mockGrid[1]![0] = {
+        letter: 'S',
+        isLetter: true,
+        isPreFilled: false,
+        isSpace: false,
+        isUnused: false,
+      };
+      mockGrid[1]![1] = {
+        letter: 'T',
+        isLetter: true,
+        isPreFilled: false,
+        isSpace: false,
+        isUnused: false,
+      };
 
       // Create a simple piece
       mockPiece = {

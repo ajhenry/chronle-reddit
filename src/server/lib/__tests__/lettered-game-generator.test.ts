@@ -17,6 +17,7 @@ import {
   generatePiecesWithBacktracking,
   validateBoardState,
   validateConnectivity,
+  testGameSolution,
   PIECE_COLOR_CLASSES,
 } from '../lettered-game-generator';
 import type {
@@ -25,21 +26,6 @@ import type {
   LetterPiece,
   LetteredGameData,
 } from '../../../shared/types/api';
-
-// Mock console methods to reduce noise in tests
-const originalConsole = global.console;
-beforeEach(() => {
-  global.console = {
-    ...originalConsole,
-    log: vi.fn(),
-    warn: vi.fn(),
-    error: vi.fn(),
-  };
-});
-
-afterEach(() => {
-  global.console = originalConsole;
-});
 
 describe('Lettered Game Generator', () => {
   describe('Grid Creation', () => {
@@ -212,6 +198,121 @@ describe('Lettered Game Generator', () => {
 
         expect(trimmed).toEqual(grid);
       });
+
+      it('should trim last column when first column has letters, width is 9, and last column is empty', () => {
+        const grid = create9x9Grid();
+
+        // Add letters in first column (col 0)
+        grid[2][0] = {
+          letter: 'H',
+          isLetter: true,
+          isPreFilled: false,
+          isSpace: false,
+          isUnused: false,
+        };
+        grid[3][0] = {
+          letter: 'I',
+          isLetter: true,
+          isPreFilled: false,
+          isSpace: false,
+          isUnused: false,
+        };
+
+        // Add letters in middle columns but not last column (col 8)
+        grid[2][4] = {
+          letter: 'T',
+          isLetter: true,
+          isPreFilled: false,
+          isSpace: false,
+          isUnused: false,
+        };
+        grid[2][5] = {
+          letter: 'H',
+          isLetter: true,
+          isPreFilled: false,
+          isSpace: false,
+          isUnused: false,
+        };
+
+        const trimmed = trimBoard(grid);
+
+        // Should have trimmed to 8 columns (last column removed)
+        expect(trimmed[0]).toHaveLength(8);
+
+        // Should contain the placed letters
+        const letterCells = trimmed.flat().filter((cell) => cell.letter && !cell.isUnused);
+        expect(letterCells.length).toBe(4);
+      });
+
+      it('should trim last column when first column has letters, width is 9, and last column is empty HOTDOG', () => {
+        const gameData = generateMockGame('Dev Test', 'A HOTDOG', 123);
+        expect(gameData.grid[0]).toHaveLength(8);
+      });
+
+      it('should not trim last column when first column has no letters', () => {
+        const grid = create9x9Grid();
+
+        // No letters in first column (col 0)
+
+        // Add letters in middle and last columns
+        grid[2][4] = {
+          letter: 'T',
+          isLetter: true,
+          isPreFilled: false,
+          isSpace: false,
+          isUnused: false,
+        };
+        grid[2][5] = {
+          letter: 'E',
+          isLetter: true,
+          isPreFilled: false,
+          isSpace: false,
+          isUnused: false,
+        };
+        grid[3][8] = {
+          letter: 'S',
+          isLetter: true,
+          isPreFilled: false,
+          isSpace: false,
+          isUnused: false,
+        };
+
+        const trimmed = trimBoard(grid);
+
+        // Should have 8 columns (balanced layout chooses 8 for small content, regardless of special trimming rule)
+        expect(trimmed[0]).toHaveLength(8);
+
+        // Should contain the placed letters
+        const letterCells = trimmed.flat().filter((cell) => cell.letter && !cell.isUnused);
+        expect(letterCells.length).toBe(3);
+      });
+
+      it('should not trim when width is not 9', () => {
+        const grid = createConfigurableGrid(8, 8); // 8 columns, not 9
+
+        // Add letters in first column
+        grid[2][0] = {
+          letter: 'H',
+          isLetter: true,
+          isPreFilled: false,
+          isSpace: false,
+          isUnused: false,
+        };
+
+        // Add letters in middle columns but not last column
+        grid[2][4] = {
+          letter: 'T',
+          isLetter: true,
+          isPreFilled: false,
+          isSpace: false,
+          isUnused: false,
+        };
+
+        const trimmed = trimBoard(grid);
+
+        // Should still have 8 columns (no trimming applied)
+        expect(trimmed[0]).toHaveLength(8);
+      });
     });
   });
 
@@ -359,6 +460,7 @@ describe('Lettered Game Generator', () => {
           isSpace: false,
           isUnused: false,
         };
+        // Create a connected chain: E-S-R (all adjacent)
         grid[4][5] = {
           letter: 'E',
           isLetter: true,
@@ -366,8 +468,15 @@ describe('Lettered Game Generator', () => {
           isSpace: false,
           isUnused: false,
         };
-        grid[5][4] = {
+        grid[4][6] = {
           letter: 'S',
+          isLetter: true,
+          isPreFilled: false,
+          isSpace: false,
+          isUnused: false,
+        };
+        grid[4][7] = {
+          letter: 'R',
           isLetter: true,
           isPreFilled: false,
           isSpace: false,
@@ -378,9 +487,117 @@ describe('Lettered Game Generator', () => {
 
         expect(pieces.length).toBeGreaterThan(0);
 
-        // Should include all letters in pieces
+        // Should only include non-pre-filled letters in pieces
         const allPieceLetters = pieces.flatMap((piece) => piece.letters);
         expect(allPieceLetters.length).toBeGreaterThan(0);
+
+        // Should not contain the pre-filled letter
+        expect(allPieceLetters).not.toContain('T');
+      });
+
+      it('should include all available letters in pieces without duplicates', () => {
+        const grid = create9x9Grid();
+
+        // Create a simple connected layout: A B C in a line
+        // All letters are adjacent and should be found by the scanner
+        grid[2][2] = {
+          letter: 'A',
+          isLetter: true,
+          isPreFilled: false,
+          isSpace: false,
+          isUnused: false,
+        };
+        grid[2][3] = {
+          letter: 'B',
+          isLetter: true,
+          isPreFilled: false,
+          isSpace: false,
+          isUnused: false,
+        };
+        grid[2][4] = {
+          letter: 'C',
+          isLetter: true,
+          isPreFilled: false,
+          isSpace: false,
+          isUnused: false,
+        };
+
+        const pieces = generateLetterPieces(grid);
+
+        // Should have pieces
+        expect(pieces.length).toBeGreaterThan(0);
+
+        // Collect all letters used in pieces
+        const allPieceLetters = pieces.flatMap((piece) => piece.letters);
+
+        // Count letter frequencies in pieces
+        const pieceLetterCounts: Record<string, number> = {};
+        for (const letter of allPieceLetters) {
+          pieceLetterCounts[letter] = (pieceLetterCounts[letter] || 0) + 1;
+        }
+
+        // Expected available letters: A, B, C
+        const expectedLetters = ['A', 'B', 'C'];
+
+        // Total letters in pieces should match expected count
+        expect(allPieceLetters.length).toBe(expectedLetters.length);
+
+        // Every expected letter should appear exactly once in pieces
+        for (const letter of expectedLetters) {
+          expect(pieceLetterCounts[letter]).toBeDefined();
+          expect(pieceLetterCounts[letter]).toBe(1);
+        }
+      });
+
+      it('should correctly reconstruct phrases using generated solutions', () => {
+        const testPhrases = [
+          'A B C D E F',
+          'HELLO WORLD',
+          'TEST PHRASE',
+          'A PHRASE',
+          'SIMPLE TEST',
+          'COMPLEX PHRASE HERE',
+          'PEANUT BUTTER IS GOOD',
+          'VERY LONG PHRASE WITH MANY WORDS',
+          'SHORT',
+          'XY',
+          'A B C',
+        ];
+
+        const failedPhrases: string[] = [];
+
+        for (const phrase of testPhrases) {
+          try {
+            const game = generateMockGame('test', phrase, 123);
+            const testResult = testGameSolution(game);
+
+            if (!testResult.isValid) {
+              failedPhrases.push(`${phrase}: ${testResult.errors.join(', ')}`);
+              console.log(`❌ Failed: ${phrase}`);
+              console.log(`   Errors: ${testResult.errors.join(', ')}`);
+            } else {
+              console.log(`✅ Passed: ${phrase}`);
+            }
+          } catch (error) {
+            failedPhrases.push(`${phrase}: Exception - ${error}`);
+            console.log(`💥 Exception: ${phrase} - ${error}`);
+          }
+        }
+
+        if (failedPhrases.length > 0) {
+          console.log(`\n📊 Test Results:`);
+          console.log(`   Total phrases tested: ${testPhrases.length}`);
+          console.log(`   Failed phrases: ${failedPhrases.length}`);
+          console.log(`   Passed phrases: ${testPhrases.length - failedPhrases.length}`);
+
+          console.log(`\n❌ Failed phrases:`);
+          failedPhrases.forEach((failure) => console.log(`   - ${failure}`));
+
+          // Actually fail the test if there are failures
+          expect(failedPhrases).toEqual([]);
+        } else {
+          console.log(`\n🎉 All ${testPhrases.length} phrases passed!`);
+        }
       });
     });
 

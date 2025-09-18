@@ -149,7 +149,7 @@ export const printBoard = (grid: GridCell[][], title: string = 'Board'): void =>
 
 // Create a configurable grid with max 9 columns and variable rows
 export const createConfigurableGrid = (rows: number, columns: number = 9): GridCell[][] => {
-  // Enforce max 9 columns as requested
+  // Enforce max 9 columns as reOn ested
   const actualColumns = Math.min(columns, 9);
 
   return Array(rows)
@@ -275,7 +275,7 @@ const createBalancedPhraseLayout = (grid: GridCell[][], words: string[]): GridCe
     const groupLength = groupText.length;
 
     // Center the group in the row (use available column width)
-    const targetWidth = Math.min(8, gridCols);
+    const targetWidth = Math.min(9, gridCols);
     const startCol = Math.max(0, Math.floor((targetWidth - groupLength) / 2));
 
     console.log(`📍 Placing group "${groupText}" at row ${currentRow}, start col ${startCol}`);
@@ -358,14 +358,39 @@ export const trimBoard = (grid: GridCell[][]): GridCell[][] => {
   const gridHeight = grid.length;
   const gridWidth = grid[0]?.length || 0;
 
-  // Find the bounds of non-unused cells (the phrase)
+  console.log('gridWidth', gridWidth);
+  console.log('gridHeight', gridHeight);
+
+  // Special trimming rule: if first column has letters, width is 9, and last column is empty, trim the last column
+  let effectiveGridWidth = gridWidth;
+  if (gridWidth === 9) {
+    // Check if first column (index 0) has any letter spots
+    const firstColumnHasLetters = grid.some((row) => {
+      const cell = row[0];
+      return cell && !cell.isUnused && !cell.isSpace && cell.letter;
+    });
+
+    // Check if last column (index 8) has no letters
+    const lastColumnHasLetters = grid.some((row) => {
+      const cell = row[8];
+      return cell && !cell.isUnused && !cell.isSpace && cell.letter;
+    });
+
+    // If first column has letters and last column is empty, trim the last column
+    if (firstColumnHasLetters && !lastColumnHasLetters) {
+      effectiveGridWidth = 8;
+      console.log('🎯 Special trimming rule applied: trimming last column (width 9->8)');
+    }
+  }
+
+  // Find the bounds of non-unused cells (the phrase) within the effective width
   let minRow = gridHeight;
   let maxRow = -1;
-  let minCol = gridWidth;
+  let minCol = effectiveGridWidth;
   let maxCol = -1;
 
   for (let row = 0; row < gridHeight; row++) {
-    for (let col = 0; col < gridWidth; col++) {
+    for (let col = 0; col < effectiveGridWidth; col++) {
       const cell = grid[row]?.[col];
       if (cell && !cell.isUnused && !cell.isSpace && cell.letter) {
         minRow = Math.min(minRow, row);
@@ -446,6 +471,13 @@ const createBalancedLayout = (
     // Small content - use 6x8 for good balance
     targetHeight = 6;
     targetWidth = 8;
+    // If the width is odd, we can add 1 to the width
+    if (contentWidth % 2 === 1) {
+      targetWidth++;
+    }
+    if (contentHeight % 2 === 1) {
+      targetHeight--;
+    }
   } else if (contentHeight <= 4 && contentWidth <= 7) {
     // Medium content - use 6x8 or 6x9
     targetHeight = 6;
@@ -453,7 +485,7 @@ const createBalancedLayout = (
   } else {
     // Larger content - ensure minimum padding
     targetHeight = Math.max(6, contentHeight + 2);
-    targetWidth = Math.max(8, contentWidth + 2);
+    targetWidth = Math.max(8, contentWidth);
   }
 
   // Ensure dimensions don't exceed grid bounds
@@ -616,7 +648,11 @@ const generatePiecesWithNewAlgorithm = (
     );
 
     // Step 2: Find next available letter using scanner from top-left
-    const startingLetter = findNextAvailableLetterWithScanner(usedLetters, grid, random);
+    const startingLetter = findNextAvailableLetterWithScanner(
+      availableLetters,
+      usedLetters,
+      random
+    );
     if (!startingLetter) {
       console.log(`⏹️ No more available letters found. Stopping generation.`);
       break;
@@ -629,18 +665,22 @@ const generatePiecesWithNewAlgorithm = (
     // Step 3-7: Build piece by randomly selecting adjacent letters
     const piece = buildPieceWithRandomDirections(
       startingLetter,
-      pieceSize,
-      grid,
+      availableLetters,
       usedLetters,
       random,
       colorAssigner
     );
-    if (piece && piece.letters.length >= 2) {
+    if (piece && piece.letters.length >= 1) {
       pieces.push(piece);
       console.log(
         `✅ Generated piece ${pieces.length}: "${piece.letters.join('')}" (${piece.letters.length} letters)`
       );
     } else {
+      // Mark starting letter as used so scanner won't retry it
+      const startKey = `${startingLetter.position.row},${startingLetter.position.col}`;
+      usedLetters.add(startKey);
+      console.log('startingLetter', startingLetter, startKey);
+
       // Add starting letter to skipped letters list for later processing
       if (skippedLetters) {
         skippedLetters.push({
@@ -660,10 +700,25 @@ const generatePiecesWithNewAlgorithm = (
     }
   }
 
+  console.log('skippedLetters', skippedLetters);
+
+  // Remove any skipped letters from the used letters set
+  for (const skippedLetter of skippedLetters ?? []) {
+    const key = `${skippedLetter.position.row},${skippedLetter.position.col}`;
+    usedLetters.delete(key);
+  }
+
   // Step 11a: Try to generate pieces from skipped letters
   if (skippedLetters && skippedLetters.length > 0) {
     console.log(`🔄 Attempting to generate pieces from ${skippedLetters.length} skipped letters`);
-    handleSkippedLetters(pieces, skippedLetters, grid, usedLetters, random, colorAssigner);
+    handleSkippedLetters(
+      pieces,
+      skippedLetters,
+      availableLetters,
+      usedLetters,
+      random,
+      colorAssigner
+    );
   }
 
   // Step 11b: Handle any remaining stranded pieces
@@ -690,48 +745,29 @@ const generatePiecesWithNewAlgorithm = (
 
 // Find next available letter using scanner from top-left (Step 2)
 const findNextAvailableLetterWithScanner = (
+  availableLetters: Array<{ letter: string; position: GridPosition }>,
   usedLetters: Set<string>,
-  grid: GenerationGridCell[][],
   random?: () => number
 ): { letter: string; position: GridPosition } | null => {
   console.log(`🔍 Scanner: Finding next available letter`);
 
-  // Collect all available letters
-  const availableLetters: Array<{ letter: string; position: GridPosition }> = [];
+  // Filter available letters that haven't been used yet
+  const unusedAvailableLetters = availableLetters.filter((letter) => {
+    const key = `${letter.position.row},${letter.position.col}`;
+    return !usedLetters.has(key);
+  });
 
-  // Scan from top-left to bottom-right
-  for (let row = 0; row < grid.length; row++) {
-    for (let col = 0; col < grid[row]!.length; col++) {
-      const key = `${row},${col}`;
-
-      // Skip if already used or previously skipped
-      if (usedLetters.has(key)) continue;
-
-      // Skip if previously failed piece generation
-      const cell = grid[row]?.[col];
-      if (cell?.isSkipped) continue;
-
-      // Check if this position has a letter (any letter, not just available ones)
-      if (cell?.letter && !cell.isUnused && !cell.isSpace) {
-        availableLetters.push({
-          letter: cell.letter,
-          position: { row, col },
-        });
-      }
-    }
-  }
-
-  if (availableLetters.length === 0) {
+  if (unusedAvailableLetters.length === 0) {
     console.log(`❌ Scanner found no available letters`);
     return null;
   }
 
   // Pick a random available letter for more randomness
-  const randomIndex = random ? Math.floor(random() * availableLetters.length) : 0;
-  const selectedLetter = availableLetters[randomIndex];
+  const randomIndex = random ? Math.floor(random() * unusedAvailableLetters.length) : 0;
+  const selectedLetter = unusedAvailableLetters[randomIndex];
 
   console.log(
-    `✅ Scanner found ${availableLetters.length} available letters, picked: ${selectedLetter!.letter} at (${selectedLetter!.position.row},${selectedLetter!.position.col})`
+    `✅ Scanner found ${unusedAvailableLetters.length} available letters, picked: ${selectedLetter!.letter} at (${selectedLetter!.position.row},${selectedLetter!.position.col})`
   );
   return selectedLetter!;
 };
@@ -739,8 +775,7 @@ const findNextAvailableLetterWithScanner = (
 // Build piece by randomly selecting adjacent directions (Steps 3-7)
 const buildPieceWithRandomDirections = (
   startingLetter: { letter: string; position: GridPosition },
-  targetSize: number,
-  grid: GridCell[][],
+  availableLetters: Array<{ letter: string; position: GridPosition }>,
   usedLetters: Set<string>,
   random: () => number,
   colorAssigner: ColorAssigner
@@ -757,13 +792,19 @@ const buildPieceWithRandomDirections = (
 
   console.log(`📝 Started piece with: "${pieceLetters.join('')}"`);
 
-  // Step 5-7: Keep adding letters until target size reached
-  while (pieceLetters.length < targetSize) {
+  // Step 5-7: Keep adding letters until no more adjacent letters are available
+  while (true) {
     // Find all valid adjacent letters (up, down, left, right)
-    const adjacentLetters = findAdjacentLetters(currentPos, grid, usedLetters);
+    const adjacentLetters = findAdjacentLetters(currentPos, availableLetters, usedLetters);
 
     if (adjacentLetters.length === 0) {
       console.log(`🛑 No adjacent letters available from (${currentPos.row},${currentPos.col})`);
+      break;
+    }
+
+    // Check if we've reached the maximum piece size (5 letters)
+    if (pieceLetters.length >= 5) {
+      console.log(`📏 Reached maximum piece size (5 letters): "${pieceLetters.join('')}"`);
       break;
     }
 
@@ -787,7 +828,7 @@ const buildPieceWithRandomDirections = (
     piecePositions.push(selectedLetter.position);
     currentPos = selectedLetter.position;
 
-    console.log(`📝 Piece now: "${pieceLetters.join('')}" (${pieceLetters.length}/${targetSize})`);
+    console.log(`📝 Piece now: "${pieceLetters.join('')}" (${pieceLetters.length} letters)`);
   }
 
   // Step 9: Validate minimum size
@@ -835,7 +876,7 @@ const buildPieceWithRandomDirections = (
 // Find adjacent letters in 4 directions (up, down, left, right)
 const findAdjacentLetters = (
   currentPos: GridPosition,
-  grid: GridCell[][],
+  availableLetters: Array<{ letter: string; position: GridPosition }>,
   usedLetters: Set<string>
 ): Array<{ letter: string; position: GridPosition }> => {
   const adjacent: Array<{ letter: string; position: GridPosition }> = [];
@@ -852,26 +893,19 @@ const findAdjacentLetters = (
       col: currentPos.col + direction.col,
     };
 
-    // Check bounds
-    if (
-      nextPos.row < 0 ||
-      nextPos.row >= grid.length ||
-      nextPos.col < 0 ||
-      nextPos.col >= grid[0]!.length
-    ) {
-      continue;
-    }
-
     const nextKey = `${nextPos.row},${nextPos.col}`;
 
     // Skip if already used
     if (usedLetters.has(nextKey)) continue;
 
-    // Check if position has a letter (any letter, not just available ones)
-    const cell = grid[nextPos.row]?.[nextPos.col];
-    if (cell?.letter && !cell.isUnused && !cell.isSpace) {
+    // Check if this position is in the available letters list
+    const availableLetter = availableLetters.find(
+      (letter) => letter.position.row === nextPos.row && letter.position.col === nextPos.col
+    );
+
+    if (availableLetter) {
       adjacent.push({
-        letter: cell.letter,
+        letter: availableLetter.letter,
         position: nextPos,
       });
     }
@@ -884,7 +918,7 @@ const findAdjacentLetters = (
 const handleSkippedLetters = (
   pieces: LetterPiece[],
   skippedLetters: Array<{ letter: string; position: GridPosition }>,
-  grid: GenerationGridCell[][],
+  availableLetters: Array<{ letter: string; position: GridPosition }>,
   usedLetters: Set<string>,
   random: () => number,
   colorAssigner: ColorAssigner
@@ -902,11 +936,10 @@ const handleSkippedLetters = (
       continue;
     }
 
-    // Try to generate a smaller piece (2-3 letters) from this skipped letter
+    // Try to generate a piece from this skipped letter
     const piece = buildPieceWithRandomDirections(
       skippedLetter,
-      Math.floor(random() * 2) + 2, // 2-3 letters for smaller pieces
-      grid,
+      availableLetters,
       usedLetters,
       random,
       colorAssigner
@@ -1024,11 +1057,14 @@ const handleStrandedPieces = (
   for (let row = 0; row < grid.length; row++) {
     for (let col = 0; col < grid[row]!.length; col++) {
       const cell = grid[row]?.[col];
-      if (cell?.letter && !cell.isUnused && !cell.isSpace && !cell.isPreFilled) {
+      if (cell?.isSkipped) {
+        console.log('cell', cell);
         const key = `${row},${col}`;
+        console.log('key', key);
+        console.log('usedLetters', usedLetters);
         if (!usedLetters.has(key)) {
           strandedLetters.push({
-            letter: cell.letter,
+            letter: cell.letter!,
             position: { row, col },
           });
         }
@@ -1859,17 +1895,7 @@ const createFallbackPieces = (
 // Select anchor letters using the algorithm specified in lettered.md
 export const addPreFilledLetters = (grid: GridCell[][], phrase: string): GridCell[][] => {
   const newGrid = grid.map((row) => row.map((cell) => ({ ...cell })));
-
-  // Use the anchor selection algorithm from lettered.md
-  const gridWithAnchors = selectAnchorLettersAlgorithm(newGrid, phrase);
-
-  // Validate connectivity after anchors are selected
-  if (!validateConnectivity(gridWithAnchors)) {
-    // If connectivity fails, try with fewer anchors
-    return selectOptimalAnchorsWithConnectivityCheck(newGrid, phrase);
-  }
-
-  return gridWithAnchors;
+  return selectOptimalAnchorsWithConnectivityCheck(newGrid, phrase);
 };
 
 // Select anchor letters using the algorithm from lettered.md exactly
@@ -2032,53 +2058,17 @@ const selectOptimalAnchorsWithConnectivityCheck = (
     }
   }
 
-  if (letterPositions.length < 2) {
-    // If less than 2 letters, make all pre-filled
-    for (const pos of letterPositions) {
-      const cell = newGrid[pos.row]?.[pos.col];
+  // For every 8 letters, select 1 from every 8 randomly and mark it as used
+  const maxDistanceBetweenAnchors = letterPositions.length < 16 ? 6 : 4;
+  for (let i = 0; i < letterPositions.length; i += maxDistanceBetweenAnchors) {
+    const randomIndex = Math.floor(Math.random() * maxDistanceBetweenAnchors);
+    const selectedLetter = letterPositions[i + randomIndex];
+    if (selectedLetter) {
+      // Mark it as pre-filled
+      const cell = newGrid[selectedLetter.row]?.[selectedLetter.col];
       if (cell) {
         cell.isPreFilled = true;
       }
-    }
-    return newGrid;
-  }
-
-  // Try different anchor counts starting from minimum and increasing until connectivity works
-  for (
-    let anchorCount = 2;
-    anchorCount <= Math.min(letterPositions.length - 1, Math.floor(letterPositions.length / 2));
-    anchorCount++
-  ) {
-    // Try multiple anchor combinations for this count
-    for (let attempt = 0; attempt < 5; attempt++) {
-      // Reset grid
-      const testGrid = grid.map((row) => row.map((cell) => ({ ...cell })));
-
-      // Select anchors for this attempt
-      const seed = phrase.split('').reduce((acc, char) => acc + char.charCodeAt(0), 0) + attempt;
-      const selectedAnchors = selectWellDistributedAnchors(letterPositions, anchorCount, seed);
-
-      // Mark selected positions as pre-filled
-      for (const pos of selectedAnchors) {
-        const cell = testGrid[pos.row]?.[pos.col];
-        if (cell) {
-          cell.isPreFilled = true;
-        }
-      }
-
-      // Test connectivity
-      if (validateConnectivity(testGrid)) {
-        return testGrid;
-      }
-    }
-  }
-
-  // Fallback: use minimum anchors (just 2)
-  const fallbackAnchors = letterPositions.slice(0, 2);
-  for (const pos of fallbackAnchors) {
-    const cell = newGrid[pos.row]?.[pos.col];
-    if (cell) {
-      cell.isPreFilled = true;
     }
   }
 
@@ -2311,6 +2301,7 @@ export {
   generatePiecesWithBacktracking,
   validateBoardState,
   validateConnectivity,
+  testGameSolution,
   PIECE_COLOR_CLASSES,
 };
 
@@ -2534,6 +2525,103 @@ export const generateInitialPiecePositions = (
   return initialPositions;
 };
 
+// Test if a generated game solution correctly reconstructs the original phrase
+const testGameSolution = (
+  game: LetteredGameData
+): { isValid: boolean; errors: string[]; reconstructedPhrase: string } => {
+  const errors: string[] = [];
+
+  try {
+    // Create a working grid to place pieces
+    const workingGrid: (string | null)[][] = [];
+    for (let row = 0; row < game.rows; row++) {
+      workingGrid[row] = [];
+      for (let col = 0; col < game.cols; col++) {
+        workingGrid[row]![col] = null;
+      }
+    }
+
+    // Place each piece at its solution position
+    for (const [pieceId, position] of Object.entries(game.solution)) {
+      const piece = game.pieces.find((p) => p.id === pieceId);
+      if (!piece) {
+        errors.push(`Piece ${pieceId} not found in pieces array`);
+        continue;
+      }
+
+      // Place each letter of the piece
+      for (let i = 0; i < piece.shape.length; i++) {
+        const shapePos = piece.shape[i];
+        if (!shapePos) continue;
+
+        const gridRow = position.row + shapePos.row;
+        const gridCol = position.col + shapePos.col;
+        const letter = piece.letters[i];
+
+        // Check bounds
+        if (gridRow < 0 || gridRow >= game.rows || gridCol < 0 || gridCol >= game.cols) {
+          errors.push(`Piece ${pieceId} extends outside grid bounds at (${gridRow},${gridCol})`);
+          continue;
+        }
+
+        // Check for conflicts
+        if (workingGrid[gridRow]![gridCol] !== null) {
+          errors.push(
+            `Conflict at (${gridRow},${gridCol}): trying to place '${letter}' but '${workingGrid[gridRow]![gridCol]}' already there`
+          );
+          continue;
+        }
+
+        workingGrid[gridRow]![gridCol] = letter;
+      }
+    }
+
+    // Count total letters placed by pieces
+    let totalPieceLetters = 0;
+    for (let row = 0; row < game.rows; row++) {
+      for (let col = 0; col < game.cols; col++) {
+        if (workingGrid[row]![col] !== null) {
+          totalPieceLetters++;
+        }
+      }
+    }
+
+    // Count expected letters (total letters in phrase minus spaces)
+    const expectedLetters = game.phrase.replace(/\s/g, '').length;
+    const anchorLetterCount = game.grid.flat().filter((cell) => cell.isPreFilled).length;
+    // This needs to account for anchor letters that are already placed
+    if (totalPieceLetters + anchorLetterCount !== expectedLetters) {
+      errors.push(
+        `Letter count mismatch: placed ${totalPieceLetters} letters but expected ${expectedLetters} (anchor letters: ${anchorLetterCount})`
+      );
+    }
+
+    // Verify that all pieces are accounted for in the solution
+    const solutionPieceIds = new Set(Object.keys(game.solution));
+    const allPieceIds = new Set(game.pieces.map((p) => p.id));
+
+    for (const pieceId of allPieceIds) {
+      if (!solutionPieceIds.has(pieceId)) {
+        errors.push(`Piece ${pieceId} is not included in the solution`);
+      }
+    }
+
+    for (const pieceId of solutionPieceIds) {
+      if (!allPieceIds.has(pieceId)) {
+        errors.push(`Solution references piece ${pieceId} which doesn't exist`);
+      }
+    }
+  } catch (error) {
+    errors.push(`Test failed with error: ${error}`);
+  }
+
+  return {
+    isValid: errors.length === 0,
+    errors,
+    reconstructedPhrase: game.phrase, // Return original phrase since we can't reconstruct it from secure grid
+  };
+};
+
 // Generate a complete mock game following the new process
 export const generateMockGame = (
   category: string,
@@ -2545,7 +2633,7 @@ export const generateMockGame = (
 
     // Step 1: Generate proper square phrase using a configurable grid
     console.log('Step 1: Creating initial configurable grid...');
-    const initialGrid = createConfigurableGrid(100, 9); // Start with 9x9 for compatibility
+    const initialGrid = createConfigurableGrid(100, 9); // Start with Nx9 for compatibility
     printBoard(initialGrid, 'Step 1: Initial Configurable Grid');
 
     console.log('Step 2: Placing phrase on grid...');

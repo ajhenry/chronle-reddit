@@ -1,178 +1,339 @@
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card';
 import { Button } from '../components/ui/button';
+import { Input } from '../components/ui/input';
 import { ArrowLeft, Settings } from 'lucide-react';
-import { DraggableItem, Grid, GridPosition, ItemShape } from '../components/tile-grid/tile-grid';
 import { useState, useCallback } from 'react';
 import { toast } from 'sonner';
+import { LetteredGameData, LetterPiece, GridCell } from '../../shared/types/api';
+import { Grid, DraggableItem } from '../components/tile-grid/tile-grid';
+import { getResponsiveCellSize, getResponsiveCellSpacing } from '../lib/lettered-utils';
+import { useViewport } from '../hooks/useViewport';
+import { cn } from '@sglara/cn';
+import { apiFetch } from 'src/lib/utils';
 
 interface DevPageProps {
   onBack?: () => void;
 }
 
-// Predefined shapes
-const PREDEFINED_SHAPES: Record<string, ItemShape> = {
-  single: {
-    name: 'single',
-    cells: [{ x: 0, y: 0 }],
-    width: 1,
-    height: 1,
-  },
-  horizontal2: {
-    name: 'horizontal2',
-    cells: [
-      { x: 0, y: 0 },
-      { x: 1, y: 0 },
-    ],
-    width: 2,
-    height: 1,
-  },
-  vertical2: {
-    name: 'vertical2',
-    cells: [
-      { x: 0, y: 0 },
-      { x: 0, y: 1 },
-    ],
-    width: 1,
-    height: 2,
-  },
-  L: {
-    name: 'L',
-    cells: [
-      { x: 0, y: 0 },
-      { x: 1, y: 0 },
-      { x: 0, y: 1 },
-    ],
-    width: 2,
-    height: 2,
-  },
-  U: {
-    name: 'U',
-    cells: [
-      { x: 0, y: 0 },
-      { x: 2, y: 0 },
-      { x: 0, y: 1 },
-      { x: 1, y: 1 },
-      { x: 2, y: 1 },
-    ],
-    width: 3,
-    height: 2,
-  },
-  T: {
-    name: 'T',
-    cells: [
-      { x: 0, y: 0 },
-      { x: 1, y: 0 },
-      { x: 2, y: 0 },
-      { x: 1, y: 1 },
-    ],
-    width: 3,
-    height: 2,
-  },
-  plus: {
-    name: 'plus',
-    cells: [
-      { x: 1, y: 0 },
-      { x: 0, y: 1 },
-      { x: 1, y: 1 },
-      { x: 2, y: 1 },
-      { x: 1, y: 2 },
-    ],
-    width: 3,
-    height: 3,
-  },
-};
-
 export const DevPage = ({ onBack }: DevPageProps) => {
-  const [grid1Items, setGrid1Items] = useState<Omit<DraggableItem, 'id'>[]>([
-    {
-      position: { x: 1, y: 1 },
-      shape: PREDEFINED_SHAPES.L!,
-      content: 'L',
-      className: 'bg-blue-500 text-white',
-    },
-    {
-      position: { x: 4, y: 2 },
-      shape: PREDEFINED_SHAPES.U!,
-      content: 'U',
-      className: 'bg-green-500 text-white',
-    },
-    {
-      position: { x: 0, y: 4 },
-      shape: PREDEFINED_SHAPES.T!,
-      content: 'T',
-      className: 'bg-yellow-500 text-black',
-    },
-    {
-      position: { x: 6, y: 0 },
-      shape: PREDEFINED_SHAPES.single!,
-      content: '🔒',
-      className: 'bg-gray-500 text-white',
-      disabled: true, // This piece is locked and cannot be moved
-    },
-  ]);
+  // Lettered game generator state
+  const [phrase, setPhrase] = useState('A HOTDOG');
+  const [seed, setSeed] = useState('123');
+  const [generatedGame, setGeneratedGame] = useState<LetteredGameData | null>(null);
+  const [isGenerating, setIsGenerating] = useState(false);
 
-  const [grid2Items, setGrid2Items] = useState<Omit<DraggableItem, 'id'>[]>([
-    {
-      position: { x: 0, y: 0 },
-      shape: PREDEFINED_SHAPES.single!,
-      content: '1',
-      className: 'bg-purple-500 text-white',
-    },
-    {
-      position: { x: 2, y: 1 },
-      shape: PREDEFINED_SHAPES.plus!,
-      content: '+',
-      className: 'bg-red-500 text-white',
-    },
-    {
-      position: { x: 1, y: 3 },
-      shape: PREDEFINED_SHAPES.vertical2!,
-      content: 'I',
-      className: 'bg-indigo-500 text-white',
-    },
-    {
-      position: { x: 4, y: 0 },
-      shape: PREDEFINED_SHAPES.L!,
-      content: '🔒',
-      className: 'bg-red-400 text-white',
-      disabled: true, // This piece is locked and cannot be moved
-    },
-  ]);
+  // Responsive sizing (matching lettered game)
+  const { breakpoint } = useViewport();
+  const responsiveCellSize = getResponsiveCellSize(
+    breakpoint,
+    generatedGame?.rows,
+    generatedGame?.cols
+  );
+  const responsiveCellSpacing = getResponsiveCellSpacing(breakpoint);
 
-  const handleGrid1ItemMove = useCallback((item: DraggableItem, newPosition: GridPosition) => {
-    setGrid1Items((prev) =>
-      prev.map((prevItem) =>
-        prevItem.content === item.content ? { ...prevItem, position: newPosition } : prevItem
-      )
-    );
+  // Game state (matching lettered game) - disabled for dev page
+  // const [placedPieces, setPlacedPieces] = useState<Map<string, { row: number; col: number }>>(
+  //   new Map()
+  // );
+  const placedPieces = new Map<string, { row: number; col: number }>(); // Static for dev page
+
+  // Conversion function for Grid component (matching lettered game exactly)
+  const convertGridDataToItems = useCallback(
+    ({
+      grid,
+      placedPieces,
+      pieces,
+      initialPiecePositions,
+      getTileClassName,
+    }: {
+      grid: GridCell[][];
+      placedPieces: Map<string, { row: number; col: number }>;
+      pieces: LetterPiece[];
+      initialPiecePositions: Record<string, { row: number; col: number }>;
+      getTileClassName?: (piece: LetterPiece) => string | undefined;
+    }): Omit<DraggableItem, 'id'>[] => {
+      const items: Omit<DraggableItem, 'id'>[] = [];
+
+      // Convert placed pieces to Grid component format
+      for (const [pieceId, position] of placedPieces.entries()) {
+        const piece = pieces.find((p) => p.id === pieceId);
+        if (!piece) continue;
+
+        // Convert piece shape to Grid component format
+        const shapeCells: { x: number; y: number }[] = piece.shape.map((shapePos) => ({
+          x: shapePos.col,
+          y: shapePos.row,
+        }));
+
+        // Calculate bounding box
+        const width = Math.max(...shapeCells.map((cell) => cell.x)) + 1;
+        const height = Math.max(...shapeCells.map((cell) => cell.y)) + 1;
+
+        const shape = {
+          name: piece.id,
+          cells: shapeCells,
+          width,
+          height,
+        };
+
+        // Create content from letters
+        const content = piece.letters.join('') || piece.id;
+
+        items.push({
+          position: { x: position.col, y: position.row },
+          shape,
+          content,
+          disabled: false,
+          className: getTileClassName ? getTileClassName(piece) : undefined,
+        });
+      }
+
+      // Add anchor letters (pre-filled letters) as immovable items
+      for (let row = 0; row < grid.length; row++) {
+        for (let col = 0; col < grid[row]!.length; col++) {
+          const cell = grid[row]![col];
+          if (cell?.isPreFilled && cell.letter) {
+            // Create a single-cell shape for the anchor letter
+            const shapeCells = [{ x: 0, y: 0 }];
+
+            const shape = {
+              name: `anchor-${row}-${col}`,
+              cells: shapeCells,
+              width: 1,
+              height: 1,
+            };
+
+            // Create a mock piece for the anchor letter
+            const anchorPiece: LetterPiece = {
+              id: `anchor-${row}-${col}`,
+              letters: [cell.letter],
+              shape: [{ row: 0, col: 0 }],
+              color: '#000000', // Black for anchor letters
+            };
+
+            items.push({
+              position: { x: col, y: row },
+              shape,
+              content: cell.letter,
+              disabled: true, // Anchor letters are immovable
+              className: getTileClassName
+                ? getTileClassName(anchorPiece)
+                : 'bg-foreground text-background border border-muted',
+            });
+          }
+        }
+      }
+
+      // Add unplaced letter pieces using server-generated initial positions
+      const unplacedPieces = pieces.filter((piece) => !placedPieces.has(piece.id));
+
+      for (const piece of unplacedPieces) {
+        // Use server-generated initial position
+        const initialPosition = initialPiecePositions[piece.id];
+
+        if (!initialPosition) {
+          console.warn(`No initial position found for piece ${piece.id}, skipping`);
+          continue;
+        }
+
+        // Convert piece shape to Grid component format
+        const shapeCells: { x: number; y: number }[] = piece.shape.map((shapePos) => ({
+          x: shapePos.col,
+          y: shapePos.row,
+        }));
+
+        // Calculate bounding box
+        const width = Math.max(...shapeCells.map((cell) => cell.x)) + 1;
+        const height = Math.max(...shapeCells.map((cell) => cell.y)) + 1;
+
+        const shape = {
+          name: piece.id,
+          cells: shapeCells,
+          width,
+          height,
+        };
+
+        // Create content from letters
+        const content = piece.letters.join('') || piece.id;
+
+        items.push({
+          position: { x: initialPosition.col, y: initialPosition.row },
+          shape,
+          content,
+          disabled: false,
+          className: getTileClassName ? getTileClassName(piece) : undefined,
+        });
+      }
+
+      return items;
+    },
+    []
+  );
+
+  // Styling functions (matching lettered game exactly)
+  const boardTileClass = (x: number, y: number) => {
+    const baseClass = 'bg-card hover:bg-accent transition-colors';
+    // Style board tiles based on the lettered grid data
+    const cell = generatedGame?.grid[y]?.[x];
+    if (!cell) {
+      // Check if we're in the extended area (below the main board)
+      if (y >= (generatedGame?.grid.length ?? 0)) {
+        return 'bg-transparent border-none hover:bg-transparent'; // Make extended area squares invisible
+      }
+      return 'bg-gray-700'; // Main board
+    }
+
+    // Don't style cells that have pre-filled anchor letters (they're rendered as pieces)
+    if (cell.isPreFilled) {
+      return cn(baseClass, 'bg-gray-200');
+    }
+
+    // Make unoccupied spaces gray-700
+    if (cell.isUnused || cell.isSpace) {
+      return cn(baseClass, 'border-2 border-border bg-gray-700');
+    }
+
+    // For cells with letters that will be filled by pieces, use gray-200
+    return cn(baseClass, 'bg-gray-200');
+  };
+
+  const pieceTileClass = (piece: LetterPiece) => {
+    const baseClass =
+      'text-primary-foreground transition-all touch-none duration-500 overflow-hidden';
+    return cn(baseClass, piece.color);
+  };
+
+  const getPieceTileClass = (piece: LetterPiece, additionalClassName?: string) => {
+    return cn(pieceTileClass(piece), additionalClassName);
+  };
+
+  const pieceTileDraggingClass = (_piece: DraggableItem, valid: boolean) => {
+    const baseClass = 'border-2 border-dashed opacity-80 transition-colors';
+    if (valid) {
+      return cn(baseClass, 'bg-accent/20 border-primary');
+    } else {
+      return cn(baseClass, 'bg-destructive/20 border-destructive');
+    }
+  };
+
+  const handleGenerateGame = useCallback(async () => {
+    if (!phrase.trim()) {
+      toast.error('Please enter a phrase');
+      return;
+    }
+
+    const seedNum = parseInt(seed);
+    if (isNaN(seedNum)) {
+      toast.error('Please enter a valid seed number');
+      return;
+    }
+
+    setIsGenerating(true);
+    try {
+      const response = await apiFetch('/api/dev/lettered', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          phrase: phrase.trim(),
+          seed: seedNum,
+        }),
+      });
+
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.error || 'Failed to generate game');
+      }
+
+      const data = await response.json();
+      console.log('Generated game:', data);
+      console.log('GameData structure:', {
+        id: data.gameData.id,
+        category: data.gameData.category,
+        phrase: data.gameData.phrase,
+        grid: `${data.gameData.grid.length}x${data.gameData.grid[0]?.length}`,
+        pieces: data.gameData.pieces.length,
+        initialPiecePositions: Object.keys(data.gameData.initialPiecePositions).length,
+        solution: Object.keys(data.gameData.solution).length,
+        solutionHash: data.gameData.solutionHash,
+        seed: data.gameData.seed,
+      });
+
+      // Log each piece details
+      console.log(
+        'Pieces:',
+        data.gameData.pieces.map((piece: LetterPiece) => ({
+          id: piece.id,
+          letters: piece.letters.join(''),
+          shape: piece.shape,
+          color: piece.color,
+          initialPos: data.gameData.initialPiecePositions[piece.id],
+        }))
+      );
+
+      // Log grid layout (first few rows)
+      console.log('Grid layout (first 3 rows):');
+      data.gameData.grid.slice(0, 3).forEach((row: GridCell[], rowIndex: number) => {
+        const rowStr = row
+          .map((cell: GridCell) =>
+            cell.isPreFilled
+              ? `[${cell.letter}]`
+              : cell.isUnused
+                ? '░░░'
+                : cell.isSpace
+                  ? '   '
+                  : cell.letter
+                    ? ` ${cell.letter} `
+                    : '░░░'
+          )
+          .join('');
+        console.log(`Row ${rowIndex}: ${rowStr}`);
+      });
+
+      setGeneratedGame(data.gameData);
+      // setPlacedPieces(new Map()); // Disabled for dev page
+      toast.success('Game generated successfully!');
+    } catch (error) {
+      console.error('Error generating game:', error);
+      toast.error(error instanceof Error ? error.message : 'Failed to generate game');
+    } finally {
+      setIsGenerating(false);
+    }
+  }, [phrase, seed]);
+
+  // Handle layout changes from the grid (matching lettered game) - disabled for dev page
+  const handleGridLayoutChange = useCallback((layout: (string | null)[][]) => {
+    if (!generatedGame) return;
+
+    // Convert layout to piece positions
+    const newPlacedPieces = new Map<string, { row: number; col: number }>();
+
+    layout.forEach((row, rowIndex) => {
+      row.forEach((itemId, colIndex) => {
+        if (itemId) {
+          const piece = generatedGame.pieces.find((p) => p.id === itemId);
+          if (piece) {
+            newPlacedPieces.set(itemId, { row: rowIndex, col: colIndex });
+          }
+        }
+      });
+    });
+
+    // setPlacedPieces(newPlacedPieces);
   }, []);
 
-  const handleGrid2ItemMove = useCallback((item: DraggableItem, newPosition: GridPosition) => {
-    setGrid2Items((prev) =>
-      prev.map((prevItem) =>
-        prevItem.content === item.content ? { ...prevItem, position: newPosition } : prevItem
-      )
-    );
-  }, []);
-
-  const handleGrid1LayoutChange = useCallback((layout: (string | null)[][]) => {
-    console.log('Grid 1 Layout Change:', layout);
-  }, []);
-
-  const handleGrid2LayoutChange = useCallback((layout: (string | null)[][]) => {
-    console.log('Grid 2 Layout Change:', layout);
-  }, []);
   return (
-    <div className="p-2 sm:p-4 min-h-screen bg-background">
-      <div className="mx-auto space-y-4 sm:space-y-6 max-w-4xl">
+    <div className="p-2 min-h-screen sm:p-4 bg-background">
+      <div className="mx-auto space-y-4 max-w-4xl sm:space-y-6">
         {/* Header */}
-        <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-4">
+        <div className="flex flex-col gap-4 sm:flex-row sm:justify-between sm:items-center">
           <div className="flex gap-3 items-center">
             <div className="p-2 rounded-full bg-primary/20">
               <Settings className="w-5 h-5 text-primary" />
             </div>
             <div>
-              <h1 className="text-xl sm:text-2xl font-bold">Development Tools</h1>
+              <h1 className="text-xl font-bold sm:text-2xl">Development Tools</h1>
               <p className="text-sm text-muted-foreground">
                 Development utilities and testing tools
               </p>
@@ -186,261 +347,111 @@ export const DevPage = ({ onBack }: DevPageProps) => {
           )}
         </div>
 
-        {/* DND Kit Grid Layout Example */}
-        <div className="w-full h-full">
-          <div className="p-4 sm:p-6 lg:p-8 min-h-screen bg-gray-100">
-            <div className="mx-auto max-w-7xl">
-              <h1 className="mb-6 sm:mb-8 text-2xl sm:text-3xl lg:text-4xl font-bold text-center text-gray-800">
-                Dragging Grid System Demo
-              </h1>
-
-              <div className="mb-6 sm:mb-8">
-                <p className="mx-auto max-w-3xl text-center text-gray-600 px-2">
-                  This demo showcases a custom grid system with unique IDs for each grid instance.
-                  Each grid generates predictable IDs for its cells and items. Try dragging the L,
-                  U, T, and Plus shapes around to see the drag preview, boundary validation, and
-                  collision detection in action.
-                </p>
-              </div>
-
-              <div className="grid grid-cols-1 gap-6 sm:gap-8 mb-6 sm:mb-8 lg:grid-cols-2">
-                {/* First Grid */}
-                <div className="p-4 sm:p-6 rounded-lg shadow-lg bg-background">
-                  <h2 className="mb-3 sm:mb-4 text-xl sm:text-2xl font-semibold text-gray-800">
-                    Grid Instance 1
-                  </h2>
-                  <div className="mb-3 sm:mb-4">
-                    <p className="text-xs sm:text-sm text-gray-600">
-                      Grid Size: 8x6 | Cell Size: 40x40px
-                    </p>
-                  </div>
-                  <div className="overflow-x-auto">
-                    <Grid
-                      gridSize={{ width: 10, height: 8 }}
-                      cellSize={{ width: 40, height: 40 }}
-                      initialItems={grid1Items}
-                      onItemMove={handleGrid1ItemMove}
-                      onLayoutChange={handleGrid1LayoutChange}
-                    />
-                  </div>
+        {/* Lettered Game Generator */}
+        <Card>
+          <CardHeader className="pb-3 sm:pb-6">
+            <CardTitle className="text-lg sm:text-xl">Lettered Game Generator</CardTitle>
+          </CardHeader>
+          <CardContent className="pt-0">
+            <div className="space-y-4">
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                <div className="space-y-2">
+                  <label htmlFor="phrase-input" className="text-sm font-medium">
+                    Phrase
+                  </label>
+                  <Input
+                    id="phrase-input"
+                    type="text"
+                    placeholder="Enter a phrase (e.g., HELLO WORLD)"
+                    value={phrase}
+                    onChange={(e) => setPhrase(e.target.value)}
+                    className="w-full"
+                  />
                 </div>
-
-                {/* Second Grid */}
-                <div className="p-4 sm:p-6 rounded-lg shadow-lg bg-background">
-                  <h2 className="mb-3 sm:mb-4 text-xl sm:text-2xl font-semibold text-gray-800">
-                    Grid Instance 2
-                  </h2>
-                  <div className="mb-3 sm:mb-4">
-                    <p className="text-xs sm:text-sm text-gray-600">
-                      Grid Size: 6x5 | Cell Size: 45x45px
-                    </p>
-                  </div>
-                  <div className="overflow-x-auto">
-                    <Grid
-                      gridSize={{ width: 6, height: 5 }}
-                      cellSize={{ width: 45, height: 45 }}
-                      initialItems={grid2Items}
-                      onItemMove={handleGrid2ItemMove}
-                      onLayoutChange={handleGrid2LayoutChange}
-                    />
-                  </div>
+                <div className="space-y-2">
+                  <label htmlFor="seed-input" className="text-sm font-medium">
+                    Seed
+                  </label>
+                  <Input
+                    id="seed-input"
+                    type="number"
+                    placeholder="123"
+                    value={seed}
+                    onChange={(e) => setSeed(e.target.value)}
+                    className="w-full"
+                  />
                 </div>
               </div>
-
-              {/* Features Section */}
-              <div className="p-4 sm:p-6 rounded-lg shadow-lg bg-background">
-                <h3 className="mb-4 sm:mb-6 text-xl sm:text-2xl font-semibold text-gray-800">
-                  Features
-                </h3>
-                <div className="grid grid-cols-1 gap-4 sm:gap-6 md:grid-cols-2 lg:grid-cols-3">
-                  <div className="flex items-start space-3 sm:space-x-3">
-                    <div className="flex flex-shrink-0 justify-center items-center w-7 h-7 sm:w-8 sm:h-8 bg-blue-500 rounded-full mt-0.5">
-                      <span className="text-xs sm:text-sm font-semibold text-white">1</span>
-                    </div>
-                    <div className="min-w-0 flex-1">
-                      <h4 className="mb-1 sm:mb-2 text-sm sm:text-base font-semibold text-gray-800">
-                        Arbitrary Shapes
-                      </h4>
-                      <p className="text-xs sm:text-sm text-gray-600 leading-relaxed">
-                        Support for L, U, T, Plus, and custom shapes with individual cell occupancy
-                        tracking.
-                      </p>
-                    </div>
-                  </div>
-
-                  <div className="flex items-start space-3 sm:space-x-3">
-                    <div className="flex flex-shrink-0 justify-center items-center w-7 h-7 sm:w-8 sm:h-8 bg-green-500 rounded-full mt-0.5">
-                      <span className="text-xs sm:text-sm font-semibold text-white">2</span>
-                    </div>
-                    <div className="min-w-0 flex-1">
-                      <h4 className="mb-1 sm:mb-2 text-sm sm:text-base font-semibold text-gray-800">
-                        Tile-Level Tracking
-                      </h4>
-                      <p className="text-xs sm:text-sm text-gray-600 leading-relaxed">
-                        Each grid cell tracks which item occupies it and which part of the shape it
-                        represents.
-                      </p>
-                    </div>
-                  </div>
-
-                  <div className="flex items-start space-3 sm:space-x-3">
-                    <div className="flex flex-shrink-0 justify-center items-center w-7 h-7 sm:w-8 sm:h-8 bg-purple-500 rounded-full mt-0.5">
-                      <span className="text-xs sm:text-sm font-semibold text-white">3</span>
-                    </div>
-                    <div className="min-w-0 flex-1">
-                      <h4 className="mb-1 sm:mb-2 text-sm sm:text-base font-semibold text-gray-800">
-                        Drag Preview
-                      </h4>
-                      <p className="text-xs sm:text-sm text-gray-600 leading-relaxed">
-                        See a semi-transparent preview of where your shape will be placed before
-                        dropping.
-                      </p>
-                    </div>
-                  </div>
-
-                  <div className="flex items-start space-3 sm:space-x-3">
-                    <div className="flex flex-shrink-0 justify-center items-center w-7 h-7 sm:w-8 sm:h-8 bg-red-500 rounded-full mt-0.5">
-                      <span className="text-xs sm:text-sm font-semibold text-white">4</span>
-                    </div>
-                    <div className="min-w-0 flex-1">
-                      <h4 className="mb-1 sm:mb-2 text-sm sm:text-base font-semibold text-gray-800">
-                        Visual Shape Rendering
-                      </h4>
-                      <p className="text-xs sm:text-sm text-gray-600 leading-relaxed">
-                        Each shape is rendered as individual cells showing its exact geometric form.
-                      </p>
-                    </div>
-                  </div>
-
-                  <div className="flex items-start space-3 sm:space-x-3">
-                    <div className="flex flex-shrink-0 justify-center items-center w-7 h-7 sm:w-8 sm:h-8 bg-yellow-500 rounded-full mt-0.5">
-                      <span className="text-xs sm:text-sm font-semibold text-white">5</span>
-                    </div>
-                    <div className="min-w-0 flex-1">
-                      <h4 className="mb-1 sm:mb-2 text-sm sm:text-base font-semibold text-gray-800">
-                        Unique Grid IDs
-                      </h4>
-                      <p className="text-xs sm:text-sm text-gray-600 leading-relaxed">
-                        Each grid instance gets a unique ID (e.g., grid-1, grid-2) for
-                        identification.
-                      </p>
-                    </div>
-                  </div>
-
-                  <div className="flex items-start space-3 sm:space-x-3">
-                    <div className="flex flex-shrink-0 justify-center items-center w-7 h-7 sm:w-8 sm:h-8 bg-indigo-500 rounded-full mt-0.5">
-                      <span className="text-xs sm:text-sm font-semibold text-white">6</span>
-                    </div>
-                    <div className="min-w-0 flex-1">
-                      <h4 className="mb-1 sm:mb-2 text-sm sm:text-base font-semibold text-gray-800">
-                        Advanced Collision Detection
-                      </h4>
-                      <p className="text-xs sm:text-sm text-gray-600 leading-relaxed">
-                        Shape-based collision detection prevents overlaps and out-of-bounds
-                        placement.
-                      </p>
-                    </div>
-                  </div>
-
-                  <div className="flex items-start space-3 sm:space-x-3">
-                    <div className="flex flex-shrink-0 justify-center items-center w-7 h-7 sm:w-8 sm:h-8 bg-pink-500 rounded-full mt-0.5">
-                      <span className="text-xs sm:text-sm font-semibold text-white">7</span>
-                    </div>
-                    <div className="min-w-0 flex-1">
-                      <h4 className="mb-1 sm:mb-2 text-sm sm:text-base font-semibold text-gray-800">
-                        Predictable Cell IDs
-                      </h4>
-                      <p className="text-xs sm:text-sm text-gray-600 leading-relaxed">
-                        Grid cells have predictable IDs like "grid-1-cell-2-3" for easy targeting
-                        and debugging.
-                      </p>
-                    </div>
-                  </div>
-
-                  <div className="flex items-start space-3 sm:space-x-3">
-                    <div className="flex flex-shrink-0 justify-center items-center w-7 h-7 sm:w-8 sm:h-8 bg-teal-500 rounded-full mt-0.5">
-                      <span className="text-xs sm:text-sm font-semibold text-white">8</span>
-                    </div>
-                    <div className="min-w-0 flex-1">
-                      <h4 className="mb-1 sm:mb-2 text-sm sm:text-base font-semibold text-gray-800">
-                        Layout Change Callback
-                      </h4>
-                      <p className="text-xs sm:text-sm text-gray-600 leading-relaxed">
-                        onLayoutChange callback provides a 2D array showing which item occupies each
-                        cell, with console logging for debugging layout changes.
-                      </p>
-                    </div>
-                  </div>
-                </div>
-              </div>
+              <Button
+                onClick={handleGenerateGame}
+                disabled={isGenerating}
+                className="w-full sm:w-auto"
+              >
+                {isGenerating ? 'Generating...' : 'Generate Game'}
+              </Button>
             </div>
+          </CardContent>
+        </Card>
+
+        {/* Generated Game Display */}
+        {generatedGame && (
+          <div className="space-y-4">
+            <Card>
+              <CardHeader className="pb-3 sm:pb-6">
+                <CardTitle className="text-lg sm:text-xl">Generated Game</CardTitle>
+                <p className="text-sm text-muted-foreground">
+                  Phrase: "{generatedGame.phrase}" | Seed: {generatedGame.seed}
+                </p>
+              </CardHeader>
+              <CardContent className="pt-0">
+                <div className="mb-4 space-y-1 text-sm text-muted-foreground">
+                  <p>
+                    Grid Size: {generatedGame.rows} x {generatedGame.cols}
+                  </p>
+                  <p>Pieces: {generatedGame.pieces.length}</p>
+                  <p>Category: {generatedGame.category}</p>
+                </div>
+              </CardContent>
+            </Card>
+
+            {/* Game Grid with Pieces */}
+            <Card>
+              <CardHeader className="pb-3 sm:pb-6">
+                <CardTitle className="text-lg">Game Board & Pieces</CardTitle>
+                <p className="text-sm text-muted-foreground">
+                  Drag pieces from below onto the board
+                </p>
+              </CardHeader>
+              <CardContent className="pt-0">
+                <div className="flex justify-center">
+                  <Grid
+                    gridSize={{
+                      width: generatedGame.grid[0]!.length || 8,
+                      height: generatedGame.grid.length + 20, // Extend grid height to match server's maxRows for letter pieces area
+                      spacing: responsiveCellSpacing,
+                    }}
+                    cellSize={responsiveCellSize}
+                    initialItems={convertGridDataToItems({
+                      grid: generatedGame.grid,
+                      placedPieces:
+                        placedPieces.size === 0
+                          ? new Map(Object.entries(generatedGame.initialPiecePositions))
+                          : placedPieces,
+                      pieces: generatedGame.pieces,
+                      initialPiecePositions: generatedGame.initialPiecePositions,
+                      getTileClassName: (piece) => getPieceTileClass(piece, 'text-2xl font-bold'),
+                    })}
+                    onLayoutChange={handleGridLayoutChange} // Disabled for dev page to prevent infinite loops
+                    defaultBoardTileClassName="bg-card hover:bg-accent transition-colors"
+                    defaultItemClassName="bg-primary text-primary-foreground"
+                    getBoardTileClassName={boardTileClass}
+                    getTileDraggingClassName={pieceTileDraggingClass}
+                  />
+                </div>
+              </CardContent>
+            </Card>
           </div>
-        </div>
-
-        {/* Main Content */}
-        <div className="grid grid-cols-1 gap-4 sm:gap-6 md:grid-cols-2">
-          <Card>
-            <CardHeader className="pb-3 sm:pb-6">
-              <CardTitle className="text-lg sm:text-xl">Development Information</CardTitle>
-            </CardHeader>
-            <CardContent className="pt-0">
-              <div className="space-y-3 sm:space-y-4">
-                <div>
-                  <h3 className="text-sm font-semibold">Environment</h3>
-                  <p className="text-sm text-muted-foreground">Development Mode</p>
-                </div>
-                <div>
-                  <h3 className="text-sm font-semibold">Version</h3>
-                  <p className="text-sm text-muted-foreground">Podium Dev Build</p>
-                </div>
-                <div>
-                  <h3 className="text-sm font-semibold">Status</h3>
-                  <p className="text-sm text-muted-foreground">Development page is working</p>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardHeader className="pb-3 sm:pb-6">
-              <CardTitle className="text-lg sm:text-xl">Quick Actions</CardTitle>
-            </CardHeader>
-            <CardContent className="pt-0">
-              <div className="space-y-3">
-                <Button
-                  variant="outline"
-                  className="w-full h-10 sm:h-11 text-sm sm:text-base"
-                  onClick={() => console.log('Dev action 1')}
-                >
-                  Debug Action 1
-                </Button>
-                <Button
-                  variant="outline"
-                  className="w-full h-10 sm:h-11 text-sm sm:text-base"
-                  onClick={() => console.log('Dev action 2')}
-                >
-                  Debug Action 2
-                </Button>
-                <Button
-                  variant="outline"
-                  className="w-full h-10 sm:h-11 text-sm sm:text-base"
-                  onClick={() => console.log('Dev action 3')}
-                >
-                  Debug Action 3
-                </Button>
-                <Button
-                  variant="outline"
-                  className="w-full h-10 sm:h-11 text-sm sm:text-base"
-                  onClick={() =>
-                    toast('Hello from the dev page! This is a toast notification at the top.')
-                  }
-                >
-                  Create Toast
-                </Button>
-              </div>
-            </CardContent>
-          </Card>
-        </div>
+        )}
 
         {/* Additional Info */}
         <Card>
