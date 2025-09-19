@@ -411,7 +411,11 @@ export async function getUserStats(userId: string): Promise<UserStats | null> {
     .eq('user_id', userId)
     .single();
 
-  if (error && error.code !== 'PGRST116') {
+  if ((error && error.code === 'PGRST116') || error?.message.includes('PGRST116')) {
+    return null;
+  }
+
+  if (error) {
     throw new Error(`Failed to fetch user statistics: ${error.message}`);
   }
 
