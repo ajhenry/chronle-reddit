@@ -12,6 +12,15 @@ import topxRoutes from './handlers/topx';
 import customRoutes from './handlers/custom';
 import contextRoutes from './handlers/context';
 
+export const splashConfig = {
+  appDisplayName: 'podium', // required
+  heading: 'Welcome to Podium',
+  description: '',
+  appIconUri: 'podium-logo.png',
+  buttonLabel: 'Start Playing',
+  entryUri: 'index.html',
+};
+
 // Environment detection
 // LOCAL_MODE=true: Use Express server + stubbed Reddit API for local development
 // REDDIT_MODE=true: Use Reddit server + real Reddit API but with development features enabled
@@ -80,6 +89,53 @@ if (isLocal || isRedditDev) {
     });
   });
 }
+
+app.post('/internal/cron/daily-post', async (_req, res) => {
+  try {
+    console.log('🕐 Daily Podium post scheduler triggered');
+
+    // Get Reddit context (only available in production)
+    if (isLocal) {
+      console.log('⚠️ Skipping post creation in local development mode');
+      return res.status(200).json({
+        status: 'skipped',
+        message: 'Post creation skipped in local mode',
+      });
+    }
+
+    // Import reddit and context here, inside the handler
+    const { reddit, context } = await import('@devvit/web/server');
+
+    // Create a custom interactive web post
+    const post = await reddit.submitCustomPost({
+      subredditName: context.subredditName || 'podiumgame',
+      title: `Podium Game for ${new Date().toLocaleDateString('en-US', { timeZone: 'America/New_York', month: 'long', day: 'numeric', year: 'numeric' })}`,
+      splash: splashConfig,
+    });
+
+    console.log('✅ Daily Podium post created successfully:', post.id);
+    console.log(
+      '🔗 Post URL:',
+      `https://reddit.com/r/${context.subredditName}/comments/${post.id}`
+    );
+
+    res.status(200).json({
+      status: 'ok',
+      postId: post.id,
+      postUrl: `https://reddit.com/r/${context.subredditName}/comments/${post.id}`,
+      timestamp: new Date().toISOString(),
+    });
+  } catch (error) {
+    console.error('❌ Error in daily Podium post scheduler:', error);
+    console.error('❌ Error details:', (error as Error).stack);
+    res.status(500).json({
+      status: 'error',
+      message: 'Failed to create daily Podium post',
+      error: (error as Error).message,
+      timestamp: new Date().toISOString(),
+    });
+  }
+});
 
 if (isLocal) {
   // Use regular Express server for local development

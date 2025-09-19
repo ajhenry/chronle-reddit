@@ -17,7 +17,7 @@
   "menu": {
     "items": [
       {
-        "label": "Create a new post",
+        "label": "Create a new Podium post",
         "description": "podium-game",
         "location": "subreddit",
         "forUserType": "moderator",
@@ -39,7 +39,19 @@
     },
     "redis": true
   },
+  "scheduler": {
+    "tasks": {
+      "daily-item-fetch": {
+        "endpoint": "/internal/cron/daily-item-fetch",
+        "cron": "0 2 * * *"
+      },
+      "daily-post": {
+        "endpoint": "/internal/cron/daily-post",
+        "cron": "0 0 * * *"
+      }
+    }
+  },
   "dev": {
-    "subreddit": "podium_game_dev"
+    "subreddit": "podiumgame"
   }
 }

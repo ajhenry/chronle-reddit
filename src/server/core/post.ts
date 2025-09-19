@@ -12,6 +12,8 @@ export const createPost = async () => {
       appDisplayName: 'podium-dev',
     },
     subredditName: subredditName,
-    title: 'Podium Game for the day',
+    // Convert the date to a string in the EST timezone with the format of Day of week, month, day, year
+    // Example: "September 18, 2025"
+    title: `Podium Game for ${new Date().toLocaleDateString('en-US', { timeZone: 'America/New_York', month: 'long', day: 'numeric', year: 'numeric' })}`,
   });
 };
