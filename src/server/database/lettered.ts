@@ -16,7 +16,6 @@ export interface LetteredGame {
   pieces: LetterPiece[];
   initialPiecePositions: Record<string, GridPosition>;
   solution: Record<string, GridPosition>;
-  solutionHash: string;
   seed: number | null;
   createdAt: string;
   updatedAt: string;
@@ -55,7 +54,6 @@ interface LetteredGameStorage {
   pieces: LetterPiece[];
   initial_piece_positions: Record<string, GridPosition>;
   solution: Record<string, GridPosition>;
-  solution_hash: string;
   seed: number | null;
   created_at: string;
   updated_at: string;
@@ -145,7 +143,6 @@ const convertLetteredGame = (game: LetteredGameStorage): LetteredGame => {
     pieces: game.pieces,
     initialPiecePositions: game.initial_piece_positions,
     solution: game.solution,
-    solutionHash: game.solution_hash,
     seed: game.seed,
     createdAt: game.created_at,
     updatedAt: game.updated_at,
@@ -163,7 +160,6 @@ const convertLetteredGameToStorage = (game: LetteredGame): LetteredGameStorage =
     pieces: game.pieces,
     initial_piece_positions: game.initialPiecePositions,
     solution: game.solution,
-    solution_hash: game.solutionHash,
     seed: game.seed,
     created_at: game.createdAt,
     updated_at: game.updatedAt,
@@ -269,8 +265,7 @@ export const getTodaysLetteredGame = async (): Promise<LetteredGame> => {
       cols: gameData.cols,
       pieces: gameData.pieces,
       initialPiecePositions: gameData.initialPiecePositions,
-      solution: gameData.solution || {},
-      solutionHash: gameData.solutionHash,
+      solution: gameData.solution,
       seed: gameData.seed,
       createdAt: gameData.createdAt,
       updatedAt: gameData.updatedAt,

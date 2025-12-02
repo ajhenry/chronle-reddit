@@ -1,6 +1,5 @@
 import type { LetteredGameData, LetterPiece } from '../../shared/types/api';
 import { generateMockGame } from './lettered-game-generator';
-import { isDevelopment } from '../../shared/utils';
 import { getNextLetteredPhrase } from './phrase-tracker';
 import { getRedisClient } from './redis-provider';
 import { RedisKeys, serialize, deserialize } from '../../shared/types/redis';
@@ -21,11 +20,8 @@ interface DailyGameStorage {
   updated_at: string;
 }
 
+// No longer need to remove solution - we send it to the client now
 const removeSolution = (gameData: LetteredGameData): LetteredGameData => {
-  if (!isDevelopment()) {
-    delete gameData.solution;
-  }
-
   return gameData;
 };
 

@@ -1,5 +1,4 @@
 import type { GridCell, GridPosition, LetterPiece, LetteredGameData } from '../../shared/types/api';
-import { createHash } from 'crypto';
 
 // Intermediate GridCell type for piece generation with skipped tracking
 type GenerationGridCell = GridCell & {
@@ -2674,9 +2673,8 @@ export const generateMockGame = (
 
     console.log('\n✅ Game generation complete!\n');
 
-    // Create secure grid and solution hash
+    // Create secure grid
     const secureGrid = createSecureGrid(trimmedGrid);
-    const solutionHash = generateSolutionHash(trimmedGrid);
 
     return {
       id: 'mock-game-1',
@@ -2688,7 +2686,6 @@ export const generateMockGame = (
       pieces,
       initialPiecePositions,
       solution,
-      solutionHash,
       seed: seed ?? null,
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
@@ -2709,25 +2706,6 @@ export const createSecureGrid = (grid: GridCell[][]): GridCell[][] => {
       letter: cell.isPreFilled ? cell.letter : null, // Keep pre-filled letters, remove others for security
     }))
   );
-};
-
-// Generate SHA256 hash of the filled-in grid with letters
-export const generateSolutionHash = (grid: GridCell[][]): string => {
-  // Create a JSON representation of the 2D grid with letters filled in
-  const filledGridJson = JSON.stringify(
-    grid.map((row) =>
-      row.map((cell) => ({
-        letter: cell.letter,
-        isLetter: cell.isLetter,
-        isPreFilled: cell.isPreFilled,
-        isSpace: cell.isSpace,
-        isUnused: cell.isUnused,
-      }))
-    )
-  );
-
-  // Generate SHA256 hash
-  return createHash('sha256').update(filledGridJson).digest('hex');
 };
 
 // Fallback game with a simpler layout
@@ -2781,9 +2759,8 @@ const generateFallbackGame = (category: string, phrase: string): LetteredGameDat
   const initialPiecePositions = generateInitialPiecePositions(pieces, grid);
   const solution = generateSolutionPositions(pieces, grid);
 
-  // Create secure grid and solution hash
+  // Create secure grid
   const secureGrid = createSecureGrid(grid);
-  const solutionHash = generateSolutionHash(grid);
 
   return {
     id: 'fallback-game-1',
@@ -2795,7 +2772,6 @@ const generateFallbackGame = (category: string, phrase: string): LetteredGameDat
     pieces,
     initialPiecePositions,
     solution,
-    solutionHash,
     seed: null, // fallback games don't use seeds
     createdAt: new Date().toISOString(),
     updatedAt: new Date().toISOString(),

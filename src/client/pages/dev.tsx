@@ -256,7 +256,6 @@ export const DevPage = ({ onBack }: DevPageProps) => {
         pieces: data.gameData.pieces.length,
         initialPiecePositions: Object.keys(data.gameData.initialPiecePositions).length,
         solution: Object.keys(data.gameData.solution).length,
-        solutionHash: data.gameData.solutionHash,
         seed: data.gameData.seed,
       });
 

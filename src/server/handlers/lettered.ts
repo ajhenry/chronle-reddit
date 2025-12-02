@@ -1,6 +1,5 @@
 import { Router } from 'express';
 import { z } from 'zod';
-import { createHash } from 'crypto';
 import {
   LetteredDailyGameResponse,
   LetteredGameSessionResponse,
@@ -49,69 +48,12 @@ const letteredSessionPayloadSchema = z.object({
   timestamp: z.number().positive(),
 });
 
-// Create SHA256 hash of the board state for validation (matches client implementation)
-const createBoardHash = (
-  grid: GridCell[][],
-  placedPieces: Record<string, GridPosition>,
-  pieces: LetterPiece[]
-): string => {
-  // Reconstruct the complete grid by combining secure grid with placed pieces
-  const completeGrid = grid.map((row, rowIndex) =>
-    row.map((cell, colIndex) => {
-      // Start with the secure cell data
-      const completeCell = {
-        letter: cell.letter,
-        isLetter: cell.isLetter,
-        isPreFilled: cell.isPreFilled,
-        isSpace: cell.isSpace,
-        isUnused: cell.isUnused,
-      };
-
-      // If this cell doesn't have a pre-filled letter, try to find it from placed pieces
-      if (!cell.isPreFilled && !cell.letter) {
-        // Check if any piece covers this position
-        for (const [pieceId, position] of Object.entries(placedPieces)) {
-          const piece = pieces.find((p) => p.id === pieceId);
-          if (!piece?.letters?.length) continue;
-
-          // Check if this piece covers the current cell
-          const shape = piece.shape;
-          if (!shape?.length) continue;
-
-          for (let i = 0; i < shape.length; i++) {
-            const shapePos = shape[i];
-            if (!shapePos) continue;
-
-            const pieceRow = position.row + shapePos.row;
-            const pieceCol = position.col + shapePos.col;
-
-            if (pieceRow === rowIndex && pieceCol === colIndex) {
-              completeCell.letter = piece.letters[i] || null;
-              break;
-            }
-          }
-
-          if (completeCell.letter) break; // Found the letter, no need to check more pieces
-        }
-      }
-
-      return completeCell;
-    })
-  );
-
-  // Create hash of the complete grid
-  const gridJson = JSON.stringify(completeGrid);
-  const hash = createHash('sha256').update(gridJson).digest('hex');
-
-  return hash;
-};
-
-// Check if player has won by validating the board state against the solution hash
+// Check if player has won by comparing placed pieces with the solution
 const checkPlayerHasWon = (
   placedPieces: Record<string, GridPosition>,
   gameGrid: GridCell[][],
   pieces: LetterPiece[],
-  solutionHash: string
+  solution: Record<string, GridPosition>
 ): boolean => {
   const mainGridHeight = gameGrid.length;
   const mainGridWidth = gameGrid[0]?.length || 0;
@@ -126,23 +68,40 @@ const checkPlayerHasWon = (
   const placedOnBoardCount = mainBoardPieces.length;
 
   if (placedOnBoardCount !== totalPieces) {
+    console.log('Board validation: Not all pieces placed', {
+      totalPieces,
+      placedOnBoardCount,
+    });
     return false;
   }
 
-  // Create hash using only pieces placed on the main board
-  const mainBoardPiecesObj = Object.fromEntries(mainBoardPieces);
-  const currentHash = createBoardHash(gameGrid, mainBoardPiecesObj, pieces);
-  const isValid = currentHash === solutionHash;
+  // Check if each piece is in the correct position
+  for (const [pieceId, placedPosition] of mainBoardPieces) {
+    const solutionPosition = solution[pieceId];
+    if (!solutionPosition) {
+      console.log('Board validation: No solution position for piece', { pieceId });
+      return false;
+    }
 
-  console.log('Board validation:', {
-    currentHash: currentHash.substring(0, 16) + '...',
-    solutionHash: solutionHash.substring(0, 16) + '...',
+    if (
+      placedPosition.row !== solutionPosition.row ||
+      placedPosition.col !== solutionPosition.col
+    ) {
+      console.log('Board validation: Piece in wrong position', {
+        pieceId,
+        placed: placedPosition,
+        solution: solutionPosition,
+      });
+      return false;
+    }
+  }
+
+  console.log('Board validation: All pieces correctly placed!', {
     totalPieces,
     placedOnBoardCount,
-    isValid,
   });
 
-  return isValid;
+  return true;
 };
 
 const router = Router();
@@ -223,8 +182,7 @@ router.get('/api/lettered/game', async (_req, res): Promise<void> => {
         cols: letteredGame.cols,
         pieces: letteredGame.pieces as LetterPiece[],
         initialPiecePositions: letteredGame.initialPiecePositions || {},
-        solutionHash: letteredGame.solutionHash,
-        solution: letteredGame.solution || [],
+        solution: letteredGame.solution,
         createdAt: letteredGame.createdAt,
         updatedAt: letteredGame.updatedAt,
       },
@@ -312,7 +270,7 @@ router.post('/api/lettered/:dailyGameId/session', async (req, res): Promise<void
       boardState.placedPieces,
       dailyLetterGame.grid,
       dailyLetterGame.pieces,
-      dailyLetterGame.solutionHash
+      dailyLetterGame.solution
     );
     console.log('Board validation result:', hasWon);
 

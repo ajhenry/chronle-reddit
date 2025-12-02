@@ -11,7 +11,6 @@ import {
   generateInitialPiecePositions,
   generateMockGame,
   createSecureGrid,
-  generateSolutionHash,
   generatePhraseLayoutOn9x9Grid,
   selectAnchorLettersAlgorithm,
   generatePiecesWithBacktracking,
@@ -815,7 +814,6 @@ describe('Lettered Game Generator', () => {
         expect(game.pieces).toBeDefined();
         expect(game.initialPiecePositions).toBeDefined();
         expect(game.solution).toBeDefined();
-        expect(game.solutionHash).toBeDefined();
         expect(game.createdAt).toBeDefined();
         expect(game.updatedAt).toBeDefined();
 
@@ -851,7 +849,6 @@ describe('Lettered Game Generator', () => {
 
         // Games with same seed should be identical
         expect(game1.pieces.length).toBe(game2.pieces.length);
-        expect(game1.solutionHash).toBe(game2.solutionHash);
 
         // Pieces should be in the same order (due to seeded shuffling)
         for (let i = 0; i < Math.min(game1.pieces.length, game2.pieces.length); i++) {
@@ -915,62 +912,6 @@ describe('Lettered Game Generator', () => {
         expect(secureGrid[4][4].isLetter).toBe(true);
         expect(secureGrid[4][5].isLetter).toBe(true);
         expect(secureGrid[5][4].isLetter).toBe(true);
-      });
-    });
-
-    describe('generateSolutionHash', () => {
-      it('should generate consistent hash for same grid', () => {
-        const grid1 = create9x9Grid();
-        const grid2 = create9x9Grid();
-
-        // Make grids identical
-        grid1[4][4] = {
-          letter: 'T',
-          isLetter: true,
-          isPreFilled: false,
-          isSpace: false,
-          isUnused: false,
-        };
-        grid2[4][4] = {
-          letter: 'T',
-          isLetter: true,
-          isPreFilled: false,
-          isSpace: false,
-          isUnused: false,
-        };
-
-        const hash1 = generateSolutionHash(grid1);
-        const hash2 = generateSolutionHash(grid2);
-
-        expect(hash1).toBe(hash2);
-        expect(typeof hash1).toBe('string');
-        expect(hash1.length).toBeGreaterThan(0);
-      });
-
-      it('should generate different hash for different grids', () => {
-        const grid1 = create9x9Grid();
-        const grid2 = create9x9Grid();
-
-        // Make grids different
-        grid1[4][4] = {
-          letter: 'T',
-          isLetter: true,
-          isPreFilled: false,
-          isSpace: false,
-          isUnused: false,
-        };
-        grid2[4][4] = {
-          letter: 'E',
-          isLetter: true,
-          isPreFilled: false,
-          isSpace: false,
-          isUnused: false,
-        };
-
-        const hash1 = generateSolutionHash(grid1);
-        const hash2 = generateSolutionHash(grid2);
-
-        expect(hash1).not.toBe(hash2);
       });
     });
   });
@@ -1047,7 +988,6 @@ describe('Lettered Game Generator', () => {
         pieces: expect.any(Array),
         initialPiecePositions: expect.any(Object),
         solution: expect.any(Object),
-        solutionHash: expect.any(String),
         createdAt: expect.any(String),
         updatedAt: expect.any(String),
       });
@@ -1077,9 +1017,6 @@ describe('Lettered Game Generator', () => {
         expect(pos.col).toBeGreaterThanOrEqual(0);
         expect(pos.col).toBeLessThan(game.cols);
       });
-
-      // Verify solution hash is valid
-      expect(game.solutionHash).toMatch(/^[a-f0-9]{64}$/);
     });
 
     it('should handle complex phrases with multiple words', () => {
@@ -1118,7 +1055,6 @@ describe('Lettered Game Generator', () => {
 
       // All games should be identical
       for (let i = 1; i < games.length; i++) {
-        expect(games[0].solutionHash).toBe(games[i].solutionHash);
         expect(games[0].pieces.length).toBe(games[i].pieces.length);
 
         // Compare piece details

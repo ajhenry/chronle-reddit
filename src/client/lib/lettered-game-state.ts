@@ -453,74 +453,47 @@ export class LetteredGameStateManager {
     }
   }
 
-  // Validate by comparing board layout to solution hash
+  // Validate by comparing placed pieces with solution positions
   private async validateBoardAgainstPhrase(): Promise<boolean> {
-    if (!this.state.gameData) {
+    if (!this.state.gameData || !this.state.gameData.solution) {
       return false;
     }
 
-    const currentHash = await this.createSolutionHash();
-    const expectedHash = this.state.gameData.solutionHash;
-    const isValid = currentHash === expectedHash;
+    const solution = this.state.gameData.solution;
+    const mainGridHeight = this.state.gameData.grid.length;
+    const mainGridWidth = this.state.gameData.grid[0]?.length || 0;
 
-    return isValid;
-  }
-
-  // Create SHA256 hash of current solution for validation
-  private async createSolutionHash(): Promise<string> {
-    if (!this.state.gameData) {
-      return '';
-    }
-
-    // Reconstruct the complete grid by combining secure grid with placed pieces
-    const completeGrid = this.state.gameData.grid.map((row, rowIndex) =>
-      row.map((cell, colIndex) => {
-        // Start with the secure cell data
-        const completeCell = {
-          letter: cell.letter,
-          isLetter: cell.isLetter,
-          isPreFilled: cell.isPreFilled,
-          isSpace: cell.isSpace,
-          isUnused: cell.isUnused,
-        };
-
-        // If this cell doesn't have a pre-filled letter, try to find it from placed pieces
-        if (!cell.isPreFilled && !cell.letter) {
-          // Check if any piece covers this position
-          for (const [pieceId, position] of this.state.placedPieces.entries()) {
-            const piece = this.state.gameData!.pieces.find((p) => p.id === pieceId);
-            if (!piece?.letters?.length) continue;
-
-            // Check if this piece covers the current cell
-            const shape = piece.shape;
-            if (!shape?.length) continue;
-
-            for (let i = 0; i < shape.length; i++) {
-              const shapePos = shape[i];
-              if (!shapePos) continue;
-
-              const pieceRow = position.row + shapePos.row;
-              const pieceCol = position.col + shapePos.col;
-
-              if (pieceRow === rowIndex && pieceCol === colIndex) {
-                completeCell.letter = piece.letters[i] || null;
-                break;
-              }
-            }
-
-            if (completeCell.letter) break; // Found the letter, no need to check more pieces
-          }
-        }
-
-        return completeCell;
-      })
+    // Filter out pieces placed in the tray area (below main grid)
+    const mainBoardPieces = Array.from(this.state.placedPieces.entries()).filter(
+      ([, position]) => {
+        return position.row < mainGridHeight && position.col < mainGridWidth;
+      }
     );
 
-    // Create the same data structure as the server
-    const gridJson = JSON.stringify(completeGrid);
-    const hash = await sha256(gridJson);
+    // Check if all pieces are placed on the main board
+    const totalPieces = this.state.gameData.pieces.length;
+    const placedOnBoardCount = mainBoardPieces.length;
 
-    return hash;
+    if (placedOnBoardCount !== totalPieces) {
+      return false;
+    }
+
+    // Check if each piece is in the correct position
+    for (const [pieceId, placedPosition] of mainBoardPieces) {
+      const solutionPosition = solution[pieceId];
+      if (!solutionPosition) {
+        return false;
+      }
+
+      if (
+        placedPosition.row !== solutionPosition.row ||
+        placedPosition.col !== solutionPosition.col
+      ) {
+        return false;
+      }
+    }
+
+    return true;
   }
 
   // Get current score

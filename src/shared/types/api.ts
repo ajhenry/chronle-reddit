@@ -123,8 +123,7 @@ export type LetteredGameData = {
   cols: number;
   pieces: LetterPiece[];
   initialPiecePositions: Record<string, GridPosition>; // initial positions for pieces (pieceId -> position)
-  solution?: Record<string, GridPosition>; // where each piece should be placed (pieceId -> correct position)
-  solutionHash: string; // SHA256 hash of the solution for secure validation
+  solution: Record<string, GridPosition>; // where each piece should be placed (pieceId -> correct position)
   seed: number | null; // seed used for game generation
   createdAt: string;
   updatedAt: string;
