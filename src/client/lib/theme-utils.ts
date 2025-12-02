@@ -1,4 +1,4 @@
-// Theme utility functions for Podium app
+// Theme utility functions for Lettered app
 
 export type GameTheme = 'lettered' | 'game2' | 'game3' | 'default';
 

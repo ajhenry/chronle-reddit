@@ -13,7 +13,6 @@ interface LogoItem {
 
 const GAME_LOGOS: LogoItem[] = [
   { src: '/lettered-logo.svg', alt: 'Lettered Logo' },
-  { src: '/podium-logo.svg', alt: 'Podium Logo' },
 ];
 
 export const BouncingLogo: React.FC<BouncingLogoProps> = ({

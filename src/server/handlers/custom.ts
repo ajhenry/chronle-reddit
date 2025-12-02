@@ -160,7 +160,7 @@ router.post('/api/custom/lettered', async (req, res): Promise<void> => {
         subredditName: subredditName,
         title: `LETTERED - ${category.toUpperCase()} by ${username}`,
         splash: {
-          appDisplayName: 'Podium Game',
+          appDisplayName: 'Lettered',
         },
         // Store gameId in the post data - the webview should read this
         webviewMetadata: {

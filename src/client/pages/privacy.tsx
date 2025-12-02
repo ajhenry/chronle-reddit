@@ -26,11 +26,11 @@ export function PrivacyPage() {
       <div className="container px-4 py-8 mx-auto max-w-4xl">
         <div className="max-w-none prose prose-slate dark:prose-invert prose-lg sm:prose-xl text-foreground">
           <h1 className="mb-2 text-4xl font-bold">Privacy Policy</h1>
-          <p className="mb-8 text-lg text-muted-foreground">Last updated: 9/10/2025</p>
+          <p className="mb-8 text-lg text-muted-foreground">Last updated: 12/2/2025</p>
 
           <h2>Introduction</h2>
           <p>
-            At Podium, we are committed to protecting your privacy and being transparent about how
+            At Lettered, we are committed to protecting your privacy and being transparent about how
             we collect, use, and protect your information. This Privacy Policy explains our
             practices regarding your personal data and your rights.
           </p>
@@ -121,7 +121,7 @@ export function PrivacyPage() {
 
           <h3>8. Third-Party Services</h3>
           <p>
-            Podium integrates with Reddit for user authentication and community features. When you
+            Lettered integrates with Reddit for user authentication and community features. When you
             connect your Reddit account, we access only the basic information necessary for game
             functionality. Third-party services have their own privacy policies which we encourage
             you to review.
@@ -129,7 +129,7 @@ export function PrivacyPage() {
 
           <h3>9. Children's Privacy</h3>
           <p>
-            Podium is not intended for children under 13 years of age. We do not knowingly collect
+            Lettered is not intended for children under 13 years of age. We do not knowingly collect
             personal information from children under 13. If we become aware that we have collected
             personal information from a child under 13, we will take steps to delete such
             information.
@@ -139,7 +139,7 @@ export function PrivacyPage() {
           <p>
             We may update this Privacy Policy from time to time. We will notify you of any material
             changes by posting the new Privacy Policy on this page and updating the "Last updated"
-            date. Your continued use of Podium after changes take effect constitutes acceptance of
+            date. Your continued use of Lettered after changes take effect constitutes acceptance of
             the updated policy.
           </p>
 
@@ -151,7 +151,7 @@ export function PrivacyPage() {
 
           <div className="p-6 mt-12 rounded-lg border bg-muted">
             <p className="text-sm font-medium text-center text-muted-foreground">
-              By using Podium, you acknowledge that you have read, understood, and agree to our
+              By using Lettered, you acknowledge that you have read, understood, and agree to our
               collection and use of information as described in this Privacy Policy.
             </p>
           </div>

@@ -17,8 +17,8 @@
   "menu": {
     "items": [
       {
-        "label": "Create a new Podium post",
-        "description": "podium-game",
+        "label": "Create a new Lettered post",
+        "description": "lettered-game",
         "location": "subreddit",
         "forUserType": "moderator",
         "endpoint": "/internal/menu/post-create"

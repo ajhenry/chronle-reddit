@@ -4,10 +4,10 @@ import { getOrCreateTodaysLetteredGame } from '../lib/lettered-game-helpers';
 import { setPostToGameMapping } from '../database/redis';
 
 const splashConfig = {
-  appDisplayName: 'podium',
-  heading: 'Welcome to Podium',
-  description: '',
-  appIconUri: 'podium-logo.png',
+  appDisplayName: 'Lettered',
+  heading: 'Welcome to Lettered',
+  description: 'The phrase-fitting puzzle game',
+  appIconUri: 'lettered-logo.png',
   buttonLabel: 'Start Playing',
   entryUri: 'index.html',
 };
@@ -27,7 +27,7 @@ export const createPost = async () => {
   const post = await reddit.submitCustomPost({
     splash: splashConfig,
     subredditName: subredditName,
-    title: `Podium Game for ${new Date().toLocaleDateString('en-US', { timeZone: 'America/New_York', month: 'long', day: 'numeric', year: 'numeric' })}`,
+    title: `Lettered - ${new Date().toLocaleDateString('en-US', { timeZone: 'America/New_York', month: 'long', day: 'numeric', year: 'numeric' })}`,
     webviewMetadata: {
       gameId: gameId,
       gameType: 'lettered',

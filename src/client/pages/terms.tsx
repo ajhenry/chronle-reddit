@@ -26,36 +26,31 @@ export function TermsPage() {
       <div className="container px-4 py-8 mx-auto max-w-4xl">
         <div className="max-w-none prose prose-slate dark:prose-invert prose-lg sm:prose-xl text-foreground">
           <h1 className="mb-2 text-4xl font-bold">Terms of Service</h1>
-          <p className="mb-8 text-lg text-muted-foreground">Last updated: 9/10/2025</p>
+          <p className="mb-8 text-lg text-muted-foreground">Last updated: 12/2/2025</p>
 
-          <h2>Welcome to Podium</h2>
+          <h2>Welcome to Lettered</h2>
           <p>
-            By accessing and using Podium, you accept and agree to be bound by the terms and
+            By accessing and using Lettered, you accept and agree to be bound by the terms and
             provision of this agreement. If you do not agree to abide by the above, please do not
             use this service.
           </p>
 
           <h3>1. Acceptance of Terms</h3>
           <p>
-            By accessing and using Podium, you accept and agree to be bound by the terms and
+            By accessing and using Lettered, you accept and agree to be bound by the terms and
             provision of this agreement. If you do not agree to abide by the above, please do not
             use this service.
           </p>
 
           <h3>2. Description of Service</h3>
-          <p>Podium is a daily gaming platform featuring word-based games including:</p>
-          <ul>
-            <li>
-              <strong>TOP X</strong> - Guess the top answers to trivia questions
-            </li>
-            <li>
-              <strong>LETTERED</strong> - Complete phrases in pieces
-            </li>
-          </ul>
-          <p>Each game can be played once per day, with new content available daily.</p>
+          <p>
+            Lettered is the phrase-fitting puzzle game where players arrange letter pieces to
+            complete phrases. Each game can be played once per day, with new content available
+            daily.
+          </p>
 
           <h3>3. User Accounts and Data</h3>
-          <p>While Podium does not require user registration for basic gameplay, we may collect:</p>
+          <p>While Lettered does not require user registration for basic gameplay, we may collect:</p>
           <ul>
             <li>Game progress and completion data</li>
             <li>Anonymous usage statistics</li>
@@ -68,15 +63,15 @@ export function TermsPage() {
             <li>Use the service only for lawful purposes</li>
             <li>Not attempt to reverse engineer or modify the games</li>
             <li>Not use automated tools or bots to play games</li>
-            <li>Respect the one-game-per-day limit for each game type</li>
+            <li>Respect the one-game-per-day limit</li>
             <li>Not share or distribute game solutions before official release</li>
           </ul>
 
           <h3>5. Intellectual Property</h3>
           <p>
             All game content, including questions, puzzles, graphics, and software, are the
-            intellectual property of Podium. You may not reproduce, distribute, or create derivative
-            works without explicit permission.
+            intellectual property of Lettered. You may not reproduce, distribute, or create
+            derivative works without explicit permission.
           </p>
 
           <h3>6. Privacy Policy</h3>
@@ -88,13 +83,13 @@ export function TermsPage() {
 
           <h3>7. Service Availability</h3>
           <p>
-            While we strive for 99.9% uptime, Podium is provided "as is" without warranties. We
+            While we strive for 99.9% uptime, Lettered is provided "as is" without warranties. We
             reserve the right to modify, suspend, or discontinue the service at any time.
           </p>
 
           <h3>8. Limitation of Liability</h3>
           <p>
-            Podium and its creators shall not be liable for any indirect, incidental, special, or
+            Lettered and its creators shall not be liable for any indirect, incidental, special, or
             consequential damages arising from your use of the service.
           </p>
 
@@ -112,8 +107,8 @@ export function TermsPage() {
 
           <div className="p-6 mt-12 rounded-lg border bg-muted">
             <p className="text-sm font-medium text-center text-muted-foreground">
-              By using Podium, you acknowledge that you have read, understood, and agree to be bound
-              by these Terms of Service.
+              By using Lettered, you acknowledge that you have read, understood, and agree to be
+              bound by these Terms of Service.
             </p>
           </div>
         </div>

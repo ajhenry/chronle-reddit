@@ -71,7 +71,7 @@ if (isLocal || isRedditDev) {
 
 app.post('/internal/cron/daily-post', async (_req, res) => {
   try {
-    console.log('Daily Podium post scheduler triggered');
+    console.log('Daily Lettered post scheduler triggered');
 
     // Skip post creation in local development mode
     if (isLocal) {
@@ -88,7 +88,7 @@ app.post('/internal/cron/daily-post', async (_req, res) => {
 
     const post = await createPost();
 
-    console.log('Daily Podium post created successfully:', post.id);
+    console.log('Daily Lettered post created successfully:', post.id);
     console.log(
       'Post URL:',
       `https://reddit.com/r/${context.subredditName}/comments/${post.id}`
@@ -101,11 +101,11 @@ app.post('/internal/cron/daily-post', async (_req, res) => {
       timestamp: new Date().toISOString(),
     });
   } catch (error) {
-    console.error('Error in daily Podium post scheduler:', error);
+    console.error('Error in daily Lettered post scheduler:', error);
     console.error('Error details:', (error as Error).stack);
     res.status(500).json({
       status: 'error',
-      message: 'Failed to create daily Podium post',
+      message: 'Failed to create daily Lettered post',
       error: (error as Error).message,
       timestamp: new Date().toISOString(),
     });

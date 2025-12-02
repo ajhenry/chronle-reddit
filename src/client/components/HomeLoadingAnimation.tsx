@@ -24,7 +24,7 @@ export const HomeLoadingAnimation: React.FC<HomeLoadingAnimationProps> = ({ clas
         <img src="/lettered-logo.svg" alt="Lettered Logo" className="w-16 h-16" />
       </motion.div>
 
-      {/* PODIUM text */}
+      {/* LETTERED text */}
       <motion.div
         className="text-center"
         initial={{ opacity: 0, y: 20 }}
@@ -40,7 +40,7 @@ export const HomeLoadingAnimation: React.FC<HomeLoadingAnimationProps> = ({ clas
             lineHeight: '0.8',
           }}
         >
-          PODIUM
+          LETTERED
         </h1>
       </motion.div>
 

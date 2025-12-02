@@ -39,8 +39,7 @@ The `getOrCreateTodaysLetteredGame()` function:
 1. Checks if a game exists for today
 2. If not, calls `getNextLetteredPhrase()` to get the next phrase
 3. Generates a game using `generateMockGame()` with a random seed
-4. Stores it in Supabase
-5. Creates the daily_games entry
+4. Stores it in Redis
 
 ### 4. Integration (`src/server/database/lettered.ts`)
 
