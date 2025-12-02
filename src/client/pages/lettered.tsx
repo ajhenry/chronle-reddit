@@ -520,6 +520,19 @@ export const LetteredPage = ({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [gameComplete, isReloadedCompletedGame, handleGameComplete]);
 
+  // Fetch postgame stats on load for reloaded completed games
+  useEffect(() => {
+    // Only fetch on load for previously completed games (not for fresh completions)
+    // Fresh completions will fetch stats after session save completes in handleGridLayoutChange
+    if (gameId && isReloadedCompletedGame) {
+      console.log('Fetching postgame stats for reloaded completed game:', {
+        gameId,
+        postType: gameData?.postType,
+      });
+      void loadPostGameStats();
+    }
+  }, [gameId, isReloadedCompletedGame, gameData?.postType, loadPostGameStats]);
+
   // Load postgame stats when modal opens
   useEffect(() => {
     if (uiState.showGameOverModal && gameComplete && gameId) {
@@ -582,13 +595,20 @@ export const LetteredPage = ({
           } else {
             const responseData = await response.json();
             console.log('Game session saved successfully:', { result: responseData });
+
+            // Fetch postgame stats after session save completes when user wins
+            // This ensures leaderboard entry is saved before we fetch stats
+            if (responseData.hasWon) {
+              console.log('User won! Fetching postgame stats after session save...');
+              void loadPostGameStats();
+            }
           }
         } catch (error) {
           console.error('Error saving game session:', error);
         }
       }
     },
-    [gameId, isRestoringSession]
+    [gameId, isRestoringSession, loadPostGameStats]
   );
 
   const handleBackToMenu = () => {

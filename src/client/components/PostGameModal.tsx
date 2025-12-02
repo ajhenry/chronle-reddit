@@ -70,6 +70,10 @@ export const PostGameModal: React.FC<PostGameModalProps> = ({
     onOpenChange(newOpen);
   };
 
+  console.log('leaderboard', leaderboard);
+  console.log('playerRank', playerRank);
+  console.log('totalPlayers', totalPlayers);
+
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
       <DialogContent
@@ -103,16 +107,6 @@ export const PostGameModal: React.FC<PostGameModalProps> = ({
             </div>
           )}
 
-          {/* Player Score Display */}
-          <div className="relative p-4 text-center text-white bg-black border-4 border-black">
-            <div className="mb-1 text-2xl font-black tracking-wide">
-              {loading ? <Skeleton className="mx-auto w-32 h-8 bg-gray-600" /> : 'VALIDATED'}
-            </div>
-            <div className="text-sm font-bold tracking-wider">
-              {loading ? <Skeleton className="mx-auto w-40 h-4 bg-gray-600" /> : 'SERVER CONFIRMED'}
-            </div>
-          </div>
-
           {/* Stats Grid */}
           <div className="grid grid-cols-2 gap-4">
             <div className="p-4 text-center bg-white border-4 border-black shadow-lg">
@@ -143,38 +137,46 @@ export const PostGameModal: React.FC<PostGameModalProps> = ({
             </div>
           </div>
 
-          {/* Leaderboard Display - shown for all games */}
-          {leaderboard && leaderboard.length > 0 && (
-            <div className="p-4 bg-white border-4 border-black shadow-lg">
-              <div className="mb-3 text-lg font-black text-center text-black">LEADERBOARD</div>
-              <div className="space-y-2">
-                {leaderboard.slice(0, 5).map((entry, index) => (
-                  <div
-                    key={`${entry.username}-${entry.timeElapsed}-${entry.moves}`}
-                    className={`flex justify-between items-center p-2 border-2 border-black ${
-                      index === (playerRank ? playerRank - 1 : -1)
-                        ? 'bg-yellow-300 font-bold'
-                        : 'bg-gray-100'
-                    }`}
-                  >
-                    <div className="flex gap-2 items-center">
-                      <span className="font-black text-black">#{index + 1}</span>
-                      <span className="font-bold text-black">{entry.username}</span>
+          {/* Leaderboard Display - always shown */}
+          <div className="p-4 bg-white border-4 border-black shadow-lg">
+            <div className="mb-3 text-lg font-black text-center text-black">LEADERBOARD</div>
+            {leaderboard && leaderboard.length > 0 ? (
+              <>
+                <div className="space-y-2">
+                  {leaderboard.slice(0, 5).map((entry, index) => (
+                    <div
+                      key={`${entry.username}-${entry.timeElapsed}-${entry.moves}`}
+                      className={`flex justify-between items-center p-2 border-2 border-black ${
+                        index === (playerRank ? playerRank - 1 : -1)
+                          ? 'bg-yellow-300 font-bold'
+                          : 'bg-gray-100'
+                      }`}
+                    >
+                      <div className="flex gap-2 items-center">
+                        <span className="font-black text-black">#{index + 1}</span>
+                        <span className="font-bold text-black">{entry.username}</span>
+                      </div>
+                      <div className="flex gap-2 items-center">
+                        <span className="font-black text-black">
+                          {formatTime(entry.timeElapsed)}
+                        </span>
+                        <span className="text-xs font-bold text-black">({entry.moves} moves)</span>
+                      </div>
                     </div>
-                    <div className="flex gap-2 items-center">
-                      <span className="font-black text-black">{formatTime(entry.timeElapsed)}</span>
-                      <span className="text-xs font-bold text-black">({entry.moves} moves)</span>
-                    </div>
-                  </div>
-                ))}
-              </div>
-              {playerRank && totalPlayers && (
-                <div className="mt-3 text-sm font-bold text-center text-black">
-                  Your Rank: #{playerRank} of {totalPlayers} players
+                  ))}
                 </div>
-              )}
-            </div>
-          )}
+                {playerRank && totalPlayers && (
+                  <div className="mt-3 text-sm font-bold text-center text-black">
+                    Your Rank: #{playerRank} of {totalPlayers} players
+                  </div>
+                )}
+              </>
+            ) : (
+              <div className="py-4 text-sm text-center text-gray-500">
+                {loading ? 'Loading leaderboard...' : 'Be the first on the leaderboard!'}
+              </div>
+            )}
+          </div>
 
           {/* Additional content (game-specific sections) */}
           {children}

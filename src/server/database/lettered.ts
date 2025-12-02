@@ -749,10 +749,11 @@ export const getPlayerRankInGameLeaderboard = async (
     const redis = await getRedisClient();
     const leaderboardKey = RedisKeys.letteredGameLeaderboard(gameId);
 
-    // zRank returns 0-indexed rank (ascending order)
+    // zRank returns 0-indexed rank (ascending order), or null/undefined if member not found
     const rank = await redis.zRank(leaderboardKey, userId);
 
-    return rank !== null ? rank + 1 : null;
+    // Check for both null and undefined (Redis client may return either)
+    return rank != null ? rank + 1 : null;
   } catch (error) {
     console.error('Failed to get player rank in game:', { error });
     return null;
@@ -783,8 +784,9 @@ export const hasUserCompletedGame = async (gameId: string, userId: string): Prom
     const redis = await getRedisClient();
     const leaderboardKey = RedisKeys.letteredGameLeaderboard(gameId);
 
+    // zScore returns null/undefined if member doesn't exist
     const score = await redis.zScore(leaderboardKey, userId);
-    return score !== null;
+    return score != null;
   } catch (error) {
     console.error('Failed to check if user completed game:', { error });
     return false;
