@@ -16,7 +16,6 @@ import {
   GridCell,
   LetteredCustomGameResponse,
 } from '../../shared/types/api';
-import { DEFAULT_INITIAL_SCORE } from '../../shared/score-decay';
 import { isDevelopment } from '../lib/dev-utils';
 import { getResponsiveCellSize, getResponsiveCellSpacing } from '../lib/lettered-utils';
 import { useViewport } from '../hooks/useViewport';
@@ -270,10 +269,9 @@ export const LetteredPage = ({ onBack }: { onBack?: () => void }) => {
   const gameStateManagerRef = useRef<LetteredGameStateManager | null>(null);
 
   // State for UI updates from game state manager
-  const [gameScore, setGameScore] = useState(DEFAULT_INITIAL_SCORE);
+  const [elapsedTime, setElapsedTime] = useState(0);
   const [placedPieces, setPlacedPieces] = useState<Map<string, GridPosition>>(new Map());
   const [gameComplete, setGameComplete] = useState(false);
-  const [gameWon, setGameWon] = useState(false);
   const [moves, setMoves] = useState(0);
 
   // Get responsive viewport information
@@ -285,29 +283,15 @@ export const LetteredPage = ({ onBack }: { onBack?: () => void }) => {
   useEffect(() => {
     if (!gameStateManagerRef.current) {
       // Start with default values, will be updated when game loads
-      gameStateManagerRef.current = new LetteredGameStateManager(
-        null,
-        undefined,
-        undefined,
-        undefined,
-        0
-      );
-      // Disable timer initially to prevent decay before restoration
-      gameStateManagerRef.current.setTimerEnabled(false);
+      gameStateManagerRef.current = new LetteredGameStateManager(null, undefined, 0);
 
       // Set up callback to receive game state updates
       const unsubscribe = gameStateManagerRef.current.onUpdate((updates) => {
-        if (updates.score !== undefined) {
-          setGameScore(updates.score);
-        }
         if (updates.placedPieces) {
           setPlacedPieces(updates.placedPieces);
         }
         if (updates.gameComplete !== undefined) {
           setGameComplete(updates.gameComplete);
-        }
-        if (updates.gameWon !== undefined) {
-          setGameWon(updates.gameWon);
         }
         if (updates.moves !== undefined) {
           setMoves(updates.moves);
@@ -321,6 +305,18 @@ export const LetteredPage = ({ onBack }: { onBack?: () => void }) => {
       };
     }
   }, []);
+
+  // Update elapsed time display every second
+  useEffect(() => {
+    if (!gameComplete && gameStateManagerRef.current) {
+      const timer = setInterval(() => {
+        const elapsed = gameStateManagerRef.current?.getElapsedTime() ?? 0;
+        setElapsedTime(elapsed);
+      }, 100); // Update every 100ms for smooth display
+
+      return () => clearInterval(timer);
+    }
+  }, [gameComplete]);
 
   // Load game data from API
   const loadGame = useCallback(async () => {
@@ -349,11 +345,13 @@ export const LetteredPage = ({ onBack }: { onBack?: () => void }) => {
 
         // Initialize game state manager with new game and session data
         if (gameStateManagerRef.current) {
+          const gameStartTime = gameScore?.timestamp
+            ? gameScore.timestamp - gameScore.timeElapsed
+            : Date.now();
+
           gameStateManagerRef.current.initializeGame(
             apiGameData,
-            gameScore?.score || DEFAULT_INITIAL_SCORE,
-            Date.now(),
-            gameScore?.score || DEFAULT_INITIAL_SCORE,
+            gameStartTime,
             gameScore?.moves || 0
           );
 
@@ -371,25 +369,18 @@ export const LetteredPage = ({ onBack }: { onBack?: () => void }) => {
               }
             }
 
-            // Update the score to match the session
+            // Update moves count and time from server
             if (gameScore) {
-              setGameScore(gameScore.score);
-              // Update moves count from server
               setMoves(gameScore.moves);
+              setElapsedTime(gameScore.timeElapsed);
             }
+
             // Update the game complete flag
             setGameComplete(true);
-            // Update the game won flag
-            setGameWon(true);
 
             // Clear restoration flags after all pieces are restored
             gameStateManagerRef.current.setRestoring(false);
-            gameStateManagerRef.current.setTimerEnabled(false);
             setIsRestoringSession(false);
-          } else {
-            // Enable client-side decay for visual feedback, but sync with server values
-            gameStateManagerRef.current.setTimerEnabled(true);
-            gameStateManagerRef.current.startScoreDecay();
           }
         }
       }
@@ -402,34 +393,28 @@ export const LetteredPage = ({ onBack }: { onBack?: () => void }) => {
         setDailyGameId(gameData.dailyGameId);
 
         // Prepare session restoration data
-        let initialScoreForManager: number | undefined;
-        let currentScoreForManager: number | undefined;
         let gameStartTime: number | undefined;
         let movesForManager: number | undefined;
 
         // Only use session data for daily games, not custom games
         if (apiSessionData) {
-          // Use the original initial score from server for decay calculations
-          // and set current score to the restored score
-          initialScoreForManager = apiSessionData.initialScore;
-          currentScoreForManager = apiSessionData.currentScore;
-          gameStartTime = Date.now();
+          // Calculate game start time from timeElapsed
+          gameStartTime = Date.now() - apiSessionData.timeElapsed;
           movesForManager = apiSessionData.moves;
 
-          // Set the moves count from server data
+          // Set the moves count and elapsed time from server data
           setMoves(apiSessionData.moves);
+          setElapsedTime(apiSessionData.timeElapsed);
         } else {
-          // For new games (no session data) or custom games, set the appropriate initial score
-          initialScoreForManager = DEFAULT_INITIAL_SCORE;
+          // For new games, start time is now
+          gameStartTime = Date.now();
         }
 
         // Initialize game state manager with new game and session data
         if (gameStateManagerRef.current) {
           gameStateManagerRef.current.initializeGame(
             apiGameData,
-            initialScoreForManager,
             gameStartTime,
-            currentScoreForManager,
             movesForManager
           );
 
@@ -449,8 +434,6 @@ export const LetteredPage = ({ onBack }: { onBack?: () => void }) => {
               await gameStateManagerRef.current.placePiece(pieceId, position);
             }
 
-            // Update the score to match the session
-            setGameScore(apiSessionData.currentScore);
             // Update moves count from server
             setMoves(apiSessionData.moves);
 
@@ -458,10 +441,6 @@ export const LetteredPage = ({ onBack }: { onBack?: () => void }) => {
             gameStateManagerRef.current.setRestoring(false);
             setIsRestoringSession(false);
           }
-
-          // Enable client-side decay for visual feedback, but sync with server values
-          gameStateManagerRef.current.setTimerEnabled(true);
-          gameStateManagerRef.current.startScoreDecay();
         }
       }
 
@@ -496,7 +475,6 @@ export const LetteredPage = ({ onBack }: { onBack?: () => void }) => {
   // Handle game completion effects (UI side)
   const handleGameComplete = useCallback(() => {
     console.log('🚀 handleGameComplete called:', {
-      gameWon,
       gameComplete,
       isReloadedCompletedGame,
       gameId,
@@ -504,45 +482,40 @@ export const LetteredPage = ({ onBack }: { onBack?: () => void }) => {
       hasGameStateManager: !!gameStateManagerRef.current,
     });
 
-    if (gameWon && gameComplete && !isReloadedCompletedGame) {
-      // Submit score for custom games
+    if (gameComplete && !isReloadedCompletedGame) {
+      // Submit completion data for custom games
       if (gameId && gameStateManagerRef.current) {
-        const finalScore = gameStateManagerRef.current.getScore();
-        const startTime = gameStateManagerRef.current.getState()?.gameStartTime;
-        const timeElapsed = startTime ? Math.floor((Date.now() - startTime) / 1000) : 0;
+        const timeElapsed = gameStateManagerRef.current.getElapsedTime();
 
-        console.log('📤 Submitting custom game score:', {
+        console.log('📤 Submitting custom game completion:', {
           gameId,
-          finalScore,
           timeElapsed,
           moves,
-          startTime: new Date(startTime).toISOString(),
         });
 
-        // Submit score to custom game endpoint
-        apiFetch(`/api/custom/lettered/${gameId}/score`, {
+        // Submit completion data to custom game endpoint
+        apiFetch(`/api/custom/lettered/${gameId}/complete`, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
           },
           body: JSON.stringify({
-            score: finalScore,
             timeElapsed: timeElapsed,
             moves: moves,
           }),
         })
           .then((response) => {
             if (response.ok) {
-              console.log('✅ Custom game score submitted successfully');
+              console.log('✅ Custom game completion submitted successfully');
             } else {
-              console.error('❌ Failed to submit custom game score, status:', response.status);
+              console.error('❌ Failed to submit custom game completion, status:', response.status);
             }
           })
           .catch((error) => {
-            console.error('💥 Error submitting custom game score:', error);
+            console.error('💥 Error submitting custom game completion:', error);
           });
       } else {
-        console.log('⏭️ Score submission skipped:', {
+        console.log('⏭️ Completion submission skipped:', {
           gameId,
           hasGameStateManager: !!gameStateManagerRef.current,
           reason: !gameId ? 'No gameId' : 'No gameStateManager',
@@ -571,7 +544,7 @@ export const LetteredPage = ({ onBack }: { onBack?: () => void }) => {
         clearTimeout(modalTimer);
       };
     }
-  }, [gameWon, gameComplete, isReloadedCompletedGame, gameId, moves]);
+  }, [gameComplete, isReloadedCompletedGame, gameId, moves]);
 
   // Function to load postgame stats
   const loadPostGameStats = useCallback(async () => {
@@ -605,7 +578,6 @@ export const LetteredPage = ({ onBack }: { onBack?: () => void }) => {
   // Handle game completion effects when game state changes
   useEffect(() => {
     console.log('🎮 Game state changed:', {
-      gameWon,
       gameComplete,
       isReloadedCompletedGame,
       gameId,
@@ -613,19 +585,18 @@ export const LetteredPage = ({ onBack }: { onBack?: () => void }) => {
       isDailyGame: !!dailyGameId,
     });
 
-    if (gameWon && gameComplete && !isReloadedCompletedGame) {
+    if (gameComplete && !isReloadedCompletedGame) {
       console.log('🎉 Game completed - calling handleGameComplete');
       handleGameComplete();
     } else {
       console.log('❌ Game completion conditions not met:', {
-        gameWon,
         gameComplete,
         isReloadedCompletedGame,
-        willTrigger: gameWon && gameComplete && !isReloadedCompletedGame,
+        willTrigger: gameComplete && !isReloadedCompletedGame,
       });
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [gameWon, gameComplete, isReloadedCompletedGame, handleGameComplete]);
+  }, [gameComplete, isReloadedCompletedGame, handleGameComplete]);
 
   // Load postgame stats when modal opens (for both daily and custom games)
   useEffect(() => {
@@ -806,14 +777,6 @@ export const LetteredPage = ({ onBack }: { onBack?: () => void }) => {
           } else {
             const result = await response.json();
             console.log('Game session saved successfully:', { result });
-
-            // Update the score to match the server's calculation
-            if (result.currentScore !== undefined && gameStateManagerRef.current) {
-              gameStateManagerRef.current.setScore(result.currentScore);
-              console.log('[DEBUG] Updated score from server:', result.currentScore);
-            } else if (result.currentScore === undefined) {
-              console.warn('[DEBUG] Server response missing currentScore');
-            }
           }
         } catch (error) {
           console.error('Error saving game session:', error);
@@ -893,7 +856,6 @@ export const LetteredPage = ({ onBack }: { onBack?: () => void }) => {
       baseClass,
       !(
         gameStateManagerRef.current?.isGameComplete() ||
-        gameWon ||
         gameComplete ||
         isRestoringSession ||
         isReloadedCompletedGame
@@ -922,7 +884,8 @@ export const LetteredPage = ({ onBack }: { onBack?: () => void }) => {
     return (
       <GameLayout
         gameTitle="Lettered"
-        score={0}
+        time={0}
+        moves={0}
         onBack={handleBackToMenu}
         logoSrc="/lettered-logo.svg"
       >
@@ -938,7 +901,8 @@ export const LetteredPage = ({ onBack }: { onBack?: () => void }) => {
     return (
       <GameLayout
         gameTitle="Lettered"
-        score={0}
+        time={0}
+        moves={0}
         onBack={handleBackToMenu}
         logoSrc="/lettered-logo.svg"
       >
@@ -957,7 +921,7 @@ export const LetteredPage = ({ onBack }: { onBack?: () => void }) => {
   return (
     <GameLayout
       gameTitle="Lettered"
-      score={gameScore}
+      time={elapsedTime}
       moves={moves}
       onBack={handleBackToMenu}
       onLeaderboard={() => setUIState((prev) => ({ ...prev, showGameOverModal: true }))}
@@ -1065,7 +1029,7 @@ export const LetteredPage = ({ onBack }: { onBack?: () => void }) => {
       {/* Game Content */}
       <div className="flex justify-center">
         <Grid
-          key={`${gameWon}-${isRestoringSession}`}
+          key={`${gameComplete}-${isRestoringSession}`}
           gridSize={{
             width: gameData.grid[0]!.length || 8,
             height: gameData.grid.length + 20, // Extend grid height to match server's maxRows for letter pieces area
@@ -1122,9 +1086,8 @@ export const LetteredPage = ({ onBack }: { onBack?: () => void }) => {
         isCustomGame={!!gameId} // Pass true if this is a custom game
         loading={postGameStatsLoading}
         error={postGameStatsError}
-        score={postGameStats?.finalScore ?? gameScore}
-        secondaryStatValue={postGameStats?.movesUsed ?? placedPieces.size}
-        secondaryStatLabel="MOVES"
+        time={postGameStats?.timeElapsed ?? elapsedTime}
+        moves={postGameStats?.movesUsed ?? moves}
         theme={postGameStats?.dailyGame.phrase ?? 'Loading...'}
         leaderboard={postGameStats?.leaderboard}
         playerRank={postGameStats?.rank}

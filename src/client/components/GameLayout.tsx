@@ -5,7 +5,7 @@ import { cn } from '../lib/utils';
 
 interface GameLayoutProps {
   gameTitle: string;
-  score: number;
+  time: number; // elapsed time in milliseconds
   moves?: number;
   children: ReactNode;
   onBack: () => void;
@@ -15,9 +15,22 @@ interface GameLayoutProps {
   className?: string;
 }
 
+// Format milliseconds to MM:SS or HH:MM:SS
+const formatTime = (ms: number): string => {
+  const totalSeconds = Math.floor(ms / 1000);
+  const hours = Math.floor(totalSeconds / 3600);
+  const minutes = Math.floor((totalSeconds % 3600) / 60);
+  const seconds = totalSeconds % 60;
+
+  if (hours > 0) {
+    return `${hours}:${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
+  }
+  return `${minutes}:${seconds.toString().padStart(2, '0')}`;
+};
+
 export const GameLayout = ({
   gameTitle,
-  score,
+  time,
   moves,
   children,
   onBack,
@@ -41,12 +54,12 @@ export const GameLayout = ({
             <h1 className="hidden text-2xl font-semibold text-foreground md:block">{gameTitle}</h1>
           </div>
 
-          {/* Score and Moves */}
+          {/* Time and Moves */}
           <div className="flex items-center gap-6">
-            {/* Score */}
+            {/* Time */}
             <div className="text-center">
-              <div className="text-3xl font-bold text-foreground">{score}</div>
-              <div className="text-sm font-medium text-foreground">SCORE</div>
+              <div className="text-3xl font-bold text-foreground">{formatTime(time)}</div>
+              <div className="text-sm font-medium text-foreground">TIME</div>
             </div>
 
             {/* Moves */}

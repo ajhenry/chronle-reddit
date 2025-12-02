@@ -17,7 +17,6 @@ import {
   getPlayerRankInGame,
   CustomGameScore,
 } from '../database/redis';
-import { calculateDecayedScore, DEFAULT_INITIAL_SCORE } from '../../shared/score-decay';
 import { LetteredGameSessionResponse } from '../../shared/types/api';
 
 const router = Router();
@@ -33,9 +32,8 @@ const gameIdParamSchema = z.object({
   gameId: z.string().min(1, 'Game ID is required'),
 });
 
-// Schema for score submission
-const scoreSubmissionSchema = z.object({
-  score: z.number().int().min(0),
+// Schema for completion submission
+const completionSubmissionSchema = z.object({
   timeElapsed: z.number().int().min(0),
   moves: z.number().int().min(0),
 });
@@ -325,7 +323,7 @@ router.get('/api/custom/lettered/:gameId', async (req, res): Promise<void> => {
 });
 
 // Submit score for custom game
-router.post('/api/custom/lettered/:gameId/score', async (req, res): Promise<void> => {
+router.post('/api/custom/lettered/:gameId/complete', async (req, res): Promise<void> => {
   try {
     // Validate gameId parameter
     const paramValidation = gameIdParamSchema.safeParse(req.params);
@@ -338,46 +336,34 @@ router.post('/api/custom/lettered/:gameId/score', async (req, res): Promise<void
     }
 
     // Validate request body
-    const bodyValidation = scoreSubmissionSchema.safeParse(req.body);
+    const bodyValidation = completionSubmissionSchema.safeParse(req.body);
     if (!bodyValidation.success) {
       res.status(400).json({
-        error: 'Invalid score data',
+        error: 'Invalid completion data',
         details: bodyValidation.error.issues,
       });
       return;
     }
 
     const { gameId } = paramValidation.data;
-    const { timeElapsed } = bodyValidation.data;
-    const { moves } = bodyValidation.data;
-    const { score } = bodyValidation.data;
-
-    // We need to calculate the decayed score ourselves because we don't trust the client
-    // We will take the move count though and use that to calculate the decayed score
-    // TODO: MAKE THIS WORK AGAIN
-    // const score = calculateDecayedScore({
-    //   initialScore: DEFAULT_INITIAL_SCORE,
-    //   elapsedSeconds: timeElapsed,
-    //   gameType: 'lettered',
-    //   placedPieces: 0, // TODO: Maybe we should fix this?
-    // });
+    const { timeElapsed, moves } = bodyValidation.data;
 
     // Get username from Reddit context
     let username = 'anonymous';
     try {
       username = (await reddit.getCurrentUsername()) || 'anonymous';
       console.log(
-        `Custom game score submission - Username retrieved: ${username} for game ${gameId} with score ${score}`
+        `Custom game completion - Username retrieved: ${username} for game ${gameId} with time ${timeElapsed}ms and ${moves} moves`
       );
     } catch (error) {
       console.error('Error getting username from context:', error);
     }
 
-    // Check if they already have a score for this game
+    // Check if they already completed this game
     const existingScore = await getPlayerScoreForGame(username, gameId);
     if (existingScore) {
       res.status(400).json({
-        error: 'You already have a score for this game',
+        error: 'You already completed this game',
       });
       return;
     }
@@ -391,33 +377,32 @@ router.post('/api/custom/lettered/:gameId/score', async (req, res): Promise<void
       return;
     }
 
-    // Create score entry
-    const scoreEntry: CustomGameScore = {
+    // Create completion entry
+    const completionEntry: CustomGameScore = {
       username,
       gameId,
       phrase: gameData.phrase,
-      score,
       completedAt: new Date().toISOString(),
       timeElapsed,
       moves,
     };
 
-    // Store score in Redis using helper functions
-    await addScoreToGameLeaderboard(gameId, scoreEntry);
-    await addScoreToPlayerHistory(username, scoreEntry);
-    await addScoreToGlobalLeaderboard(scoreEntry);
+    // Store completion in Redis using helper functions
+    await addScoreToGameLeaderboard(gameId, completionEntry);
+    await addScoreToPlayerHistory(username, completionEntry);
+    await addScoreToGlobalLeaderboard(completionEntry);
 
-    console.log(`Stored custom game score: ${username} scored ${score} on game ${gameId}`);
+    console.log(`Stored custom game completion: ${username} completed game ${gameId} in ${timeElapsed}ms with ${moves} moves`);
 
     res.json({
       status: 'success',
-      scoreSubmitted: scoreEntry,
-      message: 'Score submitted successfully',
+      completion: completionEntry,
+      message: 'Completion recorded successfully',
     });
   } catch (error) {
-    console.error('Error submitting custom game score:', error);
+    console.error('Error submitting custom game completion:', error);
     res.status(500).json({
-      error: 'Failed to submit score',
+      error: 'Failed to record completion',
     });
   }
 });

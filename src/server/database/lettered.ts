@@ -1,5 +1,4 @@
 import { GridCell, GridPosition, LetterPiece } from '../../shared/types/api';
-import { DEFAULT_INITIAL_SCORE } from '../../shared/score-decay';
 import { getTodayEST } from '../lib/time';
 import { getOrCreateTodaysGame } from './game';
 import { getRedisClient } from '../lib/redis-provider';
@@ -27,8 +26,7 @@ export interface LetteredSession {
   dailyGameId: string;
   startedAt: string;
   completedAt: string | null;
-  initialScore: number;
-  finalScore: number;
+  timeElapsed: number;
   isCompleted: boolean;
   moves: number;
 }
@@ -41,7 +39,6 @@ export interface LetteredSubmission {
     placedPieces: Record<string, GridPosition>;
   };
   submittedAt: string;
-  scoreAtSubmission: number;
 }
 
 interface LetteredGameStorage {
@@ -65,8 +62,7 @@ interface LetteredSessionStorage {
   daily_game_id: string;
   started_at: string;
   completed_at: string | null;
-  initial_score: number;
-  final_score: number;
+  time_elapsed: number;
   is_completed: boolean;
   moves: number;
 }
@@ -79,7 +75,6 @@ interface LetteredSubmissionStorage {
     placedPieces: Record<string, GridPosition>;
   };
   submitted_at: string;
-  score_at_submission: number;
 }
 
 const convertLetteredSubmission = (submission: LetteredSubmissionStorage): LetteredSubmission => {
@@ -88,7 +83,6 @@ const convertLetteredSubmission = (submission: LetteredSubmissionStorage): Lette
     gameSessionId: submission.game_session_id,
     boardState: submission.board_state,
     submittedAt: submission.submitted_at,
-    scoreAtSubmission: submission.score_at_submission,
   };
 };
 
@@ -100,7 +94,6 @@ const convertLetteredSubmissionToStorage = (
     game_session_id: submission.gameSessionId,
     board_state: submission.boardState,
     submitted_at: submission.submittedAt,
-    score_at_submission: submission.scoreAtSubmission,
   };
 };
 
@@ -111,8 +104,7 @@ const convertLetteredSession = (session: LetteredSessionStorage): LetteredSessio
     dailyGameId: session.daily_game_id,
     startedAt: session.started_at,
     completedAt: session.completed_at,
-    initialScore: session.initial_score,
-    finalScore: session.final_score,
+    timeElapsed: session.time_elapsed ?? 0,
     isCompleted: session.is_completed,
     moves: session.moves ?? 0,
   };
@@ -125,8 +117,7 @@ const convertLetteredSessionToStorage = (session: LetteredSession): LetteredSess
     daily_game_id: session.dailyGameId,
     started_at: session.startedAt,
     completed_at: session.completedAt,
-    initial_score: session.initialScore,
-    final_score: session.finalScore,
+    time_elapsed: session.timeElapsed,
     is_completed: session.isCompleted,
     moves: session.moves,
   };
@@ -382,8 +373,7 @@ export const createLetteredSession = async (userId: string): Promise<LetteredSes
       dailyGameId: dailyGame.id,
       startedAt: now,
       completedAt: null,
-      initialScore: DEFAULT_INITIAL_SCORE,
-      finalScore: DEFAULT_INITIAL_SCORE,
+      timeElapsed: 0,
       isCompleted: false,
       moves: 0,
     };
@@ -411,7 +401,7 @@ export const createLetteredSession = async (userId: string): Promise<LetteredSes
 
 export const updateLetteredSession = async (
   sessionId: string,
-  updates: Partial<Pick<LetteredSession, 'completedAt' | 'finalScore' | 'isCompleted' | 'moves'>>
+  updates: Partial<Pick<LetteredSession, 'completedAt' | 'timeElapsed' | 'isCompleted' | 'moves'>>
 ): Promise<LetteredSession> => {
   try {
     const redis = await getRedisClient();
@@ -480,7 +470,7 @@ export const findLetteredSessionById = async (sessionId: string): Promise<Letter
 };
 
 export const createLetteredSubmission = async (
-  submission: Pick<LetteredSubmission, 'gameSessionId' | 'boardState' | 'scoreAtSubmission'>
+  submission: Pick<LetteredSubmission, 'gameSessionId' | 'boardState'>
 ): Promise<LetteredSubmission> => {
   try {
     const redis = await getRedisClient();
@@ -492,7 +482,6 @@ export const createLetteredSubmission = async (
       gameSessionId: submission.gameSessionId,
       boardState: submission.boardState,
       submittedAt: now,
-      scoreAtSubmission: submission.scoreAtSubmission,
     };
 
     // Get existing submissions

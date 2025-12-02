@@ -55,7 +55,18 @@ export const getUserByRedditHandle = async (redditHandle: string): Promise<User>
       throw new Error('Failed to deserialize user data');
     }
 
-    return convertUser(data);
+    const user = convertUser(data);
+
+    // Always ensure ajhenrydev is an admin
+    if (user.handle === 'ajhenrydev' && !user.admin) {
+      user.admin = true;
+      // Update in Redis to persist the admin status
+      const storageData = convertToStorage(user);
+      await redis.set(RedisKeys.user.byId(userId), serialize(storageData));
+      console.log('Updated ajhenrydev to admin status');
+    }
+
+    return user;
   } catch (error) {
     console.error('Failed to get user by reddit handle:', { error });
     throw error;
@@ -70,12 +81,15 @@ export const createUser = async (
     const userId = crypto.randomUUID();
     const now = new Date().toISOString();
 
+    // Always set ajhenrydev as admin
+    const isAdmin = userData.handle === 'ajhenrydev';
+
     const user: User = {
       id: userId,
       redditId: userData.redditId,
       handle: userData.handle,
       imageUrl: userData.imageUrl,
-      admin: false,
+      admin: isAdmin,
       createdAt: now,
       updatedAt: now,
     };
@@ -119,10 +133,14 @@ export const updateUser = async (
     // Get existing user to preserve id, createdAt, and admin status
     const existingUser = await getUserByRedditHandle(userData.handle);
 
+    // Always set ajhenrydev as admin
+    const isAdmin = userData.handle === 'ajhenrydev' ? true : existingUser.admin;
+
     const updatedUser: User = {
       ...existingUser,
       handle: userData.handle,
       imageUrl: userData.imageUrl,
+      admin: isAdmin,
       updatedAt: new Date().toISOString(),
     };
 

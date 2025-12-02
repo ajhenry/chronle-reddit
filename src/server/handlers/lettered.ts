@@ -8,7 +8,6 @@ import {
   GridCell,
   LetteredPostGameResponse,
 } from '../../shared/types/api';
-import { calculateDecayedScore } from '../../shared/score-decay';
 import { ensureUserExistsAndGetId } from '../lib/user-helpers';
 import { getCurrentUTCTime, toUTCTimestamp } from '../lib/time';
 import { updateLetteredLeaderboards } from '../lib/leaderboard-helpers';
@@ -123,48 +122,15 @@ router.get('/api/lettered/game', async (_req, res): Promise<void> => {
     // User has an existing session, get the latest board state submission
     const latestSubmission = await getLatestLetteredSubmissionForToday(userId);
 
-    // Calculate current score based on the startedAt time (using UTC consistently)
+    // Calculate elapsed time
     const gameStartTime = toUTCTimestamp(existingSession.startedAt);
     const now = getCurrentUTCTime();
-    const elapsedSeconds = Math.max(0, (now - gameStartTime) / 1000);
-
-    // Calculate current score based on pieces placed on main board only
-    const mainGridHeight = letteredGame.grid.length;
-    const mainGridWidth = letteredGame.grid[0]?.length || 0;
-    const latestBoardState = latestSubmission?.boardState.placedPieces || {};
-
-    const mainBoardPlacedCount = Object.values(latestBoardState).filter((position) => {
-      return position.row < mainGridHeight && position.col < mainGridWidth;
-    }).length;
-
-    const currentScore = calculateDecayedScore({
-      initialScore: existingSession.initialScore,
-      elapsedSeconds,
-      gameType: 'lettered',
-      placedPieces: mainBoardPlacedCount,
-    });
-
-    if (latestSubmission) {
-      const boardState = latestSubmission.boardState;
-
-      // Extract placed pieces from the board state
-      const placedPieces = Object.entries(boardState.placedPieces).reduce(
-        (map, [pieceId, position]) => {
-          map[pieceId] = {
-            pieceId,
-            position,
-          };
-          return map;
-        },
-        {} as Record<string, { pieceId: string; position: GridPosition }>
-      );
-    }
+    const timeElapsedMs = Math.max(0, now - gameStartTime);
 
     const sessionData: LetteredGameSessionResponse = {
       type: 'lettered_game_session',
       sessionId: existingSession.id,
-      currentScore: existingSession.isCompleted ? existingSession.finalScore : currentScore,
-      initialScore: existingSession.initialScore,
+      timeElapsed: existingSession.isCompleted ? existingSession.timeElapsed : timeElapsedMs,
       isCompleted: existingSession.isCompleted,
       moves: existingSession.moves,
       pieces: latestSubmission?.boardState.placedPieces || {},
@@ -280,16 +246,15 @@ router.post('/api/lettered/:dailyGameId/session', async (req, res): Promise<void
     if (session.isCompleted) {
       console.log("Game is already complete, don't store anything but return success");
       // Game is already complete, don't store anything but return success
-      const currentScore = session.finalScore;
       placedPieces = Object.keys(boardState.placedPieces).length;
       boardStateStored = false;
 
       res.json({
         sessionId: session.id,
         accepted: true,
-        currentScore,
+        timeElapsed: session.timeElapsed,
         placedPieces,
-        moves: session.moves, // Return moves count even for completed games
+        moves: session.moves,
         boardStateStored,
         hasWon,
       });
@@ -301,32 +266,18 @@ router.post('/api/lettered/:dailyGameId/session', async (req, res): Promise<void
     // Calculate current score for this submission (using UTC consistently)
     const gameStartTime = toUTCTimestamp(session.startedAt);
     const placementTime = getCurrentUTCTime();
-    const elapsedSeconds = Math.max(0, (placementTime - gameStartTime) / 1000);
+    const timeElapsedMs = Math.max(0, placementTime - gameStartTime);
 
-    console.log('Calculating current score for submission', {
-      initialScore: session.initialScore,
+    console.log('Storing submission', {
       gameStartTime,
       placementTime,
-      elapsedSeconds,
+      timeElapsedMs,
     });
 
-    // Count placed pieces for score decay calculation
-    const placedCount = Object.keys(boardState.placedPieces).length;
-
-    // Use shared decay calculation for submissions
-    const currentScore = calculateDecayedScore({
-      initialScore: session.initialScore,
-      elapsedSeconds,
-      gameType: 'lettered',
-      placedPieces: placedCount,
-    });
-
-    console.log('Current score for submission', currentScore);
     // Store the complete board state as a single submission
     const submission = await createLetteredSubmission({
       gameSessionId: session.id,
       boardState,
-      scoreAtSubmission: currentScore,
     });
 
     console.log('Stored submission', submission);
@@ -338,11 +289,11 @@ router.post('/api/lettered/:dailyGameId/session', async (req, res): Promise<void
       await updateLetteredSession(session.id, {
         isCompleted: true,
         completedAt: new Date(getCurrentUTCTime()).toISOString(),
-        finalScore: currentScore,
-        moves: updatedSession.moves, // Use the updated moves count
+        timeElapsed: timeElapsedMs,
+        moves: updatedSession.moves,
       });
 
-      // Update leaderboard tables with the final score
+      // Update leaderboard tables with the final time and moves
       try {
         // Get user's reddit handle
         const redis = await getRedisClient();
@@ -350,24 +301,18 @@ router.post('/api/lettered/:dailyGameId/session', async (req, res): Promise<void
         const user = userData ? deserialize<{ handle: string }>(userData) : null;
         const redditHandle = user?.handle || 'unknown';
 
-        // Calculate time elapsed since game start
-        const gameStartTime = toUTCTimestamp(session.startedAt);
-        const timeElapsed = Math.max(0, (getCurrentUTCTime() - gameStartTime) / 1000);
-
         await updateLetteredLeaderboards(
           userId,
           redditHandle,
-          currentScore,
           updatedSession.moves,
-          timeElapsed
+          timeElapsedMs / 1000 // Convert to seconds for leaderboard
         );
 
         console.log('Lettered leaderboard updated:', {
           userId,
           redditHandle,
-          finalScore: currentScore,
           moves: updatedSession.moves,
-          timeElapsed,
+          timeElapsed: timeElapsedMs / 1000,
         });
       } catch (leaderboardError) {
         // Don't fail the request if leaderboard update fails, just log it
@@ -378,9 +323,9 @@ router.post('/api/lettered/:dailyGameId/session', async (req, res): Promise<void
     const response = {
       sessionId: session.id,
       accepted: true,
-      currentScore,
+      timeElapsed: timeElapsedMs,
       placedPieces,
-      moves: updatedSession.moves, // Return the updated moves count
+      moves: updatedSession.moves,
       boardStateStored: true,
       hasWon,
     };
@@ -427,8 +372,7 @@ router.get('/api/lettered/:gameId/session', async (req, res): Promise<void> => {
     const response: LetteredGameSessionResponse = {
       type: 'lettered_game_session',
       sessionId: session.id,
-      currentScore: session.isCompleted ? session.finalScore : session.initialScore,
-      initialScore: session.initialScore,
+      timeElapsed: session.timeElapsed,
       isCompleted: session.isCompleted,
       moves: session.moves,
       pieces: latestSubmission?.boardState.placedPieces || {},
@@ -497,10 +441,10 @@ router.get('/api/lettered/:gameId/postgame', async (req, res): Promise<void> => 
     const response: LetteredPostGameResponse = {
       type: 'lettered_post_game',
       dailyGame: dailyGame,
-      finalScore: session.finalScore,
       isValid: true,
       pieces: latestSubmission?.boardState.placedPieces || {},
-      movesUsed: submissionsCount,
+      movesUsed: session.moves,
+      timeElapsed: session.timeElapsed,
     };
 
     res.json(response);

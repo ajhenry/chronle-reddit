@@ -147,7 +147,6 @@ export interface CustomGameScore {
   username: string;
   gameId: string;
   phrase: string;
-  score: number;
   completedAt: string;
   timeElapsed: number;
   moves: number;
@@ -169,15 +168,15 @@ export type LetteredSubmissionResponse = {
 
 export type LetteredGameCompleteResponse = {
   type: 'lettered_game_complete';
-  finalScore: number;
   isValid: boolean;
+  timeElapsed: number;
+  moves: number;
 };
 
 export type LetteredGameSessionResponse = {
   type: 'lettered_game_session';
   sessionId: string;
-  currentScore: number;
-  initialScore: number;
+  timeElapsed: number;
   isCompleted: boolean;
   moves: number;
   pieces: Record<string, GridPosition>;
@@ -201,16 +200,16 @@ export type User = {
 export type LetteredPostGameResponse = {
   type: 'lettered_post_game';
   dailyGame: LetteredGameData;
-  finalScore: number;
   isValid: boolean;
   pieces: Record<string, GridPosition>;
   movesUsed: number;
-  timeElapsed?: number;
+  timeElapsed: number;
   rank?: number;
   totalPlayers?: number;
   leaderboard?: Array<{
     username: string;
-    score: number;
+    timeElapsed: number;
+    moves: number;
     rank?: number;
   }>;
 };

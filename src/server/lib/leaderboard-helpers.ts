@@ -36,7 +36,6 @@ async function calculateDailyStreak(
 export async function updateLetteredLeaderboards(
   userId: string,
   redditHandle: string,
-  finalScore: number,
   movesUsed: number,
   timeElapsed: number // in seconds
 ): Promise<void> {
@@ -56,38 +55,32 @@ export async function updateLetteredLeaderboards(
       currentLetteredStreak
     );
 
-    // Calculate new values for user stats
+    // Calculate new values for user stats (removed score-based tracking)
     const userTotalGames = (existingStats?.totalGamesPlayed || 0) + 1;
-    const userTotalPoints = (existingStats?.totalPoints || 0) + finalScore;
     const userLetteredGames = (existingStats?.totalLetteredGamesPlayed || 0) + 1;
-    const userLetteredPoints = (existingStats?.totalLetteredPoints || 0) + finalScore;
     const userLetteredWins = (existingStats?.totalLetteredWins || 0) + (won ? 1 : 0);
     const userLetteredLosses = (existingStats?.totalLetteredLosses || 0) + (won ? 0 : 1);
     const userLetteredWinRate =
       userLetteredGames > 0 ? Math.round((userLetteredWins / userLetteredGames) * 10000) / 100 : null;
-    const userLetteredAverageScore = Math.round((userLetteredPoints / userLetteredGames) * 100) / 100;
 
     // Update user stats in Redis
     await updateUserStats(userId, {
-      totalPoints: userTotalPoints,
       totalGamesPlayed: userTotalGames,
       currentDailyStreak: currentStreak,
       bestDailyStreak: bestStreak,
       totalLetteredGamesPlayed: userLetteredGames,
-      totalLetteredPoints: userLetteredPoints,
       totalLetteredWins: userLetteredWins,
       totalLetteredLosses: userLetteredLosses,
       totalLetteredWinRate: userLetteredWinRate,
-      totalLetteredAverageScore: userLetteredAverageScore,
       currentDailyLetteredStreak: currentLetteredStreak,
       bestDailyLetteredStreak: bestLetteredStreak,
     });
 
-    // Add score to all time-based leaderboards (daily, weekly, monthly, alltime)
+    // Add to leaderboards with time/moves data
     await addScoreToLeaderboards(
       userId,
       redditHandle,
-      finalScore,
+      0, // No score, using time/moves instead
       true, // isLettered
       {
         moves: movesUsed,
@@ -96,7 +89,7 @@ export async function updateLetteredLeaderboards(
     );
 
     console.log(
-      `Updated leaderboards for user ${userId}: score=${finalScore}, moves=${movesUsed}, won=${won}, currentStreak=${currentStreak}`
+      `Updated leaderboards for user ${userId}: moves=${movesUsed}, time=${timeElapsed}s, won=${won}, currentStreak=${currentStreak}`
     );
   } catch (error) {
     console.error('Error updating Lettered leaderboards:', error);

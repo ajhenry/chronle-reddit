@@ -14,9 +14,8 @@ export interface PostGameModalProps {
   error?: string | null;
 
   // Core stats
-  score: number;
-  secondaryStatValue: number | string;
-  secondaryStatLabel: string; // "MOVES" for lettered
+  time: number; // elapsed time in milliseconds
+  moves: number;
 
   // Theme/prompt
   theme: string;
@@ -24,7 +23,8 @@ export interface PostGameModalProps {
   // Leaderboard data
   leaderboard?: Array<{
     username: string;
-    score: number;
+    timeElapsed: number;
+    moves: number;
     rank?: number;
   }>;
   playerRank?: number;
@@ -37,6 +37,19 @@ export interface PostGameModalProps {
   children?: React.ReactNode;
 }
 
+// Format milliseconds to MM:SS or HH:MM:SS
+const formatTime = (ms: number): string => {
+  const totalSeconds = Math.floor(ms / 1000);
+  const hours = Math.floor(totalSeconds / 3600);
+  const minutes = Math.floor((totalSeconds % 3600) / 60);
+  const seconds = totalSeconds % 60;
+
+  if (hours > 0) {
+    return `${hours}:${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
+  }
+  return `${minutes}:${seconds.toString().padStart(2, '0')}`;
+};
+
 export const PostGameModal: React.FC<PostGameModalProps> = ({
   open,
   onOpenChange,
@@ -44,9 +57,8 @@ export const PostGameModal: React.FC<PostGameModalProps> = ({
   isCustomGame = false, // Default to false for regular games
   loading = false,
   error = null,
-  score,
-  secondaryStatValue,
-  secondaryStatLabel,
+  time,
+  moves,
   theme,
   leaderboard = [],
   playerRank,
@@ -133,10 +145,10 @@ export const PostGameModal: React.FC<PostGameModalProps> = ({
           <div className="grid grid-cols-2 gap-4">
             <div className="p-4 text-center bg-white border-4 border-black shadow-lg">
               <div className="mb-1 text-3xl font-black text-black">
-                {loading ? <Skeleton className="mx-auto w-16 h-9 bg-gray-300" /> : score}
+                {loading ? <Skeleton className="mx-auto w-16 h-9 bg-gray-300" /> : formatTime(time)}
               </div>
               <div className="text-sm font-bold tracking-wide text-black">
-                {loading ? <Skeleton className="mx-auto w-12 h-4 bg-gray-300" /> : 'SCORE'}
+                {loading ? <Skeleton className="mx-auto w-12 h-4 bg-gray-300" /> : 'TIME'}
               </div>
             </div>
             <div className="p-4 text-center bg-white border-4 border-black shadow-lg">
@@ -144,14 +156,14 @@ export const PostGameModal: React.FC<PostGameModalProps> = ({
                 {loading ? (
                   <Skeleton className="mx-auto w-8 h-9 bg-gray-300" />
                 ) : (
-                  secondaryStatValue
+                  moves
                 )}
               </div>
               <div className="text-sm font-bold tracking-wide text-black">
                 {loading ? (
                   <Skeleton className="mx-auto w-12 h-4 bg-gray-300" />
                 ) : (
-                  secondaryStatLabel
+                  'MOVES'
                 )}
               </div>
             </div>
@@ -174,7 +186,7 @@ export const PostGameModal: React.FC<PostGameModalProps> = ({
               <div className="space-y-2">
                 {leaderboard.slice(0, 5).map((entry, index) => (
                   <div
-                    key={`${entry.username}-${entry.score}`}
+                    key={`${entry.username}-${entry.timeElapsed}-${entry.moves}`}
                     className={`flex justify-between items-center p-2 border-2 border-black ${
                       entry.username === 'You' || index === (playerRank ? playerRank - 1 : -1)
                         ? 'bg-yellow-300 font-bold'
@@ -185,7 +197,10 @@ export const PostGameModal: React.FC<PostGameModalProps> = ({
                       <span className="font-black text-black">#{index + 1}</span>
                       <span className="font-bold text-black">{entry.username}</span>
                     </div>
-                    <span className="font-black text-black">{entry.score}</span>
+                    <div className="flex gap-2 items-center">
+                      <span className="font-black text-black">{formatTime(entry.timeElapsed)}</span>
+                      <span className="text-xs font-bold text-black">({entry.moves} moves)</span>
+                    </div>
                   </div>
                 ))}
               </div>

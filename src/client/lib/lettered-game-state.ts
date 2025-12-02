@@ -1,69 +1,34 @@
 import { LetteredGameData, GridPosition, LetterPiece, GridCell } from '../../shared/types/api';
-import {
-  calculateDecayAmount,
-  getDecayRate,
-  DEFAULT_INITIAL_SCORE,
-} from '../../shared/score-decay';
-
-// SHA256 hash function for client-side validation
-const sha256 = async (message: string): Promise<string> => {
-  const msgBuffer = new TextEncoder().encode(message);
-  const hashBuffer = await crypto.subtle.digest('SHA-256', msgBuffer);
-  const hashArray = Array.from(new Uint8Array(hashBuffer));
-  return hashArray.map((b) => b.toString(16).padStart(2, '0')).join('');
-};
 
 export type GameStateUpdateCallback = (updates: Partial<GameState>) => void;
-export type ScoreSyncCallback = (serverScore: number) => void;
 
 export interface GameState {
-  score: number;
-  initialScore: number;
-  gameComplete: boolean;
-  gameWon: boolean;
-  boardLayout: GridCell[][]; // Current state of the board
-  placedPieces: Map<string, GridPosition>; // piece ID -> position
-  lastValidPositions: Map<string, GridPosition>; // For undo functionality
-  scoreDecayInterval: number; // Milliseconds between decay
-  lastScoreUpdate: number; // Timestamp of last score update
   gameStartTime: number;
+  moves: number;
+  gameComplete: boolean;
+  boardLayout: GridCell[][];
+  placedPieces: Map<string, GridPosition>;
+  lastValidPositions: Map<string, GridPosition>;
   gameData: LetteredGameData | null;
-  timerDisabled: boolean; // Whether the score decay timer is disabled
-  isRestoring: boolean; // Whether session restoration is in progress
-  moves: number; // Number of moves made
+  isRestoring: boolean;
 }
 
 export class LetteredGameStateManager {
   private state: GameState;
-  private scoreDecayTimer: ReturnType<typeof setTimeout> | null = null;
   private updateCallbacks: GameStateUpdateCallback[] = [];
-  private scoreSyncCallback: ScoreSyncCallback | null = null;
-  private lastScoreSync: number = 0;
-  private readonly SCORE_SYNC_INTERVAL = 30000; // Sync every 30 seconds
 
   constructor(
     gameData: LetteredGameData | null = null,
-    initialScore?: number,
     gameStartTime?: number,
-    currentScore?: number,
     moves?: number
   ) {
-    this.state = this.createInitialState(
-      gameData,
-      initialScore,
-      gameStartTime,
-      currentScore,
-      moves
-    );
-    // Don't start score decay immediately - wait for explicit call
+    this.state = this.createInitialState(gameData, gameStartTime, moves);
     this.notifyUpdates(this.state);
   }
 
   private createInitialState(
     gameData: LetteredGameData | null,
-    initialScore?: number,
     gameStartTime?: number,
-    currentScore?: number,
     moves?: number
   ): GameState {
     // Initialize placed pieces with initial tray positions for all pieces
@@ -74,26 +39,17 @@ export class LetteredGameStateManager {
       });
     }
 
-    const defaultScore = DEFAULT_INITIAL_SCORE;
-    const originalInitialScore = initialScore ?? defaultScore;
-    const score = currentScore ?? originalInitialScore; // Use currentScore if provided, otherwise use initialScore
     const startTime = gameStartTime ?? Date.now();
 
     return {
-      score,
-      initialScore: originalInitialScore, // Always use the original initial score for decay calculations
+      gameStartTime: startTime,
+      moves: moves ?? 0,
       gameComplete: false,
-      gameWon: false,
       boardLayout: gameData?.grid || [],
       placedPieces,
-      lastValidPositions: new Map(placedPieces), // Also initialize lastValidPositions
-      scoreDecayInterval: 1000,
-      lastScoreUpdate: startTime,
-      gameStartTime: startTime,
+      lastValidPositions: new Map(placedPieces),
       gameData,
-      timerDisabled: false,
       isRestoring: false,
-      moves: moves ?? 0, // Initialize moves counter from parameter or default to 0
     };
   }
 
@@ -108,11 +64,6 @@ export class LetteredGameStateManager {
     };
   }
 
-  // Set callback for score synchronization with server
-  setScoreSyncCallback(callback: ScoreSyncCallback | null): void {
-    this.scoreSyncCallback = callback;
-  }
-
   // Notify all subscribers of state changes
   private notifyUpdates(updates: Partial<GameState>): void {
     this.updateCallbacks.forEach((callback) => callback(updates));
@@ -124,83 +75,18 @@ export class LetteredGameStateManager {
   }
 
   // Initialize game with new data
-  initializeGame(
-    gameData: LetteredGameData,
-    initialScore?: number,
-    gameStartTime?: number,
-    currentScore?: number,
-    moves?: number
-  ): void {
-    this.stopScoreDecay();
-    this.state = this.createInitialState(
-      gameData,
-      initialScore,
-      gameStartTime,
-      currentScore,
-      moves
-    );
-    // Don't start score decay immediately - wait for explicit call
+  initializeGame(gameData: LetteredGameData, gameStartTime?: number, moves?: number): void {
+    this.state = this.createInitialState(gameData, gameStartTime, moves);
     this.notifyUpdates(this.state);
   }
 
-  // Start score decay timer
-  startScoreDecay(): void {
-    if (this.scoreDecayTimer) {
-      clearInterval(this.scoreDecayTimer);
+  // Get elapsed time in milliseconds
+  getElapsedTime(): number {
+    if (this.state.gameComplete) {
+      // When game is complete, we should have the exact end time, but for now return current calculation
+      return Date.now() - this.state.gameStartTime;
     }
-
-    // Don't start timer if disabled
-    if (this.state.timerDisabled) {
-      return;
-    }
-
-    this.scoreDecayTimer = setInterval(() => {
-      if (!this.state.gameComplete) {
-        const now = Date.now();
-        const timeDiff = now - this.state.lastScoreUpdate;
-        const elapsedSeconds = timeDiff / 1000;
-        const placedPieces = this.state.placedPieces.size;
-        const decayAmount = calculateDecayAmount('lettered', elapsedSeconds, placedPieces);
-
-        if (decayAmount > 0) {
-          this.state.score = Math.max(0, this.state.score - decayAmount);
-          this.state.lastScoreUpdate = now;
-
-          this.notifyUpdates({ score: this.state.score });
-        }
-
-        // Periodically sync score with server
-        if (this.scoreSyncCallback && now - this.lastScoreSync > this.SCORE_SYNC_INTERVAL) {
-          this.lastScoreSync = now;
-          // Trigger score sync callback (will be handled by the component)
-          this.scoreSyncCallback(this.state.score);
-        }
-      }
-    }, this.state.scoreDecayInterval);
-  }
-
-  // Stop score decay timer
-  stopScoreDecay(): void {
-    if (this.scoreDecayTimer) {
-      clearInterval(this.scoreDecayTimer);
-      this.scoreDecayTimer = null;
-    }
-  }
-
-  // Get current decay rate (for debugging/UI purposes)
-  getDecayRate(): number {
-    const placedPieces = this.state.placedPieces.size;
-    return getDecayRate('lettered', placedPieces);
-  }
-
-  // Enable/disable timer
-  setTimerEnabled(enabled: boolean): void {
-    this.state.timerDisabled = !enabled;
-    if (enabled) {
-      this.startScoreDecay();
-    } else {
-      this.stopScoreDecay();
-    }
+    return Date.now() - this.state.gameStartTime;
   }
 
   // Set restoration state
@@ -214,8 +100,6 @@ export class LetteredGameStateManager {
         placedPieces: new Map(this.state.placedPieces),
         boardLayout: this.state.boardLayout,
         gameComplete: this.state.gameComplete,
-        gameWon: this.state.gameWon,
-        score: this.state.score,
         moves: this.state.moves,
       });
 
@@ -229,11 +113,6 @@ export class LetteredGameStateManager {
   // Check if in restoration mode
   isRestoring(): boolean {
     return this.state.isRestoring;
-  }
-
-  // Check if timer is enabled
-  isTimerEnabled(): boolean {
-    return !this.state.timerDisabled;
   }
 
   // Place a piece on the board
@@ -280,7 +159,6 @@ export class LetteredGameStateManager {
         placedPieces: new Map(this.state.placedPieces),
         boardLayout: this.state.boardLayout,
         gameComplete: this.state.gameComplete,
-        gameWon: this.state.gameWon,
         moves: this.state.moves,
       });
     }
@@ -443,12 +321,9 @@ export class LetteredGameStateManager {
 
     if (isSolutionCorrect) {
       this.state.gameComplete = true;
-      this.state.gameWon = true;
-      this.stopScoreDecay();
 
       this.notifyUpdates({
         gameComplete: true,
-        gameWon: true,
       });
     }
   }
@@ -494,33 +369,6 @@ export class LetteredGameStateManager {
     }
 
     return true;
-  }
-
-  // Get current score
-  getScore(): number {
-    return this.state.score;
-  }
-
-  // Set current score (for server synchronization) - smoothly adjust to server value
-  setScore(serverScore: number): void {
-    const currentLocalScore = this.getScore();
-
-    // If the difference is significant (> 50 points), adjust the initial score to calibrate
-    // This prevents jarring jumps while keeping the decay rate consistent
-    const difference = serverScore - currentLocalScore;
-    if (Math.abs(difference) > 50) {
-      // Adjust initialScore to account for the difference
-      // This calibrates the decay calculation to match the server
-      this.state.initialScore += difference;
-      console.log(
-        `[DEBUG] Calibrated score by ${difference} points (server: ${serverScore}, local: ${currentLocalScore})`
-      );
-    } else {
-      // For small differences, just set the score directly for accuracy
-      this.state.score = serverScore;
-    }
-
-    this.notifyUpdates({ score: this.state.score });
   }
 
   // Get placed pieces
@@ -572,11 +420,6 @@ export class LetteredGameStateManager {
     return this.state.gameComplete;
   }
 
-  // Check if game is won
-  isGameWon(): boolean {
-    return this.state.gameWon;
-  }
-
   // Get current moves count
   getMoves(): number {
     return this.state.moves;
@@ -584,7 +427,6 @@ export class LetteredGameStateManager {
 
   // Clean up resources
   destroy(): void {
-    this.stopScoreDecay();
     this.updateCallbacks = [];
   }
 }
