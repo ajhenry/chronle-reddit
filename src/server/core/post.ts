@@ -3,6 +3,15 @@ import { reddit } from '../lib/reddit-provider';
 import { getOrCreateTodaysLetteredGame } from '../lib/lettered-game-helpers';
 import { setPostToGameMapping } from '../database/redis';
 
+const splashConfig = {
+  appDisplayName: 'podium',
+  heading: 'Welcome to Podium',
+  description: '',
+  appIconUri: 'podium-logo.png',
+  buttonLabel: 'Start Playing',
+  entryUri: 'index.html',
+};
+
 export const createPost = async () => {
   const { subredditName } = context;
   if (!subredditName) {
@@ -16,12 +25,8 @@ export const createPost = async () => {
   console.log('Creating post for daily game:', { gameId });
 
   const post = await reddit.submitCustomPost({
-    splash: {
-      appDisplayName: 'podium-dev',
-    },
+    splash: splashConfig,
     subredditName: subredditName,
-    // Convert the date to a string in the EST timezone with the format of Day of week, month, day, year
-    // Example: "September 18, 2025"
     title: `Podium Game for ${new Date().toLocaleDateString('en-US', { timeZone: 'America/New_York', month: 'long', day: 'numeric', year: 'numeric' })}`,
     webviewMetadata: {
       gameId: gameId,

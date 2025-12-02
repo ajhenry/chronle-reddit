@@ -560,3 +560,46 @@ export const getTotalLetteredSubmissionsForToday = async (userId: string): Promi
   const letteredGame = await getTodaysLetteredGame();
   return await getTotalLetteredSubmissions(userId, letteredGame.id);
 };
+
+export const deleteLetteredSession = async (userId: string, gameId: string): Promise<boolean> => {
+  try {
+    const redis = await getRedisClient();
+
+    // Get the session first to get the sessionId
+    const sessionData = await redis.get(RedisKeys.letteredSession(userId, gameId));
+
+    if (!sessionData) {
+      console.log('No session found to delete', { userId, gameId });
+      return false;
+    }
+
+    const data = deserialize<LetteredSessionStorage>(sessionData);
+    if (!data) {
+      console.log('Failed to deserialize session data', { userId, gameId });
+      return false;
+    }
+
+    const sessionId = data.id;
+
+    // Delete the session
+    await redis.del(RedisKeys.letteredSession(userId, gameId));
+
+    // Delete the submissions
+    await redis.del(RedisKeys.letteredSubmissions(sessionId));
+
+    // Remove from global lookup hash
+    const globalLookupKey = 'lettered_session_global_lookup';
+    await redis.hDel(globalLookupKey, [sessionId]);
+
+    // Remove from per-game lookup hash
+    const sessionLookupKey = `lettered_session_lookup:${gameId}`;
+    await redis.hDel(sessionLookupKey, [sessionId]);
+
+    console.log('Deleted lettered session:', { sessionId, userId, gameId });
+
+    return true;
+  } catch (error) {
+    console.error('Failed to delete lettered session:', { error });
+    throw new Error('Failed to delete lettered session');
+  }
+};

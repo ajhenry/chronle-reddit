@@ -2,6 +2,12 @@ import { LetteredGameData, GridPosition, LetterPiece, GridCell } from '../../sha
 
 export type GameStateUpdateCallback = (updates: Partial<GameState>) => void;
 
+export interface LayoutUpdateResult {
+  hasChanges: boolean;
+  placedPieces: Record<string, GridPosition>;
+  boardLayout: GridCell[][];
+}
+
 export interface GameState {
   gameStartTime: number;
   moves: number;
@@ -129,6 +135,7 @@ export class LetteredGameStateManager {
 
     // Check if position is valid
     const validationResult = this.isValidPiecePlacement(piece, position);
+    console.log('validationResult', { validationResult });
     if (!validationResult.valid) {
       return false;
     }
@@ -184,6 +191,171 @@ export class LetteredGameStateManager {
     return true;
   }
 
+  // Update game state from a 2D layout array (from Grid component)
+  async updateFromLayout(layout: (string | null)[][]): Promise<LayoutUpdateResult> {
+    const noChangeResult: LayoutUpdateResult = {
+      hasChanges: false,
+      placedPieces: this.getPlacedPiecesAsRecord(),
+      boardLayout: this.getBoardLayout(),
+    };
+
+    // Prevent updates when game is complete or no game data
+    if (this.state.gameComplete || !this.state.gameData) {
+      return noChangeResult;
+    }
+
+    // Parse layout to extract piece anchor positions
+    const newPlacedPieces = this.parseLayoutToPositions(layout);
+
+    // Compare with current state to detect changes
+    const currentPlacedPieces = this.state.placedPieces;
+    let hasAnyPieceMoved = false;
+
+    // Check for moved pieces
+    for (const [pieceId, newPosition] of newPlacedPieces) {
+      const currentPosition = currentPlacedPieces.get(pieceId);
+      if (
+        !currentPosition ||
+        currentPosition.row !== newPosition.row ||
+        currentPosition.col !== newPosition.col
+      ) {
+        hasAnyPieceMoved = true;
+        break;
+      }
+    }
+
+    // Check for removed pieces
+    if (!hasAnyPieceMoved) {
+      for (const [pieceId] of currentPlacedPieces) {
+        if (!newPlacedPieces.has(pieceId)) {
+          hasAnyPieceMoved = true;
+          break;
+        }
+      }
+    }
+
+    // Check for added pieces
+    if (!hasAnyPieceMoved) {
+      for (const [pieceId] of newPlacedPieces) {
+        if (!currentPlacedPieces.has(pieceId)) {
+          hasAnyPieceMoved = true;
+          break;
+        }
+      }
+    }
+
+    // If no changes detected, return early
+    if (!hasAnyPieceMoved) {
+      return noChangeResult;
+    }
+
+    // Batch update all piece positions
+    for (const [pieceId, newPosition] of newPlacedPieces) {
+      const currentPosition = currentPlacedPieces.get(pieceId);
+      if (
+        !currentPosition ||
+        currentPosition.row !== newPosition.row ||
+        currentPosition.col !== newPosition.col
+      ) {
+        // Update placed pieces directly (skip individual validation since Grid already handles it)
+        this.state.lastValidPositions.set(pieceId, newPosition);
+        this.state.placedPieces.set(pieceId, newPosition);
+      }
+    }
+
+    // Update board layout after all pieces are placed
+    this.updateBoardLayout();
+
+    // Increment moves counter once for the batch update
+    this.state.moves += 1;
+
+    // Check game completion once at the end
+    await this.checkGameCompletion();
+
+    // Notify updates
+    this.notifyUpdates({
+      placedPieces: new Map(this.state.placedPieces),
+      boardLayout: this.state.boardLayout,
+      gameComplete: this.state.gameComplete,
+      moves: this.state.moves,
+    });
+
+    return {
+      hasChanges: true,
+      placedPieces: this.getPlacedPiecesAsRecord(),
+      boardLayout: this.getBoardLayout(),
+    };
+  }
+
+  // Parse a 2D layout array to extract piece anchor positions
+  private parseLayoutToPositions(layout: (string | null)[][]): Map<string, GridPosition> {
+    const newPlacedPieces = new Map<string, GridPosition>();
+
+    if (!this.state.gameData) {
+      return newPlacedPieces;
+    }
+
+    const processedPieces = new Set<string>();
+
+    layout.forEach((row, rowIndex) => {
+      row.forEach((itemId, colIndex) => {
+        if (itemId && !processedPieces.has(itemId)) {
+          const piece = this.state.gameData!.pieces.find((p: LetterPiece) => p.id === itemId);
+          if (!piece) return;
+
+          processedPieces.add(itemId);
+
+          // Use this occupied position to calculate anchor point
+          const occupiedPos = { row: rowIndex, col: colIndex };
+
+          // Find which shape position corresponds to this occupied position
+          // We need to find: anchor + shapePos = occupiedPos
+          // So: anchor = occupiedPos - shapePos
+          let anchorPoint = occupiedPos; // fallback
+
+          for (const shapePos of piece.shape) {
+            const testAnchor = {
+              row: occupiedPos.row - shapePos.row,
+              col: occupiedPos.col - shapePos.col,
+            };
+
+            // Verify this anchor point works for the piece
+            let allCellsValid = true;
+            for (const testShapePos of piece.shape) {
+              const expectedRow = testAnchor.row + testShapePos.row;
+              const expectedCol = testAnchor.col + testShapePos.col;
+
+              // Check if this expected position is occupied by the same piece
+              const layoutRow = layout[expectedRow];
+              if (!layoutRow || layoutRow[expectedCol] !== itemId) {
+                allCellsValid = false;
+                break;
+              }
+            }
+
+            if (allCellsValid) {
+              anchorPoint = testAnchor;
+              break;
+            }
+          }
+
+          newPlacedPieces.set(itemId, anchorPoint);
+        }
+      });
+    });
+
+    return newPlacedPieces;
+  }
+
+  // Get placed pieces as a Record (for JSON serialization)
+  getPlacedPiecesAsRecord(): Record<string, GridPosition> {
+    const record: Record<string, GridPosition> = {};
+    for (const [pieceId, position] of this.state.placedPieces.entries()) {
+      record[pieceId] = position;
+    }
+    return record;
+  }
+
   // Check if a piece placement is valid
   private isValidPiecePlacement(
     piece: LetterPiece,
@@ -198,9 +370,11 @@ export class LetteredGameStateManager {
 
     // Check bounds and validity for each cell that would be occupied by the piece
     for (const shapePos of piece.shape) {
+      console.log('shapePos', { shapePos });
       const gridRow = position.row + shapePos.row;
       const gridCol = position.col + shapePos.col;
-
+      console.log('gridRow', gridRow);
+      console.log('gridCol', gridCol);
       // Check if position conflicts with other placed pieces (both in main grid and tray)
       for (const [placedPieceId, placedPosition] of this.state.placedPieces.entries()) {
         if (placedPieceId === piece.id) continue; // Skip self
@@ -211,7 +385,8 @@ export class LetteredGameStateManager {
         for (const placedShapePos of placedPiece.shape) {
           const placedGridRow = placedPosition.row + placedShapePos.row;
           const placedGridCol = placedPosition.col + placedShapePos.col;
-
+          console.log('placedGridRow', placedGridRow);
+          console.log('placedGridCol', placedGridCol);
           if (placedGridRow === gridRow && placedGridCol === gridCol) {
             return { valid: false, reason: 'Piece overlaps with another placed piece' };
           }
@@ -317,10 +492,7 @@ export class LetteredGameStateManager {
 
     if (isSolutionCorrect) {
       this.state.gameComplete = true;
-
-      this.notifyUpdates({
-        gameComplete: true,
-      });
+      // Don't notify here - let the caller send all state updates atomically
     }
   }
 

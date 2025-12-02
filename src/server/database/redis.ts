@@ -1,5 +1,6 @@
 import { getRedisClient } from '../lib/redis-provider';
 import { CustomGameScore, LetteredGameData } from '../../shared/types/api';
+import { RedisKeys } from '../../shared/types/redis';
 
 export interface CustomGameSession {
   gameId: string;
@@ -15,9 +16,10 @@ export interface CustomGameSession {
 export async function setCustomGame(gameId: string, gameData: LetteredGameData): Promise<void> {
   try {
     const redis = await getRedisClient();
-    await redis.set(gameId, JSON.stringify(gameData));
-    await redis.expire(gameId, 60 * 60 * 24 * 7); // Expire in 7 days
-    console.log(`Stored custom game in Redis with ID: ${gameId}`);
+    const key = RedisKeys.letteredGame.byId(gameId);
+    await redis.set(key, JSON.stringify(gameData));
+    await redis.expire(key, 60 * 60 * 24 * 7); // Expire in 7 days
+    console.log(`Stored custom game in Redis with key: ${key}`);
   } catch (error) {
     console.error('Failed to store game in Redis:', error);
     throw new Error('Failed to store game data');
@@ -27,7 +29,8 @@ export async function setCustomGame(gameId: string, gameData: LetteredGameData):
 export async function getCustomGame(gameId: string): Promise<LetteredGameData | null> {
   try {
     const redis = await getRedisClient();
-    const gameDataStr = await redis.get(gameId);
+    const key = RedisKeys.letteredGame.byId(gameId);
+    const gameDataStr = await redis.get(key);
     if (!gameDataStr) {
       return null;
     }
@@ -41,7 +44,8 @@ export async function getCustomGame(gameId: string): Promise<LetteredGameData | 
 export async function deleteCustomGame(gameId: string): Promise<void> {
   try {
     const redis = await getRedisClient();
-    await redis.del(gameId);
+    const key = RedisKeys.letteredGame.byId(gameId);
+    await redis.del(key);
   } catch (error) {
     console.error('Failed to delete game from Redis:', error);
     throw new Error('Failed to delete game data');

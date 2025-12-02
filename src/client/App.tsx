@@ -90,7 +90,7 @@ export const App = () => {
         <Route path="/privacy" element={<PrivacyPage />} />
         <Route path="/dev" element={<DevPage onBack={handleBackFromDev} />} />
         <Route path="/admin" element={<AdminPage />} />
-        <Route path="*" element={<LetteredPage onBack={handleBackToMenu} />} />
+        <Route path="*" element={<LetteredPage onBack={handleBackToMenu} isAdmin={userInfo?.admin ?? false} />} />
       </Routes>
     </>
   );

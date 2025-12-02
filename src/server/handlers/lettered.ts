@@ -18,6 +18,7 @@ import {
   getLatestLetteredSubmission,
   createLetteredSubmission,
   getTotalLetteredSubmissions,
+  deleteLetteredSession,
 } from '../database/lettered';
 import { getRedisClient } from '../lib/redis-provider';
 import { RedisKeys, deserialize } from '../../shared/types/redis';
@@ -486,6 +487,45 @@ router.get('/api/lettered/:gameId/session', async (req, res): Promise<void> => {
     res.status(500).json({
       status: 'error',
       message: 'Failed to get game session',
+    });
+  }
+});
+
+// DELETE /api/lettered/:gameId/session - Deletes the current game session for a user (debug/dev only)
+router.delete('/api/lettered/:gameId/session', async (req, res): Promise<void> => {
+  try {
+    const { gameId } = req.params;
+    const userId = await ensureUserExistsAndGetId();
+
+    if (!userId) {
+      res.status(401).json({
+        status: 'error',
+        message: 'User not authenticated with Reddit',
+      });
+      return;
+    }
+
+    console.log('DELETE /api/lettered/:gameId/session', { gameId, userId });
+
+    // Delete the user's session for this game
+    const deleted = await deleteLetteredSession(userId, gameId);
+
+    if (deleted) {
+      res.json({
+        status: 'success',
+        message: 'Session deleted successfully',
+      });
+    } else {
+      res.json({
+        status: 'success',
+        message: 'No session found to delete',
+      });
+    }
+  } catch (error) {
+    console.error('Error deleting game session:', error);
+    res.status(500).json({
+      status: 'error',
+      message: 'Failed to delete game session',
     });
   }
 });
