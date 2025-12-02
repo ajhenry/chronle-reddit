@@ -25,6 +25,7 @@ export interface PostGameModalProps {
     username: string;
     timeElapsed: number;
     moves: number;
+    score?: number; // Internal score for ranking (not displayed)
     rank?: number;
   }>;
   playerRank?: number;
@@ -53,8 +54,7 @@ const formatTime = (ms: number): string => {
 export const PostGameModal: React.FC<PostGameModalProps> = ({
   open,
   onOpenChange,
-  gameType,
-  isCustomGame = false, // Default to false for regular games
+  isCustomGame: _isCustomGame = false, // Kept for backwards compatibility
   loading = false,
   error = null,
   time,
@@ -70,21 +70,10 @@ export const PostGameModal: React.FC<PostGameModalProps> = ({
     onOpenChange(newOpen);
   };
 
-  const getHeaderText = () => {
-    switch (gameType) {
-      case 'lettered':
-        return { title: 'PUZZLE', subtitle: 'COMPLETE' };
-      default:
-        return { title: 'GAME', subtitle: 'COMPLETE' };
-    }
-  };
-
-  const headerText = getHeaderText();
-
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
       <DialogContent
-        className="flex overflow-y-visible flex-col p-0 mt-4 mb-4 w-full h-full border-4 border-black bg-card sm:max-w-xl sm:mb-0 max-h-[800px]"
+        className="flex overflow-y-visible flex-col p-0 w-full h-full border-4 border-black bg-card sm:max-w-xl"
         hideCloseButton
       >
         <DialogClose className="absolute top-4 right-4 z-30 text-white rounded-sm transition-colors hover:text-white/80 focus:outline-none focus:ring-2 focus:ring-white focus:ring-offset-2 focus:ring-offset-black disabled:pointer-events-none">
@@ -101,13 +90,8 @@ export const PostGameModal: React.FC<PostGameModalProps> = ({
 
         {/* Header Banner */}
         <div className="relative flex-shrink-0 py-6 text-center text-white bg-black">
-          <div className="absolute -top-2 -left-2 z-10 px-3 py-1 text-black border-2 border-black transform -rotate-12 bg-primary">
-            <span className="text-sm font-black tracking-wide">COMPLETE</span>
-          </div>
-          <h1 className="text-4xl font-black tracking-tight text-white">{headerText.title}</h1>
-          <h2 className="-mt-1 text-2xl font-black tracking-wider text-white">
-            {headerText.subtitle}
-          </h2>
+          <h1 className="text-4xl font-black tracking-tight text-white">PUZZLE</h1>
+          <h2 className="-mt-1 text-2xl font-black tracking-wider text-white">COMPLETE</h2>
         </div>
 
         <div className="overflow-y-auto flex-1 p-6 space-y-6 min-h-auto">
@@ -119,25 +103,13 @@ export const PostGameModal: React.FC<PostGameModalProps> = ({
             </div>
           )}
 
-          {/* Player Score Display - Different text for custom vs daily games */}
+          {/* Player Score Display */}
           <div className="relative p-4 text-center text-white bg-black border-4 border-black">
             <div className="mb-1 text-2xl font-black tracking-wide">
-              {loading ? (
-                <Skeleton className="mx-auto w-32 h-8 bg-gray-600" />
-              ) : isCustomGame ? (
-                'PLAYER SCORE'
-              ) : (
-                'VALIDATED'
-              )}
+              {loading ? <Skeleton className="mx-auto w-32 h-8 bg-gray-600" /> : 'VALIDATED'}
             </div>
             <div className="text-sm font-bold tracking-wider">
-              {loading ? (
-                <Skeleton className="mx-auto w-40 h-4 bg-gray-600" />
-              ) : isCustomGame ? (
-                'USERNAME RANKED'
-              ) : (
-                'SERVER CONFIRMED'
-              )}
+              {loading ? <Skeleton className="mx-auto w-40 h-4 bg-gray-600" /> : 'SERVER CONFIRMED'}
             </div>
           </div>
 
@@ -153,18 +125,10 @@ export const PostGameModal: React.FC<PostGameModalProps> = ({
             </div>
             <div className="p-4 text-center bg-white border-4 border-black shadow-lg">
               <div className="mb-1 text-3xl font-black text-black">
-                {loading ? (
-                  <Skeleton className="mx-auto w-8 h-9 bg-gray-300" />
-                ) : (
-                  moves
-                )}
+                {loading ? <Skeleton className="mx-auto w-8 h-9 bg-gray-300" /> : moves}
               </div>
               <div className="text-sm font-bold tracking-wide text-black">
-                {loading ? (
-                  <Skeleton className="mx-auto w-12 h-4 bg-gray-300" />
-                ) : (
-                  'MOVES'
-                )}
+                {loading ? <Skeleton className="mx-auto w-12 h-4 bg-gray-300" /> : 'MOVES'}
               </div>
             </div>
           </div>
@@ -174,13 +138,13 @@ export const PostGameModal: React.FC<PostGameModalProps> = ({
             <div className="mb-1 text-sm font-black tracking-wide text-black">
               {loading ? <Skeleton className="mx-auto w-28 h-4 bg-gray-600" /> : "TODAY'S THEME"}
             </div>
-            <div className="text-xl font-black leading-tight text-black">
+            <div className="text-xl font-black text-black Howing-tight">
               {loading ? <Skeleton className="mx-auto w-48 h-7 bg-gray-600" /> : theme}
             </div>
           </div>
 
-          {/* Leaderboard Display for Custom Games */}
-          {isCustomGame && leaderboard && leaderboard.length > 0 && (
+          {/* Leaderboard Display - shown for all games */}
+          {leaderboard && leaderboard.length > 0 && (
             <div className="p-4 bg-white border-4 border-black shadow-lg">
               <div className="mb-3 text-lg font-black text-center text-black">LEADERBOARD</div>
               <div className="space-y-2">
@@ -188,7 +152,7 @@ export const PostGameModal: React.FC<PostGameModalProps> = ({
                   <div
                     key={`${entry.username}-${entry.timeElapsed}-${entry.moves}`}
                     className={`flex justify-between items-center p-2 border-2 border-black ${
-                      entry.username === 'You' || index === (playerRank ? playerRank - 1 : -1)
+                      index === (playerRank ? playerRank - 1 : -1)
                         ? 'bg-yellow-300 font-bold'
                         : 'bg-gray-100'
                     }`}

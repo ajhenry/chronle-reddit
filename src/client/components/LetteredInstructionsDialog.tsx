@@ -332,7 +332,7 @@ export const LetteredInstructionsDialog: React.FC<LetteredInstructionsDialogProp
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent
-        className="p-0 border-4 border-black bg-card sm:max-w-4xl h-[90vh] max-h-[95vh] flex flex-col mt-4 overflow-y-visible"
+        className="flex overflow-y-visible flex-col p-0 h-full border-4 border-black bg-card sm:max-w-4xl"
         hideCloseButton
       >
         <DialogClose className="absolute top-4 right-4 z-30 text-white rounded-sm transition-colors hover:text-white/80 focus:outline-none focus:ring-2 focus:ring-white focus:ring-offset-2 focus:ring-offset-black disabled:pointer-events-none">
@@ -349,9 +349,6 @@ export const LetteredInstructionsDialog: React.FC<LetteredInstructionsDialogProp
 
         {/* Header */}
         <div className="relative flex-shrink-0 py-6 text-center text-white bg-black">
-          <div className="absolute -top-2 -left-2 z-10 px-3 py-1 text-black border-2 border-black transform -rotate-12 bg-primary">
-            <span className="text-sm font-black tracking-wide text-foreground">HOW TO PLAY</span>
-          </div>
           <h1 className="text-4xl font-black tracking-tight text-white">LETTERED</h1>
           <h2 className="-mt-1 text-2xl font-black tracking-wider text-white">INSTRUCTIONS</h2>
         </div>

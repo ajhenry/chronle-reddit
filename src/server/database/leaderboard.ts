@@ -114,19 +114,31 @@ export async function getLeaderboard(
     const leaderboardKey = RedisKeys.leaderboard('overall', period, date);
 
     // Get total count
-    const totalPlayers = (await redis.zcard(leaderboardKey)) || 0;
+    const totalPlayers = (await redis.zCard(leaderboardKey)) || 0;
 
-    // Get rankings (descending order, highest score first)
-    const rankings = await redis.zrevrange(leaderboardKey, offset, offset + limit - 1, 'WITHSCORES');
+    if (totalPlayers === 0) {
+      return { entries: [], totalPlayers: 0 };
+    }
+
+    // Get rankings in ascending order, then reverse for descending (highest score first)
+    // Calculate the range from the end of the sorted set
+    const startFromEnd = totalPlayers - offset - limit;
+    const endFromEnd = totalPlayers - offset - 1;
+    const start = Math.max(0, startFromEnd);
+    const end = Math.max(0, endFromEnd);
+
+    const rankings = await redis.zRange(leaderboardKey, start, end, { by: 'rank' });
+
+    // Reverse to get descending order (highest first)
+    rankings.reverse();
 
     const entries: LeaderboardEntry[] = [];
 
-    // Rankings come back as [member, score, member, score, ...]
-    for (let i = 0; i < rankings.length; i += 2) {
-      const userId = rankings[i];
-      const score = parseFloat(rankings[i + 1] || '0');
+    for (let i = 0; i < rankings.length; i++) {
+      const ranking = rankings[i];
+      if (!ranking) continue;
 
-      if (!userId) continue;
+      const userId = ranking.member as string;
 
       // Get user metadata
       const metadataKey = `${leaderboardKey}:meta:${userId}`;
@@ -135,7 +147,7 @@ export async function getLeaderboard(
 
       if (metadata) {
         entries.push({
-          rank: offset + (i / 2) + 1,
+          rank: offset + i + 1,
           userId: metadata.userId,
           redditHandle: metadata.redditHandle,
           totalPoints: metadata.totalPoints,
@@ -161,9 +173,13 @@ export async function getUserRank(
     const redis = await getRedisClient();
     const leaderboardKey = RedisKeys.leaderboard('overall', period, date);
 
-    const rank = await redis.zrevrank(leaderboardKey, userId);
+    // Get user's ascending rank and total count to calculate descending rank
+    const ascRank = await redis.zRank(leaderboardKey, userId);
+    if (ascRank === null) return null;
 
-    return rank !== null ? rank + 1 : null;
+    const totalPlayers = await redis.zCard(leaderboardKey);
+    // Convert ascending rank to descending rank (1-indexed)
+    return totalPlayers - ascRank;
   } catch (error) {
     console.error('Failed to get user rank:', error);
     return null;
@@ -182,19 +198,30 @@ export async function getLetteredLeaderboard(
     const leaderboardKey = RedisKeys.leaderboard('lettered', period, date);
 
     // Get total count
-    const totalPlayers = (await redis.zcard(leaderboardKey)) || 0;
+    const totalPlayers = (await redis.zCard(leaderboardKey)) || 0;
 
-    // Get rankings (descending order, highest score first)
-    const rankings = await redis.zrevrange(leaderboardKey, offset, offset + limit - 1, 'WITHSCORES');
+    if (totalPlayers === 0) {
+      return { entries: [], totalPlayers: 0 };
+    }
+
+    // Get rankings in ascending order, then reverse for descending (highest score first)
+    const startFromEnd = totalPlayers - offset - limit;
+    const endFromEnd = totalPlayers - offset - 1;
+    const start = Math.max(0, startFromEnd);
+    const end = Math.max(0, endFromEnd);
+
+    const rankings = await redis.zRange(leaderboardKey, start, end, { by: 'rank' });
+
+    // Reverse to get descending order (highest first)
+    rankings.reverse();
 
     const entries: LetteredLeaderboardEntry[] = [];
 
-    // Rankings come back as [member, score, member, score, ...]
-    for (let i = 0; i < rankings.length; i += 2) {
-      const userId = rankings[i];
-      const score = parseFloat(rankings[i + 1] || '0');
+    for (let i = 0; i < rankings.length; i++) {
+      const ranking = rankings[i];
+      if (!ranking) continue;
 
-      if (!userId) continue;
+      const userId = ranking.member as string;
 
       // Get user metadata
       const metadataKey = `${leaderboardKey}:meta:${userId}`;
@@ -203,7 +230,7 @@ export async function getLetteredLeaderboard(
 
       if (metadata) {
         entries.push({
-          rank: offset + (i / 2) + 1,
+          rank: offset + i + 1,
           userId: metadata.userId,
           redditHandle: metadata.redditHandle,
           totalPoints: metadata.totalPoints,
@@ -231,9 +258,13 @@ export async function getUserLetteredRank(
     const redis = await getRedisClient();
     const leaderboardKey = RedisKeys.leaderboard('lettered', period, date);
 
-    const rank = await redis.zrevrank(leaderboardKey, userId);
+    // Get user's ascending rank and total count to calculate descending rank
+    const ascRank = await redis.zRank(leaderboardKey, userId);
+    if (ascRank === null) return null;
 
-    return rank !== null ? rank + 1 : null;
+    const totalPlayers = await redis.zCard(leaderboardKey);
+    // Convert ascending rank to descending rank (1-indexed)
+    return totalPlayers - ascRank;
   } catch (error) {
     console.error('Failed to get user Lettered rank:', error);
     return null;
@@ -301,7 +332,7 @@ export async function addScoreToLeaderboards(
       }
 
       // Update leaderboard score
-      await redis.zadd(leaderboardKey, totalPoints, userId);
+      await redis.zAdd(leaderboardKey, { member: userId, score: totalPoints });
 
       // Update metadata
       await redis.set(metadataKey, serialize(metadata));

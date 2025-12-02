@@ -370,7 +370,6 @@ export class LetteredGameStateManager {
 
     // Check bounds and validity for each cell that would be occupied by the piece
     for (const shapePos of piece.shape) {
-      console.log('shapePos', { shapePos });
       const gridRow = position.row + shapePos.row;
       const gridCol = position.col + shapePos.col;
       // Check if position conflicts with other placed pieces (both in main grid and tray)

@@ -118,6 +118,8 @@ export const RedisKeys = {
   },
   letteredSession: (userId: string, gameId: string) => `lettered_sessions:${userId}:${gameId}`,
   letteredSubmissions: (sessionId: string) => `lettered_submissions:${sessionId}`,
+  letteredGameLeaderboard: (gameId: string) => `lettered:leaderboard:${gameId}`,
+  letteredGameLeaderboardMeta: (gameId: string) => `lettered:leaderboard:${gameId}:meta`,
   userStats: (userId: string) => `user_stats:${userId}`,
   leaderboard: (type: 'overall' | 'lettered', period: TimePeriod, date?: Date) =>
     formatLeaderboardKey(type, period, date),

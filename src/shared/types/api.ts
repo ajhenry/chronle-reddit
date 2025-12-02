@@ -196,6 +196,15 @@ export type User = {
   updatedAt: string;
 };
 
+// Per-game leaderboard entry for post-game display
+export interface GameLeaderboardEntryResponse {
+  username: string;
+  timeElapsed: number; // in milliseconds
+  moves: number;
+  score: number; // time in seconds + moves (lower is better)
+  rank?: number;
+}
+
 export type LetteredPostGameResponse = {
   type: 'lettered_post_game';
   game: LetteredGameData;
@@ -203,12 +212,8 @@ export type LetteredPostGameResponse = {
   pieces: Record<string, GridPosition>;
   movesUsed: number;
   timeElapsed: number;
+  score: number; // time in seconds + moves (lower is better)
   rank?: number;
   totalPlayers?: number;
-  leaderboard?: Array<{
-    username: string;
-    timeElapsed: number;
-    moves: number;
-    rank?: number;
-  }>;
+  leaderboard?: GameLeaderboardEntryResponse[];
 };

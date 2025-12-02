@@ -19,6 +19,12 @@ import {
   createLetteredSubmission,
   getTotalLetteredSubmissions,
   deleteLetteredSession,
+  addToGameLeaderboard,
+  getGameLeaderboard,
+  getPlayerRankInGameLeaderboard,
+  getGameLeaderboardTotalPlayers,
+  calculateLeaderboardScore,
+  hasUserCompletedGame,
 } from '../database/lettered';
 import { getRedisClient } from '../lib/redis-provider';
 import { RedisKeys, deserialize } from '../../shared/types/redis';
@@ -400,9 +406,11 @@ router.post('/api/lettered/:gameId/session', async (req, res): Promise<void> => 
 
     // Check if player has won and mark game as completed
     if (hasWon) {
+      const completedAt = new Date(getCurrentUTCTime()).toISOString();
+
       await updateLetteredSession(session.id, {
         isCompleted: true,
-        completedAt: new Date(getCurrentUTCTime()).toISOString(),
+        completedAt,
         timeElapsed: timeElapsedMs,
         moves: updatedSession.moves,
       });
@@ -415,6 +423,31 @@ router.post('/api/lettered/:gameId/session', async (req, res): Promise<void> => 
         const user = userData ? deserialize<{ handle: string }>(userData) : null;
         const redditHandle = user?.handle || 'unknown';
 
+        // Add to per-game leaderboard
+        const score = calculateLeaderboardScore(timeElapsedMs, updatedSession.moves);
+        const alreadyCompleted = await hasUserCompletedGame(gameId, userId);
+
+        if (!alreadyCompleted) {
+          await addToGameLeaderboard(gameId, {
+            userId,
+            username: redditHandle,
+            timeElapsed: timeElapsedMs,
+            moves: updatedSession.moves,
+            score,
+            completedAt,
+          });
+
+          console.log('Added to per-game leaderboard:', {
+            gameId,
+            userId,
+            username: redditHandle,
+            score,
+            timeElapsed: timeElapsedMs,
+            moves: updatedSession.moves,
+          });
+        }
+
+        // Update overall leaderboards
         await updateLetteredLeaderboards(
           userId,
           redditHandle,
@@ -583,7 +616,6 @@ router.get('/api/lettered/:gameId/postgame', async (req, res): Promise<void> => 
 
     const session = await getOrCreateLetteredSession(userId, gameId);
     const latestSubmission = await getLatestLetteredSubmission(userId, gameId);
-    const submissionsCount = await getTotalLetteredSubmissions(userId, gameId);
 
     if (!latestSubmission) {
       console.log('No submissions found for this game');
@@ -603,6 +635,23 @@ router.get('/api/lettered/:gameId/postgame', async (req, res): Promise<void> => 
       return;
     }
 
+    // Calculate player's score
+    const score = calculateLeaderboardScore(session.timeElapsed, session.moves);
+
+    // Get leaderboard data
+    const leaderboardEntries = await getGameLeaderboard(gameId, 10);
+    const playerRank = await getPlayerRankInGameLeaderboard(gameId, userId);
+    const totalPlayers = await getGameLeaderboardTotalPlayers(gameId);
+
+    // Format leaderboard entries for response
+    const leaderboard = leaderboardEntries.map((entry, index) => ({
+      username: entry.username,
+      timeElapsed: entry.timeElapsed,
+      moves: entry.moves,
+      score: entry.score,
+      rank: index + 1,
+    }));
+
     const response: LetteredPostGameResponse = {
       type: 'lettered_post_game',
       game: game,
@@ -610,7 +659,20 @@ router.get('/api/lettered/:gameId/postgame', async (req, res): Promise<void> => 
       pieces: latestSubmission?.boardState.placedPieces || {},
       movesUsed: session.moves,
       timeElapsed: session.timeElapsed,
+      score,
+      rank: playerRank ?? undefined,
+      totalPlayers,
+      leaderboard,
     };
+
+    console.log('Postgame response:', {
+      gameId,
+      userId,
+      score,
+      rank: playerRank,
+      totalPlayers,
+      leaderboardCount: leaderboard.length,
+    });
 
     res.json(response);
   } catch (error) {

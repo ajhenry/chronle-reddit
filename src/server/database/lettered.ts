@@ -603,3 +603,190 @@ export const deleteLetteredSession = async (userId: string, gameId: string): Pro
     throw new Error('Failed to delete lettered session');
   }
 };
+
+// Per-game leaderboard types and functions
+export interface GameLeaderboardEntry {
+  userId: string;
+  username: string;
+  timeElapsed: number; // in milliseconds
+  moves: number;
+  score: number; // time in seconds + moves (lower is better)
+  completedAt: string; // ISO timestamp for tiebreaking
+}
+
+interface GameLeaderboardEntryStorage {
+  user_id: string;
+  username: string;
+  time_elapsed: number;
+  moves: number;
+  score: number;
+  completed_at: string;
+}
+
+const convertGameLeaderboardEntry = (entry: GameLeaderboardEntryStorage): GameLeaderboardEntry => ({
+  userId: entry.user_id,
+  username: entry.username,
+  timeElapsed: entry.time_elapsed,
+  moves: entry.moves,
+  score: entry.score,
+  completedAt: entry.completed_at,
+});
+
+const convertGameLeaderboardEntryToStorage = (
+  entry: GameLeaderboardEntry
+): GameLeaderboardEntryStorage => ({
+  user_id: entry.userId,
+  username: entry.username,
+  time_elapsed: entry.timeElapsed,
+  moves: entry.moves,
+  score: entry.score,
+  completed_at: entry.completedAt,
+});
+
+/**
+ * Calculate score for leaderboard ranking.
+ * Score = time in seconds + moves (lower is better)
+ */
+export function calculateLeaderboardScore(timeElapsedMs: number, moves: number): number {
+  const timeInSeconds = Math.floor(timeElapsedMs / 1000);
+  return timeInSeconds + moves;
+}
+
+/**
+ * Add a completed game entry to the per-game leaderboard.
+ * Uses a Redis sorted set with composite score for proper sorting:
+ * - Primary: score (time in seconds + moves), lower is better
+ * - Tiebreaker: earlier completion time wins
+ */
+export const addToGameLeaderboard = async (
+  gameId: string,
+  entry: GameLeaderboardEntry
+): Promise<void> => {
+  try {
+    const redis = await getRedisClient();
+    const leaderboardKey = RedisKeys.letteredGameLeaderboard(gameId);
+    const metadataKey = RedisKeys.letteredGameLeaderboardMeta(gameId);
+
+    // Create a composite score for sorting:
+    // We want lower scores first, and for ties, earlier completion times first.
+    // Redis sorted sets are ascending by default when using ZRANGE.
+    // Composite score: (score * 10^13) + timestamp_ms
+    // This allows for scores up to ~900,000 while still having timestamp precision
+    const completedAtMs = new Date(entry.completedAt).getTime();
+    const compositeScore = entry.score * 1e13 + completedAtMs;
+
+    // Add to sorted set (userId as member, composite score as score)
+    await redis.zAdd(leaderboardKey, { member: entry.userId, score: compositeScore });
+
+    // Store metadata for this user's entry
+    const storageEntry = convertGameLeaderboardEntryToStorage(entry);
+    await redis.hSet(metadataKey, { [entry.userId]: serialize(storageEntry) });
+
+    console.log('Added to game leaderboard:', {
+      gameId,
+      userId: entry.userId,
+      score: entry.score,
+      compositeScore,
+    });
+  } catch (error) {
+    console.error('Failed to add to game leaderboard:', { error });
+    throw new Error('Failed to add to game leaderboard');
+  }
+};
+
+/**
+ * Get the leaderboard for a specific game.
+ * Returns entries sorted by score (ascending - lower is better),
+ * with ties broken by earlier completion time.
+ */
+export const getGameLeaderboard = async (
+  gameId: string,
+  limit: number = 10
+): Promise<GameLeaderboardEntry[]> => {
+  try {
+    const redis = await getRedisClient();
+    const leaderboardKey = RedisKeys.letteredGameLeaderboard(gameId);
+    const metadataKey = RedisKeys.letteredGameLeaderboardMeta(gameId);
+
+    // Get top entries (ascending order - lowest scores first)
+    // Using 'by: rank' to get entries by their rank position (0-indexed)
+    const rankings = await redis.zRange(leaderboardKey, 0, limit - 1, { by: 'rank' });
+
+    if (!rankings || rankings.length === 0) {
+      return [];
+    }
+
+    // Get metadata for all ranked users
+    const entries: GameLeaderboardEntry[] = [];
+    for (const ranking of rankings) {
+      const userId = ranking.member as string;
+      const metadataStr = await redis.hGet(metadataKey, userId);
+
+      if (metadataStr) {
+        const metadata = deserialize<GameLeaderboardEntryStorage>(metadataStr);
+        if (metadata) {
+          entries.push(convertGameLeaderboardEntry(metadata));
+        }
+      }
+    }
+
+    return entries;
+  } catch (error) {
+    console.error('Failed to get game leaderboard:', { error });
+    throw new Error('Failed to get game leaderboard');
+  }
+};
+
+/**
+ * Get a player's rank in a specific game's leaderboard.
+ * Returns 1-indexed rank, or null if player hasn't completed the game.
+ */
+export const getPlayerRankInGameLeaderboard = async (
+  gameId: string,
+  userId: string
+): Promise<number | null> => {
+  try {
+    const redis = await getRedisClient();
+    const leaderboardKey = RedisKeys.letteredGameLeaderboard(gameId);
+
+    // zRank returns 0-indexed rank (ascending order)
+    const rank = await redis.zRank(leaderboardKey, userId);
+
+    return rank !== null ? rank + 1 : null;
+  } catch (error) {
+    console.error('Failed to get player rank in game:', { error });
+    return null;
+  }
+};
+
+/**
+ * Get total number of players who completed a specific game.
+ */
+export const getGameLeaderboardTotalPlayers = async (gameId: string): Promise<number> => {
+  try {
+    const redis = await getRedisClient();
+    const leaderboardKey = RedisKeys.letteredGameLeaderboard(gameId);
+
+    const count = await redis.zCard(leaderboardKey);
+    return count || 0;
+  } catch (error) {
+    console.error('Failed to get game leaderboard total players:', { error });
+    return 0;
+  }
+};
+
+/**
+ * Check if a user already has an entry in a game's leaderboard.
+ */
+export const hasUserCompletedGame = async (gameId: string, userId: string): Promise<boolean> => {
+  try {
+    const redis = await getRedisClient();
+    const leaderboardKey = RedisKeys.letteredGameLeaderboard(gameId);
+
+    const score = await redis.zScore(leaderboardKey, userId);
+    return score !== null;
+  } catch (error) {
+    console.error('Failed to check if user completed game:', { error });
+    return false;
+  }
+};
