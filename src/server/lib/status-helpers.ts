@@ -1,7 +1,3 @@
-import { supabase } from '../../shared/supabase-server';
-import { getOrCreateTodaysDailyGame } from './daily-game-helpers';
-import { getOrCreateTodaysLetteredGame } from './lettered-game-helpers';
-import type { DailyGame } from '../../shared/types/supabase';
 import { getTodayEST } from './time';
 import { getOrCreateTodaysGame, updateDailyGame } from '../database/game';
 import { findRandomLetteredGame } from '../database/lettered';

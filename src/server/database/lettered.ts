@@ -1,9 +1,9 @@
-import { Database } from '../../shared/types/supabase';
-import { supabase } from '../../shared/supabase-server';
 import { GridCell, GridPosition, LetterPiece } from '../../shared/types/api';
 import { DEFAULT_INITIAL_SCORE } from '../../shared/score-decay';
 import { getTodayEST } from '../lib/time';
 import { getOrCreateTodaysGame } from './game';
+import { getRedisClient } from '../lib/redis-provider';
+import { RedisKeys, serialize, deserialize } from '../../shared/types/redis';
 
 export interface LetteredGame {
   id: string;
@@ -38,27 +38,74 @@ export interface LetteredSubmission {
   gameSessionId: string;
   boardState: {
     grid: GridCell[][];
-    placedPieces: Record<string, GridPosition>; // pieceId -> position
+    placedPieces: Record<string, GridPosition>;
   };
   submittedAt: string;
   scoreAtSubmission: number;
 }
 
-const convertLetteredSubmission = (
-  submission: Database['public']['Tables']['lettered_submissions']['Row']
-): LetteredSubmission => {
+interface LetteredGameStorage {
+  id: string;
+  category: string;
+  phrase: string;
+  grid: GridCell[][];
+  rows: number;
+  cols: number;
+  pieces: LetterPiece[];
+  initial_piece_positions: Record<string, GridPosition>;
+  solution: Record<string, GridPosition>;
+  solution_hash: string;
+  seed: number | null;
+  created_at: string;
+  updated_at: string;
+}
+
+interface LetteredSessionStorage {
+  id: string;
+  user_id: string;
+  daily_game_id: string;
+  started_at: string;
+  completed_at: string | null;
+  initial_score: number;
+  final_score: number;
+  is_completed: boolean;
+  moves: number;
+}
+
+interface LetteredSubmissionStorage {
+  id: string;
+  game_session_id: string;
+  board_state: {
+    grid: GridCell[][];
+    placedPieces: Record<string, GridPosition>;
+  };
+  submitted_at: string;
+  score_at_submission: number;
+}
+
+const convertLetteredSubmission = (submission: LetteredSubmissionStorage): LetteredSubmission => {
   return {
     id: submission.id,
     gameSessionId: submission.game_session_id,
-    boardState: submission.board_state as LetteredSubmission['boardState'],
+    boardState: submission.board_state,
     submittedAt: submission.submitted_at,
     scoreAtSubmission: submission.score_at_submission,
   };
 };
 
-const convertLetteredSession = (
-  session: Database['public']['Tables']['lettered_sessions']['Row']
-): LetteredSession => {
+const convertLetteredSubmissionToStorage = (
+  submission: LetteredSubmission
+): LetteredSubmissionStorage => {
+  return {
+    id: submission.id,
+    game_session_id: submission.gameSessionId,
+    board_state: submission.boardState,
+    submitted_at: submission.submittedAt,
+    score_at_submission: submission.scoreAtSubmission,
+  };
+};
+
+const convertLetteredSession = (session: LetteredSessionStorage): LetteredSession => {
   return {
     id: session.id,
     userId: session.user_id,
@@ -68,25 +115,35 @@ const convertLetteredSession = (
     initialScore: session.initial_score,
     finalScore: session.final_score,
     isCompleted: session.is_completed,
-    moves:
-      (session as Database['public']['Tables']['lettered_sessions']['Row'] & { moves?: number })
-        .moves ?? 0,
+    moves: session.moves ?? 0,
   };
 };
 
-const convertLetteredGame = (
-  game: Database['public']['Tables']['lettered_games']['Row']
-): LetteredGame => {
+const convertLetteredSessionToStorage = (session: LetteredSession): LetteredSessionStorage => {
+  return {
+    id: session.id,
+    user_id: session.userId,
+    daily_game_id: session.dailyGameId,
+    started_at: session.startedAt,
+    completed_at: session.completedAt,
+    initial_score: session.initialScore,
+    final_score: session.finalScore,
+    is_completed: session.isCompleted,
+    moves: session.moves,
+  };
+};
+
+const convertLetteredGame = (game: LetteredGameStorage): LetteredGame => {
   return {
     id: game.id,
     category: game.category,
     phrase: game.phrase,
-    grid: game.grid as GridCell[][],
+    grid: game.grid,
     rows: game.rows,
     cols: game.cols,
-    pieces: game.pieces as LetterPiece[],
-    initialPiecePositions: game.initial_piece_positions as Record<string, GridPosition>,
-    solution: game.solution as Record<string, GridPosition>,
+    pieces: game.pieces,
+    initialPiecePositions: game.initial_piece_positions,
+    solution: game.solution,
     solutionHash: game.solution_hash,
     seed: game.seed,
     createdAt: game.created_at,
@@ -94,301 +151,343 @@ const convertLetteredGame = (
   };
 };
 
+const convertLetteredGameToStorage = (game: LetteredGame): LetteredGameStorage => {
+  return {
+    id: game.id,
+    category: game.category,
+    phrase: game.phrase,
+    grid: game.grid,
+    rows: game.rows,
+    cols: game.cols,
+    pieces: game.pieces,
+    initial_piece_positions: game.initialPiecePositions,
+    solution: game.solution,
+    solution_hash: game.solutionHash,
+    seed: game.seed,
+    created_at: game.createdAt,
+    updated_at: game.updatedAt,
+  };
+};
+
 export const createLetteredGame = async (game: LetteredGame): Promise<LetteredGame> => {
-  const { data, error } = await supabase
-    .from('lettered_games')
-    .insert({
-      category: game.category,
-      phrase: game.phrase,
-      grid: game.grid,
-      rows: game.rows,
-      cols: game.cols,
-      pieces: game.pieces,
-      initial_piece_positions: game.initialPiecePositions,
-      solution: game.solution,
-      solution_hash: game.solutionHash,
-      seed: game.seed,
-    })
-    .select()
-    .single();
-  if (error) {
+  try {
+    const redis = await getRedisClient();
+    const gameId = crypto.randomUUID();
+    const now = new Date().toISOString();
+
+    const newGame: LetteredGame = {
+      ...game,
+      id: gameId,
+      createdAt: now,
+      updatedAt: now,
+    };
+
+    const storageData = convertLetteredGameToStorage(newGame);
+    await redis.set(RedisKeys.letteredGame.byId(gameId), serialize(storageData));
+
+    // Add to the set of all game IDs for random selection
+    await redis.sadd(RedisKeys.letteredGame.all(), gameId);
+
+    console.log('Created lettered game:', { gameId });
+
+    return newGame;
+  } catch (error) {
     console.error('Failed to create lettered game:', { error });
-    throw new Error(`Failed to create lettered game: ${error.message}`, { cause: error });
+    throw new Error('Failed to create lettered game');
   }
-  return convertLetteredGame(data);
 };
 
 export const findLetteredGameById = async (id: string): Promise<LetteredGame> => {
-  const { data, error } = await supabase.from('lettered_games').select('*').eq('id', id).single();
-  if (error) {
+  try {
+    const redis = await getRedisClient();
+    const gameData = await redis.get(RedisKeys.letteredGame.byId(id));
+
+    if (!gameData) {
+      throw new Error('Lettered game not found');
+    }
+
+    const data = deserialize<LetteredGameStorage>(gameData);
+    if (!data) {
+      throw new Error('Failed to deserialize lettered game data');
+    }
+
+    return convertLetteredGame(data);
+  } catch (error) {
     console.error('Failed to find lettered game:', { error });
-    throw new Error(`Failed to find lettered game: ${error.message}`, { cause: error });
+    throw new Error('Failed to find lettered game');
   }
-  return convertLetteredGame(data);
 };
 
 export const findRandomLetteredGame = async (): Promise<LetteredGame> => {
-  // Find the count of lettered games
-  const { count, error: countError } = await supabase
-    .from('lettered_games')
-    .select('count', { count: 'exact', head: true });
+  try {
+    const redis = await getRedisClient();
 
-  if (countError || !count) {
-    console.error('Failed to find lettered game count:', { error: countError });
-    throw new Error(`Failed to find lettered game count: ${countError?.message}`, {
-      cause: countError,
-    });
-  }
+    // Get a random game ID from the set
+    const gameId = await redis.srandmember(RedisKeys.letteredGame.all());
 
-  if (count === 0) {
-    console.error('No lettered games found');
-    throw new Error('No lettered games found');
-  }
-  const randomOffset = Math.floor(Math.random() * count);
+    if (!gameId) {
+      throw new Error('No lettered games found');
+    }
 
-  const { data, error } = await supabase
-    .from('lettered_games')
-    .select('*')
-    .limit(1)
-    .range(randomOffset, randomOffset)
-    .single();
-  if (error) {
+    return await findLetteredGameById(gameId);
+  } catch (error) {
     console.error('Failed to find random lettered game:', { error });
-    throw new Error(`Failed to find random lettered game: ${error.message}`, { cause: error });
+    throw new Error('Failed to find random lettered game');
   }
-  return convertLetteredGame(data);
 };
 
 export const getTodaysLetteredGame = async (): Promise<LetteredGame> => {
-  const { data, error } = await supabase
-    .from('daily_games')
-    .select('*, lettered_games!inner(*)')
-    .eq('day', getTodayEST())
-    .single();
+  try {
+    const dailyGame = await getOrCreateTodaysGame();
 
-  if (error) {
+    if (!dailyGame.letteredGameId) {
+      throw new Error('No lettered game assigned to today');
+    }
+
+    return await findLetteredGameById(dailyGame.letteredGameId);
+  } catch (error) {
     console.error('Failed to find todays lettered game:', { error });
-    throw new Error(`Failed to find todays lettered game: ${error.message}`, { cause: error });
+    throw new Error('Failed to find todays lettered game');
   }
-
-  return convertLetteredGame(data.lettered_games);
 };
 
 export const getOrCreateLetteredSessionForToday = async (
   userId: string
 ): Promise<LetteredSession> => {
   const dailyGame = await getOrCreateTodaysGame();
+  const today = getTodayEST();
 
-  const { data, error } = await supabase
-    .from('lettered_sessions')
-    .select('*')
-    .eq('daily_game_id', dailyGame.id)
-    .eq('user_id', userId)
-    .single();
+  try {
+    const redis = await getRedisClient();
+    const sessionData = await redis.get(RedisKeys.letteredSession(userId, today));
 
-  console.log('data', data);
-  console.log('error', error);
+    if (!sessionData) {
+      return await createLetteredSession(userId);
+    }
 
-  if (error?.message.includes('PGRST116') || error?.code === 'PGRST116') {
-    return await createLetteredSession(userId);
-  }
+    const data = deserialize<LetteredSessionStorage>(sessionData);
+    if (!data) {
+      return await createLetteredSession(userId);
+    }
 
-  if (error) {
+    return convertLetteredSession(data);
+  } catch (error) {
     console.error('Failed to find todays lettered session:', { error });
-    throw new Error(`Failed to find todays lettered session: ${error.message}`, { cause: error });
+    throw new Error('Failed to find todays lettered session');
   }
-
-  return convertLetteredSession(data);
 };
 
 export const getLatestLetteredSubmissionForToday = async (
   userId: string
 ): Promise<LetteredSubmission | null> => {
-  const letteredSession = await getOrCreateLetteredSessionForToday(userId);
+  try {
+    const letteredSession = await getOrCreateLetteredSessionForToday(userId);
+    const redis = await getRedisClient();
 
-  const { data, error } = await supabase
-    .from('lettered_submissions')
-    .select('*')
-    .eq('game_session_id', letteredSession.id)
-    .order('created_at', { ascending: false })
-    .limit(1);
+    const submissionsData = await redis.get(RedisKeys.letteredSubmissions(letteredSession.id));
 
-  if (error) {
+    if (!submissionsData) {
+      return null;
+    }
+
+    const submissions = deserialize<LetteredSubmissionStorage[]>(submissionsData);
+    if (!submissions || submissions.length === 0) {
+      return null;
+    }
+
+    // Return the last submission (latest)
+    return convertLetteredSubmission(submissions[submissions.length - 1]!);
+  } catch (error) {
     console.error('Failed to find latest lettered submission:', { error });
-    throw new Error(`Failed to find latest lettered submission: ${error.message}`, {
-      cause: error,
-    });
+    throw new Error('Failed to find latest lettered submission');
   }
-
-  if (data.length === 0) {
-    return null;
-  }
-
-  return convertLetteredSubmission(data[0]!);
 };
 
 export const getLetteredSubmissionsForToday = async (
   userId: string
 ): Promise<LetteredSubmission[]> => {
-  const letteredSession = await getOrCreateLetteredSessionForToday(userId);
+  try {
+    const letteredSession = await getOrCreateLetteredSessionForToday(userId);
+    const redis = await getRedisClient();
 
-  const { data, error } = await supabase
-    .from('lettered_submissions')
-    .select('*')
-    .eq('game_session_id', letteredSession.id)
-    .order('submitted_at', { ascending: true });
+    const submissionsData = await redis.get(RedisKeys.letteredSubmissions(letteredSession.id));
 
-  if (error) {
+    if (!submissionsData) {
+      return [];
+    }
+
+    const submissions = deserialize<LetteredSubmissionStorage[]>(submissionsData);
+    if (!submissions) {
+      return [];
+    }
+
+    return submissions.map(convertLetteredSubmission);
+  } catch (error) {
     console.error('Failed to find lettered submissions:', { error });
-    throw new Error(`Failed to find lettered submissions: ${error.message}`, { cause: error });
+    throw new Error('Failed to find lettered submissions');
   }
-
-  return data.map(convertLetteredSubmission);
 };
 
 export const getOrCreateUserLetteredSessionForToday = async (
   userId: string
 ): Promise<LetteredSession> => {
   console.log('getOrCreateUserLetteredSessionForToday', { userId });
-  const dailyGame = await getOrCreateTodaysGame();
-
-  const { data, error } = await supabase
-    .from('lettered_sessions')
-    .select('*')
-    .eq('daily_game_id', dailyGame.id)
-    .eq('user_id', userId)
-    .single();
-
-  if (error?.message.includes('PGRST116') || error?.code === 'PGRST116') {
-    return await createLetteredSession(userId);
-  }
-
-  if (error) {
-    console.error('Failed to find todays lettered session:', { error });
-    throw new Error(`Failed to find todays lettered session: ${error.message}`, { cause: error });
-  }
-
-  return convertLetteredSession(data);
+  return await getOrCreateLetteredSessionForToday(userId);
 };
 
 export const createLetteredSession = async (userId: string): Promise<LetteredSession> => {
   console.log('createLetteredSession', { userId });
-  const dailyGame = await getOrCreateTodaysGame();
+  try {
+    const dailyGame = await getOrCreateTodaysGame();
+    const today = getTodayEST();
 
-  if (userId.includes('letteredsession_')) {
-    throw new Error('User already has a lettered session');
-  }
+    if (userId.includes('letteredsession_')) {
+      throw new Error('User already has a lettered session');
+    }
 
-  console.log('dailyGame', {
-    initial_score: DEFAULT_INITIAL_SCORE,
-    user_id: userId,
-    daily_game_id: dailyGame.id,
-  });
+    const sessionId = crypto.randomUUID();
+    const now = new Date().toISOString();
 
-  const { data, error } = await supabase
-    .from('lettered_sessions')
-    .insert({
-      initial_score: DEFAULT_INITIAL_SCORE,
-      user_id: userId,
-      daily_game_id: dailyGame.id,
-    })
-    .select()
-    .single();
+    const session: LetteredSession = {
+      id: sessionId,
+      userId: userId,
+      dailyGameId: dailyGame.id,
+      startedAt: now,
+      completedAt: null,
+      initialScore: DEFAULT_INITIAL_SCORE,
+      finalScore: DEFAULT_INITIAL_SCORE,
+      isCompleted: false,
+      moves: 0,
+    };
 
-  if (error) {
+    const redis = await getRedisClient();
+    const storageData = convertLetteredSessionToStorage(session);
+    await redis.set(RedisKeys.letteredSession(userId, today), serialize(storageData));
+
+    console.log('Created lettered session:', { sessionId, userId, day: today });
+
+    return session;
+  } catch (error) {
     console.error('Failed to create lettered session:', { error });
-    throw new Error(`Failed to create lettered session: ${error.message}`, { cause: error });
+    throw new Error('Failed to create lettered session');
   }
-
-  return convertLetteredSession(data);
 };
 
 export const updateLetteredSession = async (
   sessionId: string,
   updates: Partial<Pick<LetteredSession, 'completedAt' | 'finalScore' | 'isCompleted' | 'moves'>>
 ): Promise<LetteredSession> => {
-  const updateData: Database['public']['Tables']['lettered_sessions']['Update'] = {};
+  try {
+    const redis = await getRedisClient();
 
-  if (updates.completedAt !== undefined) {
-    updateData.completed_at = updates.completedAt;
-  }
-  if (updates.finalScore !== undefined) {
-    updateData.final_score = updates.finalScore;
-  }
-  if (updates.isCompleted !== undefined) {
-    updateData.is_completed = updates.isCompleted;
-  }
-  if (updates.moves !== undefined) {
-    (
-      updateData as Database['public']['Tables']['lettered_sessions']['Update'] & { moves?: number }
-    ).moves = updates.moves;
-  }
+    // First, find the session by ID
+    // We need to search through all possible session keys
+    // Since we store by userId:day, we need to get the session first to know the key
+    const session = await findLetteredSessionById(sessionId);
 
-  const { data, error } = await supabase
-    .from('lettered_sessions')
-    .update(updateData)
-    .eq('id', sessionId)
-    .select()
-    .single();
+    const updatedSession: LetteredSession = {
+      ...session,
+      ...updates,
+    };
 
-  if (error) {
+    const today = getTodayEST();
+    const storageData = convertLetteredSessionToStorage(updatedSession);
+    await redis.set(RedisKeys.letteredSession(session.userId, today), serialize(storageData));
+
+    console.log('Updated lettered session:', { sessionId });
+
+    return updatedSession;
+  } catch (error) {
     console.error('Failed to update lettered session:', { error });
-    throw new Error(`Failed to update lettered session: ${error.message}`, { cause: error });
+    throw new Error('Failed to update lettered session');
   }
-
-  return convertLetteredSession(data);
 };
 
 export const findLetteredSessionById = async (sessionId: string): Promise<LetteredSession> => {
-  const { data, error } = await supabase
-    .from('lettered_sessions')
-    .select('*')
-    .eq('id', sessionId)
-    .single();
+  try {
+    const redis = await getRedisClient();
+    const today = getTodayEST();
 
-  if (error) {
+    // Note: This is a limitation of the key structure
+    // We need to know the userId to find the session
+    // For now, we'll need to scan all session keys
+    const pattern = `lettered_sessions:*:${today}`;
+    const keys = await redis.keys(pattern);
+
+    for (const key of keys) {
+      const sessionData = await redis.get(key);
+      if (!sessionData) continue;
+
+      const data = deserialize<LetteredSessionStorage>(sessionData);
+      if (data && data.id === sessionId) {
+        return convertLetteredSession(data);
+      }
+    }
+
+    throw new Error('Lettered session not found');
+  } catch (error) {
     console.error('Failed to find lettered session:', { error });
-    throw new Error(`Failed to find lettered session: ${error.message}`, { cause: error });
+    throw new Error('Failed to find lettered session');
   }
-
-  return convertLetteredSession(data);
 };
 
 export const createLetteredSubmission = async (
   submission: Pick<LetteredSubmission, 'gameSessionId' | 'boardState' | 'scoreAtSubmission'>
 ): Promise<LetteredSubmission> => {
-  const { data, error } = await supabase
-    .from('lettered_submissions')
-    .insert({
-      game_session_id: submission.gameSessionId,
-      board_state: submission.boardState,
-      score_at_submission: submission.scoreAtSubmission,
-    })
-    .select()
-    .single();
+  try {
+    const redis = await getRedisClient();
+    const submissionId = crypto.randomUUID();
+    const now = new Date().toISOString();
 
-  if (error) {
+    const newSubmission: LetteredSubmission = {
+      id: submissionId,
+      gameSessionId: submission.gameSessionId,
+      boardState: submission.boardState,
+      submittedAt: now,
+      scoreAtSubmission: submission.scoreAtSubmission,
+    };
+
+    // Get existing submissions
+    const submissionsData = await redis.get(
+      RedisKeys.letteredSubmissions(submission.gameSessionId)
+    );
+    const submissions = submissionsData
+      ? deserialize<LetteredSubmissionStorage[]>(submissionsData) || []
+      : [];
+
+    // Add new submission
+    submissions.push(convertLetteredSubmissionToStorage(newSubmission));
+
+    // Store updated submissions
+    await redis.set(
+      RedisKeys.letteredSubmissions(submission.gameSessionId),
+      serialize(submissions)
+    );
+
+    console.log('Created lettered submission:', { submissionId, sessionId: submission.gameSessionId });
+
+    return newSubmission;
+  } catch (error) {
     console.error('Failed to create lettered submission:', { error });
-    throw new Error(`Failed to create lettered submission: ${error.message}`, { cause: error });
+    throw new Error('Failed to create lettered submission');
   }
-
-  return convertLetteredSubmission(data);
 };
 
 export const getTotalLetteredSubmissionsForToday = async (userId: string): Promise<number> => {
-  const session = await getOrCreateUserLetteredSessionForToday(userId);
+  try {
+    const session = await getOrCreateUserLetteredSessionForToday(userId);
+    const redis = await getRedisClient();
 
-  const { count, error } = await supabase
-    .from('lettered_submissions')
-    .select('count', { count: 'exact', head: true })
-    .eq('game_session_id', session.id);
+    const submissionsData = await redis.get(RedisKeys.letteredSubmissions(session.id));
 
-  if (error) {
+    if (!submissionsData) {
+      return 0;
+    }
+
+    const submissions = deserialize<LetteredSubmissionStorage[]>(submissionsData);
+    return submissions?.length ?? 0;
+  } catch (error) {
     console.error('Failed to find total lettered submissions:', { error });
-    throw new Error(`Failed to find total lettered submissions: ${error.message}`, {
-      cause: error,
-    });
+    throw new Error('Failed to find total lettered submissions');
   }
-
-  return count ?? 0;
 };

@@ -17,25 +17,13 @@ export type DecrementResponse = {
   count: number;
 };
 
-export type Season = {
-  id: string;
-  name: string;
-  startDate: string;
-  endDate: string;
-  isActive: boolean;
-  gameType: string; // 'topx', etc.
-  createdAt: string;
-};
-
-// New leaderboard types for season-based leaderboards
-export type SeasonLeaderboardEntry = {
+// Time-based leaderboard types
+export type LeaderboardEntry = {
   rank: number;
   userId: string;
   redditHandle: string;
   totalPoints: number;
   gamesPlayed: number;
-  averageLetteredScore: number | null;
-  averageLetteredMovesUsed: number | null;
   averageScore: number | null;
 };
 
@@ -50,11 +38,11 @@ export type LetteredLeaderboardEntry = {
   averageTime: number | null;
 };
 
-export type SeasonLeaderboardResponse = {
+export type LeaderboardResponse = {
   type: 'leaderboard';
-  seasonId: string;
-  seasonName: string;
-  entries: SeasonLeaderboardEntry[];
+  period: 'daily' | 'weekly' | 'monthly' | 'alltime';
+  periodKey: string;
+  entries: LeaderboardEntry[];
   totalPlayers: number;
   userRank?: number;
   limit: number;
@@ -63,8 +51,8 @@ export type SeasonLeaderboardResponse = {
 
 export type LetteredLeaderboardResponse = {
   type: 'lettered_leaderboard';
-  seasonId: string;
-  seasonName: string;
+  period: 'daily' | 'weekly' | 'monthly' | 'alltime';
+  periodKey: string;
   entries: LetteredLeaderboardEntry[];
   totalPlayers: number;
   userRank?: number;
@@ -94,39 +82,6 @@ export type UserStatsResponse = {
   stats: UserStats;
 };
 
-export type UserSeasonStatsResponse = {
-  type: 'user_season_stats';
-  userId: string;
-  seasonId: string;
-  stats: UserStats;
-};
-
-// Legacy types for backwards compatibility
-export type LeaderboardEntry = {
-  rank: number;
-  userId: string;
-  redditHandle: string;
-  totalPoints: number;
-  gamesPlayed: number;
-  latestGame: string;
-  averageScore: number;
-};
-
-export type SeasonResponse = {
-  type: 'season';
-  season: Season;
-};
-
-export type SeasonsResponse = {
-  type: 'seasons';
-  seasons: Season[];
-};
-
-export type LeaderboardResponse = {
-  type: 'leaderboard';
-  entries: LeaderboardEntry[];
-  totalPlayers: number;
-};
 
 export type UserLeaderboardPositionResponse = {
   type: 'user_leaderboard_position';

@@ -5,7 +5,6 @@ import userRoutes from './handlers/user';
 import postRoutes from './handlers/post';
 import gameRoutes from './handlers/game';
 import letteredRoutes from './handlers/lettered';
-import seasonRoutes from './handlers/season';
 import adminRoutes from './handlers/admin';
 import leaderboardRoutes from './handlers/leaderboard';
 import customRoutes from './handlers/custom';
@@ -26,15 +25,7 @@ export const splashConfig = {
 const isLocal = process.env.LOCAL_MODE === 'true';
 const isRedditDev = process.env.REDDIT_MODE === 'true';
 
-Devvit.addSettings([
-  {
-    name: 'supabase-service-key',
-    label: 'Supabase Service Key',
-    type: 'string',
-    isSecret: true,
-    scope: 'app',
-  },
-]);
+Devvit.addSettings([]);
 
 const app = express();
 
@@ -71,7 +62,6 @@ app.use(userRoutes);
 app.use(postRoutes);
 app.use(gameRoutes);
 app.use(letteredRoutes);
-app.use(seasonRoutes);
 app.use(adminRoutes);
 app.use(leaderboardRoutes);
 app.use(customRoutes);

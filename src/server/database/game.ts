@@ -1,6 +1,6 @@
-import { supabase } from '../../shared/supabase-server';
-import { Database } from '../../shared/types/supabase';
+import { getRedisClient } from '../lib/redis-provider';
 import { getTodayEST } from '../lib/time';
+import { RedisKeys, serialize, deserialize } from '../../shared/types/redis';
 
 export interface DailyGame {
   id: string;
@@ -10,7 +10,15 @@ export interface DailyGame {
   updatedAt: string;
 }
 
-const convertGame = (game: Database['public']['Tables']['daily_games']['Row']): DailyGame => {
+interface DailyGameStorage {
+  id: string;
+  day: string;
+  lettered_game_id: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+const convertGame = (game: DailyGameStorage): DailyGame => {
   return {
     id: game.id,
     day: game.day,
@@ -20,55 +28,84 @@ const convertGame = (game: Database['public']['Tables']['daily_games']['Row']): 
   };
 };
 
+const convertToStorage = (game: DailyGame): DailyGameStorage => {
+  return {
+    id: game.id,
+    day: game.day,
+    lettered_game_id: game.letteredGameId,
+    created_at: game.createdAt,
+    updated_at: game.updatedAt,
+  };
+};
+
 const createDailyGame = async (): Promise<DailyGame> => {
-  const { data, error } = await supabase
-    .from('daily_games')
-    .insert({
-      day: getTodayEST(),
-    })
-    .select()
-    .single();
+  try {
+    const redis = await getRedisClient();
+    const gameId = crypto.randomUUID();
+    const now = new Date().toISOString();
+    const today = getTodayEST();
 
-  if (error) {
+    const game: DailyGame = {
+      id: gameId,
+      day: today,
+      letteredGameId: null,
+      createdAt: now,
+      updatedAt: now,
+    };
+
+    const storageData = convertToStorage(game);
+    await redis.set(RedisKeys.dailyGame(today), serialize(storageData));
+
+    console.log('Created daily game:', { gameId, day: today });
+
+    return game;
+  } catch (error) {
     console.error('Failed to create daily game:', { error });
-    throw new Error(`Failed to create daily game: ${error.message}`, { cause: error });
+    throw new Error('Failed to create daily game');
   }
-
-  return convertGame(data as Database['public']['Tables']['daily_games']['Row']);
 };
 
 // Fetches today's game from the database, creates it if it doesn't exist
 export const getOrCreateTodaysGame = async (): Promise<DailyGame> => {
-  const today = getTodayEST();
-  const { data, error } = await supabase.from('daily_games').select('*').eq('day', today).single();
+  try {
+    const redis = await getRedisClient();
+    const today = getTodayEST();
+    const gameData = await redis.get(RedisKeys.dailyGame(today));
 
-  // If the daily game doesn't exist, create it
-  if ((!data && error?.message.includes('PGRST116')) || error?.code === 'PGRST116') {
-    return await createDailyGame();
+    if (!gameData) {
+      return await createDailyGame();
+    }
+
+    const data = deserialize<DailyGameStorage>(gameData);
+    if (!data) {
+      console.error('Failed to deserialize daily game data');
+      return await createDailyGame();
+    }
+
+    return convertGame(data);
+  } catch (error) {
+    console.error('Failed to get todays game:', { error });
+    throw new Error('Failed to get today\'s game');
   }
-
-  if (error) {
-    console.error('Failed to get todays game:', { today, error, code: error.code });
-    throw new Error(`Failed to get today's game: ${error.message}`, { cause: error });
-  }
-
-  return convertGame(data);
 };
 
 export const updateDailyGame = async (game: DailyGame): Promise<DailyGame> => {
-  const { data, error } = await supabase
-    .from('daily_games')
-    .update({
-      lettered_game_id: game.letteredGameId,
-    })
-    .eq('id', game.id)
-    .select()
-    .single();
+  try {
+    const redis = await getRedisClient();
 
-  if (error) {
+    const updatedGame: DailyGame = {
+      ...game,
+      updatedAt: new Date().toISOString(),
+    };
+
+    const storageData = convertToStorage(updatedGame);
+    await redis.set(RedisKeys.dailyGame(game.day), serialize(storageData));
+
+    console.log('Updated daily game:', { gameId: game.id, day: game.day });
+
+    return updatedGame;
+  } catch (error) {
     console.error('Failed to update daily game:', { error });
-    throw new Error(`Failed to update daily game: ${error.message}`, { cause: error });
+    throw new Error('Failed to update daily game');
   }
-
-  return convertGame(data);
 };

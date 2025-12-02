@@ -22,6 +22,8 @@ import {
   getTotalLetteredSubmissionsForToday,
 } from '../database/lettered';
 import { getOrCreateTodaysGame } from '../database/game';
+import { getRedisClient } from '../lib/redis-provider';
+import { RedisKeys, deserialize } from '../../shared/types/redis';
 
 // Zod schema for validating the payload
 const gridPositionSchema = z.object({
@@ -384,14 +386,27 @@ router.post('/api/lettered/:dailyGameId/session', async (req, res): Promise<void
 
       // Update leaderboard tables with the final score
       try {
+        // Get user's reddit handle
+        const redis = await getRedisClient();
+        const userData = await redis.get(RedisKeys.user.byId(userId));
+        const user = userData ? deserialize<{ handle: string }>(userData) : null;
+        const redditHandle = user?.handle || 'unknown';
+
         // Calculate time elapsed since game start
         const gameStartTime = toUTCTimestamp(session.startedAt);
         const timeElapsed = Math.max(0, (getCurrentUTCTime() - gameStartTime) / 1000);
 
-        await updateLetteredLeaderboards(userId, currentScore, updatedSession.moves, timeElapsed);
+        await updateLetteredLeaderboards(
+          userId,
+          redditHandle,
+          currentScore,
+          updatedSession.moves,
+          timeElapsed
+        );
 
         console.log('Lettered leaderboard updated:', {
           userId,
+          redditHandle,
           finalScore: currentScore,
           moves: updatedSession.moves,
           timeElapsed,

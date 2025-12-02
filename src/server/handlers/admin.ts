@@ -1,7 +1,7 @@
 import { Router } from 'express';
-import { supabase } from '../../shared/supabase-server';
 import { reddit } from '../lib/reddit-provider';
 import { getUserByRedditHandle } from '../database/user';
+import { getRedisClient } from '../lib/redis-provider';
 
 const router = Router();
 
@@ -77,20 +77,17 @@ router.post('/api/admin/clear/sessions', async (_req, res): Promise<void> => {
       return;
     }
 
-    // Clear all lettered sessions
-    const { count: letteredSessionsDeleted, error: letteredError } = await supabase
-      .from('lettered_sessions')
-      .delete({ count: 'exact' })
-      .neq('user_id', '0');
-
-    if (letteredError) {
-      console.error('Error deleting lettered sessions:', letteredError);
-      res.status(500).json({
-        status: 'error',
-        message: 'Failed to clear lettered sessions',
-      });
-      return;
+    // Clear all lettered sessions from Redis
+    const redis = await getRedisClient();
+    const pattern = 'lettered_sessions:*';
+    const keys = await redis.keys(pattern);
+    
+    let letteredSessionsDeleted = 0;
+    if (keys.length > 0) {
+      letteredSessionsDeleted = await redis.del(...keys);
     }
+
+    console.log('Cleared lettered sessions:', { count: letteredSessionsDeleted });
 
     res.json({
       status: 'success',

@@ -1,26 +1,19 @@
-import { supabase } from '../../shared/supabase-server';
-import { Database } from '../../shared/types/supabase';
-
-// Database types
-type SeasonLeaderboardRow = Database['public']['Tables']['season_leaderboard']['Row'];
-type LetteredLeaderboardRow = Database['public']['Tables']['lettered_leaderboard']['Row'];
-type UserStatsRow = Database['public']['Tables']['user_stats']['Row'];
-type UserSeasonStatsRow = Database['public']['Tables']['user_season_stats']['Row'];
-type UserRow = Database['public']['Tables']['users']['Row'];
-
-// Joined types for leaderboard queries
-type SeasonLeaderboardEntryWithUser = SeasonLeaderboardRow & { users: Pick<UserRow, 'handle'> };
-type LetteredLeaderboardEntryWithUser = LetteredLeaderboardRow & { users: Pick<UserRow, 'handle'> };
+import { getRedisClient } from '../lib/redis-provider';
+import {
+  TimePeriod,
+  getCurrentPeriod,
+  RedisKeys,
+  serialize,
+  deserialize,
+} from '../../shared/types/redis';
 
 // Types for leaderboard data
-export interface SeasonLeaderboardEntry {
+export interface LeaderboardEntry {
   rank: number;
   userId: string;
   redditHandle: string;
   totalPoints: number;
   gamesPlayed: number;
-  averageLetteredScore: number | null;
-  averageLetteredMovesUsed: number | null;
   averageScore: number | null;
 }
 
@@ -50,40 +43,36 @@ export interface UserStats {
   totalLetteredAverageScore: number | null;
 }
 
-export interface UserSeasonStats extends UserStats {
-  seasonId: string;
+interface UserStatsStorage {
+  current_daily_streak: number;
+  best_daily_streak: number;
+  current_daily_lettered_streak: number;
+  best_daily_lettered_streak: number;
+  total_points: number;
+  total_games_played: number;
+  total_lettered_games_played: number;
+  total_lettered_points: number;
+  total_lettered_wins: number;
+  total_lettered_losses: number;
+  total_lettered_win_rate: number | null;
+  total_lettered_average_score: number | null;
 }
 
-// Converter functions
-const convertSeasonLeaderboardEntry = (
-  entry: SeasonLeaderboardEntryWithUser,
-  rank: number
-): SeasonLeaderboardEntry => ({
-  rank,
-  userId: entry.user_id,
-  redditHandle: entry.users.handle,
-  totalPoints: entry.total_points,
-  gamesPlayed: entry.games_played,
-  averageLetteredScore: entry.average_lettered_score,
-  averageLetteredMovesUsed: entry.average_lettered_moves_used,
-  averageScore: entry.average_score,
-});
+// Metadata stored alongside leaderboard scores
+interface LeaderboardMetadata {
+  userId: string;
+  redditHandle: string;
+  gamesPlayed: number;
+  totalPoints: number;
+  averageScore: number | null;
+}
 
-const convertLetteredLeaderboardEntry = (
-  entry: LetteredLeaderboardEntryWithUser,
-  rank: number
-): LetteredLeaderboardEntry => ({
-  rank,
-  userId: entry.user_id,
-  redditHandle: entry.users.handle,
-  totalPoints: entry.total_points,
-  gamesPlayed: entry.games_played,
-  averageScore: entry.average_score,
-  averageMoves: entry.average_moves,
-  averageTime: entry.average_time,
-});
+interface LetteredLeaderboardMetadata extends LeaderboardMetadata {
+  averageMoves: number | null;
+  averageTime: number | null;
+}
 
-const convertUserStats = (stats: UserStatsRow): UserStats => ({
+const convertUserStats = (stats: UserStatsStorage): UserStats => ({
   currentDailyStreak: stats.current_daily_streak,
   bestDailyStreak: stats.best_daily_streak,
   currentDailyLetteredStreak: stats.current_daily_lettered_streak,
@@ -98,214 +87,289 @@ const convertUserStats = (stats: UserStatsRow): UserStats => ({
   totalLetteredAverageScore: stats.total_lettered_average_score,
 });
 
-const convertUserSeasonStats = (stats: UserSeasonStatsRow): UserSeasonStats => ({
-  seasonId: stats.season_id,
-  currentDailyStreak: stats.current_daily_streak,
-  bestDailyStreak: stats.best_daily_streak,
-  currentDailyLetteredStreak: stats.current_daily_lettered_streak,
-  bestDailyLetteredStreak: stats.best_daily_lettered_streak,
-  totalPoints: stats.total_points,
-  totalGamesPlayed: stats.total_games_played,
-  totalLetteredGamesPlayed: stats.total_lettered_games_played,
-  totalLetteredPoints: stats.total_lettered_points,
-  totalLetteredWins: stats.total_lettered_wins,
-  totalLetteredLosses: stats.total_lettered_losses,
-  totalLetteredWinRate: stats.total_lettered_win_rate,
-  totalLetteredAverageScore: stats.total_lettered_average_score,
+const convertUserStatsToStorage = (stats: UserStats): UserStatsStorage => ({
+  current_daily_streak: stats.currentDailyStreak,
+  best_daily_streak: stats.bestDailyStreak,
+  current_daily_lettered_streak: stats.currentDailyLetteredStreak,
+  best_daily_lettered_streak: stats.bestDailyLetteredStreak,
+  total_points: stats.totalPoints,
+  total_games_played: stats.totalGamesPlayed,
+  total_lettered_games_played: stats.totalLetteredGamesPlayed,
+  total_lettered_points: stats.totalLetteredPoints,
+  total_lettered_wins: stats.totalLetteredWins,
+  total_lettered_losses: stats.totalLetteredLosses,
+  total_lettered_win_rate: stats.totalLetteredWinRate,
+  total_lettered_average_score: stats.totalLetteredAverageScore,
 });
 
-// Season leaderboard functions
-export async function getSeasonLeaderboard(
-  seasonId: string,
+// Overall leaderboard functions
+export async function getLeaderboard(
+  period: TimePeriod,
   limit: number = 10,
-  offset: number = 0
-): Promise<{ entries: SeasonLeaderboardEntry[]; totalPlayers: number }> {
-  // First, get the leaderboard entries
-  const { data: rankings, error } = await supabase
-    .from('season_leaderboard')
-    .select('*')
-    .eq('season_id', seasonId)
-    .order('total_points', { ascending: false })
-    .range(offset, offset + limit - 1);
+  offset: number = 0,
+  date?: Date
+): Promise<{ entries: LeaderboardEntry[]; totalPlayers: number }> {
+  try {
+    const redis = await getRedisClient();
+    const leaderboardKey = RedisKeys.leaderboard('overall', period, date);
 
-  if (error) {
-    throw new Error(`Failed to fetch season leaderboard: ${error.message}`);
+    // Get total count
+    const totalPlayers = (await redis.zcard(leaderboardKey)) || 0;
+
+    // Get rankings (descending order, highest score first)
+    const rankings = await redis.zrevrange(leaderboardKey, offset, offset + limit - 1, 'WITHSCORES');
+
+    const entries: LeaderboardEntry[] = [];
+
+    // Rankings come back as [member, score, member, score, ...]
+    for (let i = 0; i < rankings.length; i += 2) {
+      const userId = rankings[i];
+      const score = parseFloat(rankings[i + 1] || '0');
+
+      if (!userId) continue;
+
+      // Get user metadata
+      const metadataKey = `${leaderboardKey}:meta:${userId}`;
+      const metadataStr = await redis.get(metadataKey);
+      const metadata = metadataStr ? deserialize<LeaderboardMetadata>(metadataStr) : null;
+
+      if (metadata) {
+        entries.push({
+          rank: offset + (i / 2) + 1,
+          userId: metadata.userId,
+          redditHandle: metadata.redditHandle,
+          totalPoints: metadata.totalPoints,
+          gamesPlayed: metadata.gamesPlayed,
+          averageScore: metadata.averageScore,
+        });
+      }
+    }
+
+    return { entries, totalPlayers };
+  } catch (error) {
+    console.error('Failed to fetch leaderboard:', error);
+    throw new Error('Failed to fetch leaderboard');
   }
-
-  // Get user handles for the leaderboard entries
-  const userIds = rankings?.map((entry) => entry.user_id) || [];
-  const { data: users, error: usersError } = await supabase
-    .from('users')
-    .select('id, handle')
-    .in('id', userIds);
-
-  if (usersError) {
-    throw new Error(`Failed to fetch user handles: ${usersError.message}`);
-  }
-
-  // Create a map of user IDs to handles
-  const userHandleMap = new Map(users?.map((user) => [user.id, user.handle]) || []);
-
-  // Get total count
-  const { count: totalPlayers, error: countError } = await supabase
-    .from('season_leaderboard')
-    .select('*', { count: 'exact', head: true })
-    .eq('season_id', seasonId);
-
-  if (countError) {
-    throw new Error(`Failed to count season players: ${countError.message}`);
-  }
-
-  // Combine the data
-  return {
-    entries: (rankings || []).map((entry, index) => {
-      const handle = userHandleMap.get(entry.user_id) || 'Unknown User';
-      return convertSeasonLeaderboardEntry({ ...entry, users: { handle } }, offset + index + 1);
-    }),
-    totalPlayers: totalPlayers || 0,
-  };
 }
 
-export async function getUserSeasonRank(seasonId: string, userId: string): Promise<number | null> {
-  const { data: userEntry, error: userError } = await supabase
-    .from('season_leaderboard')
-    .select('total_points')
-    .eq('season_id', seasonId)
-    .eq('user_id', userId)
-    .single();
+export async function getUserRank(
+  period: TimePeriod,
+  userId: string,
+  date?: Date
+): Promise<number | null> {
+  try {
+    const redis = await getRedisClient();
+    const leaderboardKey = RedisKeys.leaderboard('overall', period, date);
 
-  if (userError || !userEntry) {
+    const rank = await redis.zrevrank(leaderboardKey, userId);
+
+    return rank !== null ? rank + 1 : null;
+  } catch (error) {
+    console.error('Failed to get user rank:', error);
     return null;
   }
-
-  const { data: rankData, error: rankError } = await supabase
-    .from('season_leaderboard')
-    .select('total_points', { count: 'exact' })
-    .eq('season_id', seasonId)
-    .gt('total_points', userEntry.total_points);
-
-  if (rankError) {
-    return null;
-  }
-
-  return (rankData?.length || 0) + 1;
 }
 
 // Lettered leaderboard functions
 export async function getLetteredLeaderboard(
-  seasonId: string,
+  period: TimePeriod,
   limit: number = 10,
-  offset: number = 0
+  offset: number = 0,
+  date?: Date
 ): Promise<{ entries: LetteredLeaderboardEntry[]; totalPlayers: number }> {
-  // First, get the leaderboard entries
-  const { data: rankings, error } = await supabase
-    .from('lettered_leaderboard')
-    .select('*')
-    .eq('season_id', seasonId)
-    .order('total_points', { ascending: false })
-    .range(offset, offset + limit - 1);
+  try {
+    const redis = await getRedisClient();
+    const leaderboardKey = RedisKeys.leaderboard('lettered', period, date);
 
-  if (error) {
-    throw new Error(`Failed to fetch Lettered leaderboard: ${error.message}`);
+    // Get total count
+    const totalPlayers = (await redis.zcard(leaderboardKey)) || 0;
+
+    // Get rankings (descending order, highest score first)
+    const rankings = await redis.zrevrange(leaderboardKey, offset, offset + limit - 1, 'WITHSCORES');
+
+    const entries: LetteredLeaderboardEntry[] = [];
+
+    // Rankings come back as [member, score, member, score, ...]
+    for (let i = 0; i < rankings.length; i += 2) {
+      const userId = rankings[i];
+      const score = parseFloat(rankings[i + 1] || '0');
+
+      if (!userId) continue;
+
+      // Get user metadata
+      const metadataKey = `${leaderboardKey}:meta:${userId}`;
+      const metadataStr = await redis.get(metadataKey);
+      const metadata = metadataStr ? deserialize<LetteredLeaderboardMetadata>(metadataStr) : null;
+
+      if (metadata) {
+        entries.push({
+          rank: offset + (i / 2) + 1,
+          userId: metadata.userId,
+          redditHandle: metadata.redditHandle,
+          totalPoints: metadata.totalPoints,
+          gamesPlayed: metadata.gamesPlayed,
+          averageScore: metadata.averageScore,
+          averageMoves: metadata.averageMoves,
+          averageTime: metadata.averageTime,
+        });
+      }
+    }
+
+    return { entries, totalPlayers };
+  } catch (error) {
+    console.error('Failed to fetch Lettered leaderboard:', error);
+    throw new Error('Failed to fetch Lettered leaderboard');
   }
-
-  // Get user handles for the leaderboard entries
-  const userIds = rankings?.map((entry) => entry.user_id) || [];
-  const { data: users, error: usersError } = await supabase
-    .from('users')
-    .select('id, handle')
-    .in('id', userIds);
-
-  if (usersError) {
-    throw new Error(`Failed to fetch user handles: ${usersError.message}`);
-  }
-
-  // Create a map of user IDs to handles
-  const userHandleMap = new Map(users?.map((user) => [user.id, user.handle]) || []);
-
-  // Get total count
-  const { count: totalPlayers, error: countError } = await supabase
-    .from('lettered_leaderboard')
-    .select('*', { count: 'exact', head: true })
-    .eq('season_id', seasonId);
-
-  if (countError) {
-    throw new Error(`Failed to count Lettered players: ${countError.message}`);
-  }
-
-  // Combine the data
-  return {
-    entries: (rankings || []).map((entry, index) => {
-      const handle = userHandleMap.get(entry.user_id) || 'Unknown User';
-      return convertLetteredLeaderboardEntry({ ...entry, users: { handle } }, offset + index + 1);
-    }),
-    totalPlayers: totalPlayers || 0,
-  };
 }
 
 export async function getUserLetteredRank(
-  seasonId: string,
-  userId: string
+  period: TimePeriod,
+  userId: string,
+  date?: Date
 ): Promise<number | null> {
-  const { data: userEntry, error: userError } = await supabase
-    .from('lettered_leaderboard')
-    .select('total_points')
-    .eq('season_id', seasonId)
-    .eq('user_id', userId)
-    .single();
+  try {
+    const redis = await getRedisClient();
+    const leaderboardKey = RedisKeys.leaderboard('lettered', period, date);
 
-  if (userError || !userEntry) {
+    const rank = await redis.zrevrank(leaderboardKey, userId);
+
+    return rank !== null ? rank + 1 : null;
+  } catch (error) {
+    console.error('Failed to get user Lettered rank:', error);
     return null;
   }
+}
 
-  const { data: rankData, error: rankError } = await supabase
-    .from('lettered_leaderboard')
-    .select('total_points', { count: 'exact' })
-    .eq('season_id', seasonId)
-    .gt('total_points', userEntry.total_points);
+// Add score to all applicable leaderboards
+export async function addScoreToLeaderboards(
+  userId: string,
+  redditHandle: string,
+  score: number,
+  isLettered: boolean,
+  additionalData?: {
+    moves?: number;
+    time?: number;
+  },
+  date?: Date
+): Promise<void> {
+  try {
+    const redis = await getRedisClient();
+    const periods: TimePeriod[] = ['daily', 'weekly', 'monthly', 'alltime'];
+    const leaderboardType = isLettered ? 'lettered' : 'overall';
 
-  if (rankError) {
-    return null;
+    for (const period of periods) {
+      const leaderboardKey = RedisKeys.leaderboard(leaderboardType, period, date);
+      const metadataKey = `${leaderboardKey}:meta:${userId}`;
+
+      // Get existing metadata
+      const existingMetadataStr = await redis.get(metadataKey);
+      const existingMetadata = existingMetadataStr
+        ? deserialize<LetteredLeaderboardMetadata>(existingMetadataStr)
+        : null;
+
+      // Calculate new metadata
+      const gamesPlayed = (existingMetadata?.gamesPlayed || 0) + 1;
+      const totalPoints = (existingMetadata?.totalPoints || 0) + score;
+      const averageScore = totalPoints / gamesPlayed;
+
+      let metadata: LeaderboardMetadata | LetteredLeaderboardMetadata = {
+        userId,
+        redditHandle,
+        gamesPlayed,
+        totalPoints,
+        averageScore,
+      };
+
+      // Add lettered-specific metadata
+      if (isLettered && additionalData) {
+        const existingMoves = (existingMetadata as LetteredLeaderboardMetadata)?.averageMoves || 0;
+        const existingTime = (existingMetadata as LetteredLeaderboardMetadata)?.averageTime || 0;
+
+        const newAverageMoves = additionalData.moves
+          ? (existingMoves * (gamesPlayed - 1) + additionalData.moves) / gamesPlayed
+          : existingMoves;
+
+        const newAverageTime = additionalData.time
+          ? (existingTime * (gamesPlayed - 1) + additionalData.time) / gamesPlayed
+          : existingTime;
+
+        metadata = {
+          ...metadata,
+          averageMoves: newAverageMoves,
+          averageTime: newAverageTime,
+        };
+      }
+
+      // Update leaderboard score
+      await redis.zadd(leaderboardKey, totalPoints, userId);
+
+      // Update metadata
+      await redis.set(metadataKey, serialize(metadata));
+
+      // Set expiration for time-based leaderboards (not for alltime)
+      if (period !== 'alltime') {
+        const ttl = period === 'daily' ? 60 * 60 * 24 * 7 : 60 * 60 * 24 * 90; // 7 days for daily, 90 days for others
+        await redis.expire(leaderboardKey, ttl);
+        await redis.expire(metadataKey, ttl);
+      }
+    }
+
+    console.log('Added score to leaderboards:', { userId, score, isLettered });
+  } catch (error) {
+    console.error('Failed to add score to leaderboards:', error);
+    throw new Error('Failed to add score to leaderboards');
   }
-
-  return (rankData?.length || 0) + 1;
 }
 
 // User stats functions
 export async function getUserStats(userId: string): Promise<UserStats | null> {
-  const { data: userStats, error } = await supabase
-    .from('user_stats')
-    .select('*')
-    .eq('user_id', userId)
-    .single();
+  try {
+    const redis = await getRedisClient();
+    const statsData = await redis.get(RedisKeys.userStats(userId));
 
-  if ((error && error.code === 'PGRST116') || error?.message.includes('PGRST116')) {
-    return null;
+    if (!statsData) {
+      return null;
+    }
+
+    const stats = deserialize<UserStatsStorage>(statsData);
+    return stats ? convertUserStats(stats) : null;
+  } catch (error) {
+    console.error('Failed to fetch user statistics:', error);
+    throw new Error('Failed to fetch user statistics');
   }
-
-  if (error) {
-    throw new Error(`Failed to fetch user statistics: ${error.message}`);
-  }
-
-  return userStats ? convertUserStats(userStats) : null;
 }
 
-export async function getUserSeasonStats(
-  userId: string,
-  seasonId: string
-): Promise<UserSeasonStats | null> {
-  const { data: seasonStats, error } = await supabase
-    .from('user_season_stats')
-    .select('*')
-    .eq('user_id', userId)
-    .eq('season_id', seasonId)
-    .single();
+export async function updateUserStats(userId: string, stats: Partial<UserStats>): Promise<void> {
+  try {
+    const redis = await getRedisClient();
+    const existingStats = (await getUserStats(userId)) || {
+      currentDailyStreak: 0,
+      bestDailyStreak: 0,
+      currentDailyLetteredStreak: 0,
+      bestDailyLetteredStreak: 0,
+      totalPoints: 0,
+      totalGamesPlayed: 0,
+      totalLetteredGamesPlayed: 0,
+      totalLetteredPoints: 0,
+      totalLetteredWins: 0,
+      totalLetteredLosses: 0,
+      totalLetteredWinRate: null,
+      totalLetteredAverageScore: null,
+    };
 
-  if (error && error.code !== 'PGRST116') {
-    throw new Error(`Failed to fetch user season statistics: ${error.message}`);
+    const updatedStats: UserStats = {
+      ...existingStats,
+      ...stats,
+    };
+
+    const storageData = convertUserStatsToStorage(updatedStats);
+    await redis.set(RedisKeys.userStats(userId), serialize(storageData));
+
+    console.log('Updated user stats:', { userId });
+  } catch (error) {
+    console.error('Failed to update user statistics:', error);
+    throw new Error('Failed to update user statistics');
   }
-
-  return seasonStats ? convertUserSeasonStats(seasonStats) : null;
 }
 
 export interface UserLeaderboardData {
@@ -318,32 +382,44 @@ export interface UserLeaderboardData {
 }
 
 export async function getUserLeaderboardData(
-  seasonId: string,
-  userId: string
+  period: TimePeriod,
+  userId: string,
+  date?: Date
 ): Promise<UserLeaderboardData | null> {
-  // Get user rank
-  const rank = await getUserSeasonRank(seasonId, userId);
+  try {
+    const redis = await getRedisClient();
 
-  // Get user stats
-  const userStats = await getUserStats(userId);
+    // Get user rank
+    const rank = await getUserRank(period, userId, date);
 
-  // Get user info
-  const { data: userData, error: userError } = await supabase
-    .from('users')
-    .select('handle, image_url')
-    .eq('id', userId)
-    .single();
+    // Get user stats
+    const userStats = await getUserStats(userId);
 
-  if (userError) {
-    throw new Error(`Failed to fetch user information: ${userError.message}`);
+    // Get user info
+    const userData = await redis.get(RedisKeys.user.byId(userId));
+    if (!userData) {
+      return null;
+    }
+
+    const user = deserialize<{
+      handle: string;
+      image_url: string | null;
+    }>(userData);
+
+    if (!user) {
+      return null;
+    }
+
+    return {
+      userId,
+      username: user.handle,
+      imageUrl: user.image_url,
+      rank,
+      totalPoints: userStats?.totalPoints || 0,
+      totalGamesPlayed: userStats?.totalGamesPlayed || 0,
+    };
+  } catch (error) {
+    console.error('Failed to fetch user leaderboard data:', error);
+    throw new Error('Failed to fetch user leaderboard data');
   }
-
-  return {
-    userId,
-    username: userData.handle,
-    imageUrl: userData.image_url,
-    rank,
-    totalPoints: userStats?.totalPoints || 0,
-    totalGamesPlayed: userStats?.totalGamesPlayed || 0,
-  };
 }
