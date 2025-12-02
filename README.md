@@ -127,6 +127,84 @@ If you want to use OAuth providers like Google, GitHub, or Discord:
 2. Enable the providers you want to use
 3. Configure their settings and obtain API keys from the respective platforms
 
+## Redis Setup
+
+This project uses Redis for caching and session management. In production, it uses Devvit's built-in Redis. For local development, you'll need a Redis instance running and the `ioredis` package will connect to it.
+
+### Quick Start with Docker (Recommended)
+
+The easiest way to run Redis locally is using Docker Compose:
+
+```bash
+# Start Redis in the background
+npm run redis:start
+
+# View Redis logs
+npm run redis:logs
+
+# Stop Redis
+npm run redis:stop
+```
+
+This will start a Redis 7 instance with:
+
+- Port: `6379`
+- Persistent data storage (survives container restarts)
+- AOF (Append Only File) persistence enabled
+- Health checks for reliability
+
+### Alternative: Install Redis Locally
+
+If you prefer not to use Docker, you can install Redis directly:
+
+**macOS:**
+
+```bash
+brew install redis
+redis-server
+```
+
+**Linux (Ubuntu/Debian):**
+
+```bash
+sudo apt-get update
+sudo apt-get install redis-server
+sudo systemctl start redis-server
+```
+
+**Windows:**
+Download and install Redis from the [official releases](https://github.com/microsoftarchive/redis/releases) or use WSL2.
+
+### Custom Redis Configuration
+
+By default, the application connects to `redis://localhost:6379`. To use a different Redis instance:
+
+```bash
+# Set custom Redis URL
+export REDIS_URL=redis://your-redis-host:6379
+
+# Or with authentication
+export REDIS_URL=redis://username:password@your-redis-host:6379
+```
+
+### Verify Redis Connection
+
+You can verify Redis is running:
+
+```bash
+# Using redis-cli (if installed locally)
+redis-cli ping
+# Should return: PONG
+
+# Using Docker
+docker exec lettered-redis redis-cli ping
+# Should return: PONG
+```
+
+### Production
+
+In production (when deployed to Reddit), the application automatically uses Devvit's built-in Redis service. No configuration needed.
+
 ## shadcn/ui Setup
 
 This project includes [shadcn/ui](https://ui.shadcn.com/) for pre-built, customizable components. The setup is already configured and includes:
@@ -283,12 +361,24 @@ Add custom styles to the `@layer base` section in `globals.css`:
 
 ## Commands
 
+### Development
+
 - `npm run dev`: Starts a development server where you can develop your application live on Reddit.
+- `npm run local`: Runs the app in local mode with Express server (requires Redis)
 - `npm run build`: Builds your client and server projects
+- `npm run check`: Type checks, lints, and prettifies your app
+
+### Redis Management
+
+- `npm run redis:start`: Starts Redis using Docker Compose
+- `npm run redis:stop`: Stops Redis Docker container
+- `npm run redis:logs`: View Redis logs in real-time
+
+### Deployment
+
 - `npm run deploy`: Uploads a new version of your app
 - `npm run launch`: Publishes your app for review
 - `npm run login`: Logs your CLI into Reddit
-- `npm run check`: Type checks, lints, and prettifies your app
 
 ## Using Supabase Integration
 

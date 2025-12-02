@@ -1,4 +1,4 @@
-import { redis } from '@devvit/redis';
+import { getRedisClient } from '../lib/redis-provider';
 import { CustomGameScore, LetteredGameData } from '../../shared/types/api';
 
 export interface CustomGameSession {
@@ -14,6 +14,7 @@ export interface CustomGameSession {
 // Game Data Management
 export async function setCustomGame(gameId: string, gameData: LetteredGameData): Promise<void> {
   try {
+    const redis = await getRedisClient();
     await redis.set(gameId, JSON.stringify(gameData));
     await redis.expire(gameId, 60 * 60 * 24 * 7); // Expire in 7 days
     console.log(`Stored custom game in Redis with ID: ${gameId}`);
@@ -25,6 +26,7 @@ export async function setCustomGame(gameId: string, gameData: LetteredGameData):
 
 export async function getCustomGame(gameId: string): Promise<LetteredGameData | null> {
   try {
+    const redis = await getRedisClient();
     const gameDataStr = await redis.get(gameId);
     if (!gameDataStr) {
       return null;
@@ -38,6 +40,7 @@ export async function getCustomGame(gameId: string): Promise<LetteredGameData | 
 
 export async function deleteCustomGame(gameId: string): Promise<void> {
   try {
+    const redis = await getRedisClient();
     await redis.del(gameId);
   } catch (error) {
     console.error('Failed to delete game from Redis:', error);
@@ -48,6 +51,7 @@ export async function deleteCustomGame(gameId: string): Promise<void> {
 // Post-to-Game Mapping
 export async function setPostToGameMapping(postId: string, gameId: string): Promise<void> {
   try {
+    const redis = await getRedisClient();
     const postToGameKey = `custom-lettered:post:${postId}`;
     await redis.set(postToGameKey, gameId);
     await redis.expire(postToGameKey, 60 * 60 * 24 * 7); // Same expiration as game data
@@ -69,6 +73,7 @@ export async function setPostToGameMapping(postId: string, gameId: string): Prom
 
 export async function getGameIdFromPost(postId: string): Promise<string | null> {
   try {
+    const redis = await getRedisClient();
     const postToGameKey = `custom-lettered:post:${postId}`;
     return (await redis.get(postToGameKey)) || null;
   } catch (error) {
@@ -80,6 +85,7 @@ export async function getGameIdFromPost(postId: string): Promise<string | null> 
 // Leaderboard Management
 export async function getGameLeaderboard(gameId: string): Promise<CustomGameScore[]> {
   try {
+    const redis = await getRedisClient();
     const gameLeaderboardKey = `custom-lettered:leaderboard:${gameId}`;
     const existingScoresStr = (await redis.get(gameLeaderboardKey)) || '[]';
     return JSON.parse(existingScoresStr);
@@ -94,6 +100,7 @@ export async function addScoreToGameLeaderboard(
   scoreEntry: CustomGameScore
 ): Promise<void> {
   try {
+    const redis = await getRedisClient();
     const gameLeaderboardKey = `custom-lettered:leaderboard:${gameId}`;
     const existingScoresStr = (await redis.get(gameLeaderboardKey)) || '[]';
     const existingScores = JSON.parse(existingScoresStr);
@@ -115,6 +122,7 @@ export async function addScoreToGameLeaderboard(
 // Player History Management
 export async function getPlayerHistory(username: string): Promise<CustomGameScore[]> {
   try {
+    const redis = await getRedisClient();
     const playerHistoryKey = `custom-lettered:player:${username}`;
     const historyStr = (await redis.get(playerHistoryKey)) || '[]';
     return JSON.parse(historyStr);
@@ -129,6 +137,7 @@ export async function addScoreToPlayerHistory(
   scoreEntry: CustomGameScore
 ): Promise<void> {
   try {
+    const redis = await getRedisClient();
     const playerHistoryKey = `custom-lettered:player:${username}`;
     const playerHistoryStr = (await redis.get(playerHistoryKey)) || '[]';
     const playerHistory = JSON.parse(playerHistoryStr);
@@ -147,6 +156,7 @@ export async function addScoreToPlayerHistory(
 // Global Leaderboard Management
 export async function getGlobalLeaderboard(): Promise<CustomGameScore[]> {
   try {
+    const redis = await getRedisClient();
     const globalLeaderboardKey = 'custom-lettered:global-leaderboard';
     const existingGlobalStr = (await redis.get(globalLeaderboardKey)) || '[]';
     return JSON.parse(existingGlobalStr);
@@ -158,6 +168,7 @@ export async function getGlobalLeaderboard(): Promise<CustomGameScore[]> {
 
 export async function addScoreToGlobalLeaderboard(scoreEntry: CustomGameScore): Promise<void> {
   try {
+    const redis = await getRedisClient();
     const globalLeaderboardKey = 'custom-lettered:global-leaderboard';
     const existingGlobalStr = (await redis.get(globalLeaderboardKey)) || '[]';
     const existingGlobal = JSON.parse(existingGlobalStr);

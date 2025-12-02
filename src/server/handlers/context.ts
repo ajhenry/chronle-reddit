@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import { context } from '@devvit/web/server';
-import { redis } from '@devvit/redis';
+import { getRedisClient } from '../lib/redis-provider';
 import { isDevelopment } from '../../shared/utils';
 
 const router = Router();
@@ -34,6 +34,7 @@ router.get('/api/context', async (_req, res): Promise<void> => {
     if (postId) {
       console.log('Found post ID:', postId);
       // Look up game ID from post ID
+      const redis = await getRedisClient();
       const postToGameKey = `custom-lettered:post:${postId}`;
       customGameId = await redis.get(postToGameKey);
       console.log('Found custom game ID for post:', customGameId);
