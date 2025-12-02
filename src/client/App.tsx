@@ -1,6 +1,5 @@
 import { useState, useEffect } from 'react';
 import { Routes, Route, useNavigate, useSearchParams } from 'react-router-dom';
-import { TopXPage } from './pages/topx';
 import { DevPage } from './pages/dev';
 import { LetteredPage } from './pages/lettered';
 import { TermsPage } from './pages/terms';
@@ -147,9 +146,7 @@ export const App = () => {
   };
 
   const handleGameSelect = (gameId: string) => {
-    if (gameId === 'topx') {
-      void navigate('/topx');
-    } else if (gameId === 'lettered') {
+    if (gameId === 'lettered') {
       void navigate('/lettered');
     } else if (gameId === 'dev') {
       void navigate('/dev');
@@ -189,7 +186,6 @@ export const App = () => {
       <ScrollToTop />
 
       <Routes>
-        <Route path="/topx" element={<TopXPage onBack={handleBackToMenu} />} />
         <Route path="/lettered" element={<LetteredPage onBack={handleBackToMenu} />} />
         <Route path="/lettered/:gameId" element={<LetteredPage onBack={handleBackToMenu} />} />
         <Route path="/custom" element={<CustomGamePage />} />
@@ -253,29 +249,6 @@ export const App = () => {
 
                   {/* Game Selection */}
                   <div className="grid grid-cols-1 gap-6 w-full">
-                    {/* TOP X Game */}
-                    <div className="flex flex-col items-center space-y-2 w-full">
-                      <button
-                        onClick={() => handleGameSelect('topx')}
-                        className="relative overflow-hidden border-4 border-border shadow-lg hover:shadow-xl transition-all duration-200 hover:translate-x-[-2px] hover:translate-y-[-2px] w-full"
-                        style={{
-                          backgroundImage: 'url(/topx-button-logo.svg)',
-                          backgroundSize: 'cover',
-                          backgroundPosition: 'center',
-                          backgroundRepeat: 'no-repeat',
-                        }}
-                      >
-                        <div className="bg-black/20 py-8 flex items-center justify-center min-h-[100px]">
-                          <h2 className="text-4xl font-black tracking-wider text-white drop-shadow-lg">
-                            TOP X
-                          </h2>
-                        </div>
-                      </button>
-                      <h3 className="mt-2 mb-2 text-xl font-bold text-center text-card-foreground">
-                        Guess the top answers to trivia questions
-                      </h3>
-                    </div>
-
                     {/* LETTERED Game */}
                     <div className="flex flex-col items-center space-y-2 w-full">
                       <button

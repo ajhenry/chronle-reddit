@@ -23,7 +23,7 @@ export const GameLayout = ({
   onBack,
   onLeaderboard,
   onHelp,
-  logoSrc = '/topx-logo.svg',
+  logoSrc = '/lettered-logo.svg',
   className,
 }: GameLayoutProps) => {
   const [showHelpModal, setShowHelpModal] = useState(false);

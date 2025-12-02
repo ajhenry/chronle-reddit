@@ -1,6 +1,6 @@
 // Theme utility functions for Podium app
 
-export type GameTheme = 'topx' | 'game2' | 'game3' | 'default';
+export type GameTheme = 'lettered' | 'game2' | 'game3' | 'default';
 
 export interface GameThemeConfig {
   id: GameTheme;
@@ -24,7 +24,7 @@ export function getGameThemeClass(theme: GameTheme): string {
  */
 export function applyGameTheme(theme: GameTheme): void {
   // Remove any existing game theme classes
-  document.documentElement.classList.remove('game-topx', 'game-game2', 'game-game3');
+  document.documentElement.classList.remove('game-lettered', 'game-game2', 'game-game3');
 
   // Apply the new theme class
   if (theme !== 'default') {
@@ -36,7 +36,7 @@ export function applyGameTheme(theme: GameTheme): void {
  * Remove all game themes and reset to default
  */
 export function resetGameTheme(): void {
-  document.documentElement.classList.remove('game-topx', 'game-game2', 'game-game3');
+  document.documentElement.classList.remove('game-lettered', 'game-game2', 'game-game3');
 }
 
 /**
@@ -70,12 +70,12 @@ export function setDarkMode(enabled: boolean): void {
 export function getGameThemes(): GameThemeConfig[] {
   return [
     {
-      id: 'topx',
-      name: 'Top X',
-      description: 'Guess the top answers to trivia questions',
-      primaryColor: 'hsl(var(--game-topx-primary))',
-      secondaryColor: 'hsl(var(--game-topx-secondary))',
-      backgroundColor: 'hsl(var(--game-topx-background))',
+      id: 'lettered',
+      name: 'Lettered',
+      description: 'Solve letter puzzles',
+      primaryColor: 'hsl(var(--game-lettered-primary))',
+      secondaryColor: 'hsl(var(--game-lettered-secondary))',
+      backgroundColor: 'hsl(var(--game-lettered-background))',
       available: true,
     },
     {

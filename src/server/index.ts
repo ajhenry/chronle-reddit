@@ -8,7 +8,6 @@ import letteredRoutes from './handlers/lettered';
 import seasonRoutes from './handlers/season';
 import adminRoutes from './handlers/admin';
 import leaderboardRoutes from './handlers/leaderboard';
-import topxRoutes from './handlers/topx';
 import customRoutes from './handlers/custom';
 import contextRoutes from './handlers/context';
 
@@ -75,7 +74,6 @@ app.use(letteredRoutes);
 app.use(seasonRoutes);
 app.use(adminRoutes);
 app.use(leaderboardRoutes);
-app.use(topxRoutes);
 app.use(customRoutes);
 app.use(contextRoutes);
 // Health check endpoint for development modes

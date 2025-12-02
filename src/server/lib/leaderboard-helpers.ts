@@ -11,46 +11,17 @@ async function calculateDailyStreak(
   try {
     let lastCompletionDate: Date | null = null;
 
-    // Query the appropriate table(s) based on game type
-    if (gameType === 'topx') {
-      // Only consider TopX games
-      const { data: topxLastCompletion, error } = await supabase
-        .from('topx_sessions')
-        .select('completed_at')
-        .eq('user_id', userId)
-        .eq('is_completed', true)
-        .order('completed_at', { ascending: false })
-        .limit(1);
+    // Query the Lettered games table
+    const { data: letteredLastCompletion, error } = await supabase
+      .from('lettered_sessions')
+      .select('completed_at')
+      .eq('user_id', userId)
+      .eq('is_completed', true)
+      .order('completed_at', { ascending: false })
+      .limit(1);
 
-      if (!error && topxLastCompletion && topxLastCompletion.length > 0) {
-        lastCompletionDate = new Date(topxLastCompletion[0].completed_at);
-      }
-    } else if (gameType === 'lettered') {
-      // Only consider Lettered games
-      const { data: letteredLastCompletion, error } = await supabase
-        .from('lettered_sessions')
-        .select('completed_at')
-        .eq('user_id', userId)
-        .eq('is_completed', true)
-        .order('completed_at', { ascending: false })
-        .limit(1);
-
-      if (!error && letteredLastCompletion && letteredLastCompletion.length > 0) {
-        lastCompletionDate = new Date(letteredLastCompletion[0].completed_at);
-      }
-    } else {
-      // Consider both game types (null gameType)
-      const { data: topxLastCompletion, error: topxError } = await supabase
-        .from('topx_sessions')
-        .select('completed_at')
-        .eq('user_id', userId)
-        .eq('is_completed', true)
-        .order('completed_at', { ascending: false })
-        .limit(1);
-
-      if (!topxError && topxLastCompletion && topxLastCompletion.length > 0) {
-        lastCompletionDate = new Date(topxLastCompletion[0].completed_at);
-      }
+    if (!error && letteredLastCompletion && letteredLastCompletion.length > 0) {
+      lastCompletionDate = new Date(letteredLastCompletion[0].completed_at);
 
       const { data: letteredLastCompletion, error: letteredError } = await supabase
         .from('lettered_sessions')
@@ -94,23 +65,13 @@ async function calculateDailyStreak(
       // Get current streak from user_stats
       const { data: userStats, error: statsError } = await supabase
         .from('user_stats')
-        .select(
-          gameType === 'topx'
-            ? 'current_daily_topx_streak'
-            : gameType === 'lettered'
-              ? 'current_daily_lettered_streak'
-              : 'current_daily_streak'
-        )
+        .select('current_daily_lettered_streak, current_daily_streak')
         .eq('user_id', userId)
         .single();
 
       if (!statsError && userStats) {
         const streakField =
-          gameType === 'topx'
-            ? 'current_daily_topx_streak'
-            : gameType === 'lettered'
-              ? 'current_daily_lettered_streak'
-              : 'current_daily_streak';
+          gameType === 'lettered' ? 'current_daily_lettered_streak' : 'current_daily_streak';
         return userStats[streakField] || 1;
       }
       return 1;
@@ -121,23 +82,13 @@ async function calculateDailyStreak(
       // Get current streak and increment
       const { data: userStats, error: statsError } = await supabase
         .from('user_stats')
-        .select(
-          gameType === 'topx'
-            ? 'current_daily_topx_streak'
-            : gameType === 'lettered'
-              ? 'current_daily_lettered_streak'
-              : 'current_daily_streak'
-        )
+        .select('current_daily_lettered_streak, current_daily_streak')
         .eq('user_id', userId)
         .single();
 
       if (!statsError && userStats) {
         const streakField =
-          gameType === 'topx'
-            ? 'current_daily_topx_streak'
-            : gameType === 'lettered'
-              ? 'current_daily_lettered_streak'
-              : 'current_daily_streak';
+          gameType === 'lettered' ? 'current_daily_lettered_streak' : 'current_daily_streak';
         return (userStats[streakField] || 0) + 1;
       }
       return 1;
@@ -148,236 +99,6 @@ async function calculateDailyStreak(
   } catch (error) {
     console.error('Error calculating daily streak:', error);
     return 1;
-  }
-}
-
-/**
- * Updates leaderboard tables when a TopX game is completed
- * Uses direct SQL operations instead of RPC calls
- */
-export async function updateTopxLeaderboards(
-  userId: string,
-  finalScore: number,
-  attemptsUsed: number,
-  timeElapsed: number // in seconds
-): Promise<void> {
-  try {
-    const currentSeason = await getCurrentActiveSeason();
-
-    // Calculate if user won (finished with attempts remaining)
-    const maxAttempts = 6; // This should be configurable, but hardcoded for now
-    const won = attemptsUsed < maxAttempts;
-
-    // Get existing leaderboard entries to calculate proper averages
-    const { data: existingTopXEntry } = await supabase
-      .from('topx_leaderboard')
-      .select('*')
-      .eq('season_id', currentSeason.id)
-      .eq('user_id', userId)
-      .single();
-
-    const { data: existingSeasonEntry } = await supabase
-      .from('season_leaderboard')
-      .select('*')
-      .eq('season_id', currentSeason.id)
-      .eq('user_id', userId)
-      .single();
-
-    const { data: existingUserStats } = await supabase
-      .from('user_stats')
-      .select('*')
-      .eq('user_id', userId)
-      .single();
-
-    const { data: existingSeasonStats } = await supabase
-      .from('user_season_stats')
-      .select('*')
-      .eq('season_id', currentSeason.id)
-      .eq('user_id', userId)
-      .single();
-
-    // Calculate new values for TopX leaderboard
-    const topxGamesPlayed = (existingTopXEntry?.games_played || 0) + 1;
-    const topxTotalPoints = (existingTopXEntry?.total_points || 0) + finalScore;
-    const topxAverageScore = Math.round((topxTotalPoints / topxGamesPlayed) * 100) / 100;
-    const topxAverageAttempts =
-      Math.round(
-        (((existingTopXEntry?.average_attempts_used || 0) * (topxGamesPlayed - 1) + attemptsUsed) /
-          topxGamesPlayed) *
-          100
-      ) / 100;
-    const topxAverageTime =
-      Math.round(
-        (((existingTopXEntry?.average_time || 0) * (topxGamesPlayed - 1) + timeElapsed) /
-          topxGamesPlayed) *
-          100
-      ) / 100;
-
-    // Update TopX leaderboard entry
-    const { error: topxError } = await supabase.from('topx_leaderboard').upsert(
-      {
-        season_id: currentSeason.id,
-        user_id: userId,
-        total_points: topxTotalPoints,
-        games_played: topxGamesPlayed,
-        average_score: topxAverageScore,
-        average_attempts_used: topxAverageAttempts,
-        average_time: topxAverageTime,
-      },
-      {
-        onConflict: 'season_id,user_id',
-      }
-    );
-
-    if (topxError) {
-      throw new Error(`Failed to upsert TopX leaderboard entry: ${topxError.message}`);
-    }
-
-    // Calculate new values for season leaderboard
-    const seasonGamesPlayed = (existingSeasonEntry?.games_played || 0) + 1;
-    const seasonTotalPoints = (existingSeasonEntry?.total_points || 0) + finalScore;
-    const seasonAverageScore = Math.round((seasonTotalPoints / seasonGamesPlayed) * 100) / 100;
-    const seasonTopxAverageScore =
-      Math.round(
-        (((existingSeasonEntry?.average_topx_score || 0) * (existingTopXEntry?.games_played || 0) +
-          finalScore) /
-          topxGamesPlayed) *
-          100
-      ) / 100;
-    const seasonTopxAverageAttempts =
-      Math.round(
-        (((existingSeasonEntry?.average_topx_attempts_used || 0) *
-          (existingTopXEntry?.games_played || 0) +
-          attemptsUsed) /
-          topxGamesPlayed) *
-          100
-      ) / 100;
-
-    // Update season leaderboard entry
-    const { error: seasonError } = await supabase.from('season_leaderboard').upsert(
-      {
-        season_id: currentSeason.id,
-        user_id: userId,
-        total_points: seasonTotalPoints,
-        games_played: seasonGamesPlayed,
-        average_topx_score: seasonTopxAverageScore,
-        average_topx_attempts_used: seasonTopxAverageAttempts,
-        average_score: seasonAverageScore,
-      },
-      {
-        onConflict: 'season_id,user_id',
-      }
-    );
-
-    if (seasonError) {
-      throw new Error(`Failed to upsert season leaderboard entry: ${seasonError.message}`);
-    }
-
-    // Calculate streaks
-    const currentStreak = await calculateDailyStreak(userId, null);
-    const bestStreak = Math.max(existingUserStats?.best_daily_streak || 0, currentStreak);
-    const currentTopxStreak = await calculateDailyStreak(userId, 'topx');
-    const bestTopxStreak = Math.max(
-      existingUserStats?.best_daily_topx_streak || 0,
-      currentTopxStreak
-    );
-
-    // Calculate new values for user stats
-    const userTotalGames = (existingUserStats?.total_games_played || 0) + 1;
-    const userTotalPoints = (existingUserStats?.total_points || 0) + finalScore;
-    const userTopxGames = (existingUserStats?.total_topx_games_played || 0) + 1;
-    const userTopxPoints = (existingUserStats?.total_topx_points || 0) + finalScore;
-    const userTopxWins = (existingUserStats?.total_topx_wins || 0) + (won ? 1 : 0);
-    const userTopxLosses = (existingUserStats?.total_topx_losses || 0) + (won ? 0 : 1);
-    const userTopxWinRate =
-      userTopxGames > 0 ? Math.round((userTopxWins / userTopxGames) * 10000) / 100 : null;
-    const userTopxAverageScore = Math.round((userTopxPoints / userTopxGames) * 100) / 100;
-
-    // Update user stats
-    const { error: userStatsError } = await supabase.from('user_stats').upsert(
-      {
-        user_id: userId,
-        total_points: userTotalPoints,
-        total_games_played: userTotalGames,
-        current_daily_streak: currentStreak,
-        best_daily_streak: bestStreak,
-        total_topx_games_played: userTopxGames,
-        total_topx_points: userTopxPoints,
-        total_topx_wins: userTopxWins,
-        total_topx_losses: userTopxLosses,
-        total_topx_win_rate: userTopxWinRate,
-        total_topx_average_score: userTopxAverageScore,
-        current_daily_topx_streak: currentTopxStreak,
-        best_daily_topx_streak: bestTopxStreak,
-      },
-      {
-        onConflict: 'user_id',
-      }
-    );
-
-    if (userStatsError) {
-      throw new Error(`Failed to upsert user stats: ${userStatsError.message}`);
-    }
-
-    // Calculate new values for user season stats
-    const seasonStatsTotalGames = (existingSeasonStats?.total_games_played || 0) + 1;
-    const seasonStatsTotalPoints = (existingSeasonStats?.total_points || 0) + finalScore;
-    const seasonStatsTopxGames = (existingSeasonStats?.total_topx_games_played || 0) + 1;
-    const seasonStatsTopxPoints = (existingSeasonStats?.total_topx_points || 0) + finalScore;
-    const seasonStatsTopxWins = (existingSeasonStats?.total_topx_wins || 0) + (won ? 1 : 0);
-    const seasonStatsTopxLosses = (existingSeasonStats?.total_topx_losses || 0) + (won ? 0 : 1);
-    const seasonStatsTopxWinRate =
-      seasonStatsTopxGames > 0
-        ? Math.round((seasonStatsTopxWins / seasonStatsTopxGames) * 10000) / 100
-        : null;
-    const seasonStatsTopxAverageScore =
-      Math.round((seasonStatsTopxPoints / seasonStatsTopxGames) * 100) / 100;
-
-    // Calculate season streaks
-    const seasonCurrentStreak = await calculateDailyStreak(userId, null);
-    const seasonBestStreak = Math.max(
-      existingSeasonStats?.best_daily_streak || 0,
-      seasonCurrentStreak
-    );
-    const seasonCurrentTopxStreak = await calculateDailyStreak(userId, 'topx');
-    const seasonBestTopxStreak = Math.max(
-      existingSeasonStats?.best_daily_topx_streak || 0,
-      seasonCurrentTopxStreak
-    );
-
-    // Update user season stats
-    const { error: userSeasonStatsError } = await supabase.from('user_season_stats').upsert(
-      {
-        season_id: currentSeason.id,
-        user_id: userId,
-        total_points: seasonStatsTotalPoints,
-        total_games_played: seasonStatsTotalGames,
-        current_daily_streak: seasonCurrentStreak,
-        best_daily_streak: seasonBestStreak,
-        total_topx_games_played: seasonStatsTopxGames,
-        total_topx_points: seasonStatsTopxPoints,
-        total_topx_wins: seasonStatsTopxWins,
-        total_topx_losses: seasonStatsTopxLosses,
-        total_topx_win_rate: seasonStatsTopxWinRate,
-        total_topx_average_score: seasonStatsTopxAverageScore,
-        current_daily_topx_streak: seasonCurrentTopxStreak,
-        best_daily_topx_streak: seasonBestTopxStreak,
-      },
-      {
-        onConflict: 'season_id,user_id',
-      }
-    );
-
-    if (userSeasonStatsError) {
-      throw new Error(`Failed to upsert user season stats: ${userSeasonStatsError.message}`);
-    }
-
-    console.log(
-      `Updated leaderboards for user ${userId}: score=${finalScore}, attempts=${attemptsUsed}, won=${won}, currentStreak=${currentStreak}`
-    );
-  } catch (error) {
-    console.error('Error updating TopX leaderboards:', error);
-    throw error;
   }
 }
 

@@ -92,28 +92,12 @@ router.post('/api/admin/clear/sessions', async (_req, res): Promise<void> => {
       return;
     }
 
-    // Clear all topx sessions
-    const { count: topxSessionsDeleted, error: topxError } = await supabase
-      .from('topx_sessions')
-      .delete({ count: 'exact' })
-      .neq('user_id', '0');
-
-    if (topxError) {
-      console.error('Error deleting topx sessions:', topxError);
-      res.status(500).json({
-        status: 'error',
-        message: 'Failed to clear topx sessions',
-      });
-      return;
-    }
-
     res.json({
       status: 'success',
       message: 'All game sessions cleared successfully',
       data: {
         letteredSessionsDeleted: letteredSessionsDeleted || 0,
-        topxSessionsDeleted: topxSessionsDeleted || 0,
-        totalDeleted: (letteredSessionsDeleted || 0) + (topxSessionsDeleted || 0),
+        totalDeleted: letteredSessionsDeleted || 0,
       },
     });
   } catch (error) {

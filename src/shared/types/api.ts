@@ -17,98 +17,6 @@ export type DecrementResponse = {
   count: number;
 };
 
-export type TopXGame = {
-  id: string;
-  prompt: string;
-  // Only sent to client in development mode
-  solution?: string[];
-  category: string;
-  count: number;
-  maxAttempts: number;
-  suggestions: string[];
-  solutionHash: Record<string, boolean>; // Hash map of valid answer combinations
-  createdAt: string;
-  updatedAt: string;
-};
-
-export type TopXGameResponse = {
-  type: 'topx_game';
-  game: TopXGame;
-};
-
-export type TopXValidateResponse = {
-  type: 'topx_validate';
-  answer: string;
-  isCorrect: boolean;
-  position?: number; // For correct answers, which position it is
-  attemptsRemaining: number;
-};
-
-export type TopXGamesResponse = {
-  type: 'topx_games';
-  games: TopXGame[];
-};
-
-export interface TopXSubmission {
-  id: string;
-  gameSessionId: string;
-  answer: string;
-  submittedAt: string;
-  isCorrect: boolean;
-  scoreAtSubmission: number;
-  position?: number; // Position where the answer was placed (1-indexed, only for correct answers)
-}
-
-// Update in database/topx.ts if you change this
-export interface TopXSession {
-  id: string;
-  userId: string;
-  dailyGameId: string;
-  startedAt: string;
-  completedAt: string | null;
-  initialScore: number;
-  finalScore: number;
-  currentScore?: number; // Only used in API responses
-  isCompleted: boolean;
-  attemptsLeft: number;
-  submissions: TopXSubmission[];
-  correctSolutionMap?: (string | null)[]; // Array where index is position-1, value is correct answer or null
-  incorrectAnswers?: string[]; // Array of answers that were submitted but are incorrect
-}
-
-export type TopXDailyGameResponse = {
-  type: 'topx_daily_game';
-  dailyGameId: string;
-  game: TopXGame;
-  day: string; // ISO date string
-  session: TopXSession;
-};
-
-export type TopXAttemptRequest = {
-  answer: string;
-  timestamp: number;
-};
-
-export type TopXSubmissionResponse = {
-  type: 'topx_submission';
-  submissionId: string;
-  accepted: boolean; // Whether submission was recorded (not validation)
-  attemptsLeft?: number; // Remaining attempts after this submission
-  gameCompleted?: boolean; // Whether the game was completed by this submission
-};
-
-export type TopXGameCompleteResponse = {
-  type: 'topx_game_complete';
-  finalScore: number;
-  correctAnswers: Array<{
-    answer: string;
-    position: number;
-    points: number;
-  }>;
-  totalCorrect: number;
-  isValid: boolean; // Whether the game session is valid
-};
-
 export type Season = {
   id: string;
   name: string;
@@ -126,22 +34,9 @@ export type SeasonLeaderboardEntry = {
   redditHandle: string;
   totalPoints: number;
   gamesPlayed: number;
-  averageTopxScore: number | null;
-  averageTopxAttemptsUsed: number | null;
   averageLetteredScore: number | null;
   averageLetteredMovesUsed: number | null;
   averageScore: number | null;
-};
-
-export type TopXLeaderboardEntry = {
-  rank: number;
-  userId: string;
-  redditHandle: string;
-  totalPoints: number;
-  gamesPlayed: number;
-  averageScore: number | null;
-  averageAttemptsUsed: number | null;
-  averageTime: number | null;
 };
 
 export type LetteredLeaderboardEntry = {
@@ -166,17 +61,6 @@ export type SeasonLeaderboardResponse = {
   offset: number;
 };
 
-export type TopXLeaderboardResponse = {
-  type: 'topx_leaderboard';
-  seasonId: string;
-  seasonName: string;
-  entries: TopXLeaderboardEntry[];
-  totalPlayers: number;
-  userRank?: number;
-  limit: number;
-  offset: number;
-};
-
 export type LetteredLeaderboardResponse = {
   type: 'lettered_leaderboard';
   seasonId: string;
@@ -194,21 +78,13 @@ export type UserStats = {
   bestDailyStreak: number;
   currentDailyLetteredStreak: number;
   bestDailyLetteredStreak: number;
-  currentDailyTopxStreak: number;
-  bestDailyTopxStreak: number;
   totalPoints: number;
   totalGamesPlayed: number;
-  totalTopxGamesPlayed: number;
   totalLetteredGamesPlayed: number;
-  totalTopxPoints: number;
   totalLetteredPoints: number;
-  totalTopxWins: number;
   totalLetteredWins: number;
-  totalTopxLosses: number;
   totalLetteredLosses: number;
-  totalTopxWinRate?: number;
   totalLetteredWinRate?: number;
-  totalTopxAverageScore?: number;
   totalLetteredAverageScore?: number;
 };
 
@@ -260,16 +136,6 @@ export type UserLeaderboardPositionResponse = {
   rank: number | null;
   totalPoints: number;
   totalGamesPlayed: number;
-};
-
-export type EraseTopXResultsResponse = {
-  status: 'success' | 'error';
-  message: string;
-  data?: {
-    submissionsDeleted: number;
-    leaderboardEntriesDeleted: number;
-    sessionDeleted: boolean;
-  };
 };
 
 // Lettered Game Types

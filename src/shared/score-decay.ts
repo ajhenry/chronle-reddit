@@ -3,29 +3,25 @@
  */
 
 /**
- * Default initial score for all games (Lettered and TopX)
+ * Default initial score for Lettered games
  */
 export const DEFAULT_INITIAL_SCORE = 250;
 
 export interface DecayCalculationParams {
   initialScore: number;
   elapsedSeconds: number;
-  gameType: 'lettered' | 'topx';
+  gameType: 'lettered';
   placedPieces?: number; // For Lettered games
-  incorrectCount?: number; // For TopX games
 }
 
 export interface DecayConfig {
-  gameType: 'lettered' | 'topx';
-  // For TopX games
-  topXBaseDecayRate?: number; // Base multiplier for TopX (default: 1.5)
-  // For Lettered games
+  gameType: 'lettered';
   letteredBaseDecayRate?: number; // Base decay rate for Lettered (default: 3)
   letteredPieceMultiplier?: number; // Multiplier for pieces placed (default: 1.1)
 }
 
 /**
- * Default decay configurations for each game type
+ * Default decay configurations for Lettered game
  */
 export const DEFAULT_DECAY_CONFIGS: Record<string, DecayConfig> = {
   lettered: {
@@ -33,57 +29,37 @@ export const DEFAULT_DECAY_CONFIGS: Record<string, DecayConfig> = {
     letteredBaseDecayRate: 1.5,
     letteredPieceMultiplier: 1,
   },
-  topx: {
-    gameType: 'topx',
-    topXBaseDecayRate: 1.5,
-  },
 };
 
 /**
  * Calculate current score after applying decay
  */
 export function calculateDecayedScore(params: DecayCalculationParams): number {
-  const { initialScore, elapsedSeconds, gameType, placedPieces, incorrectCount } = params;
+  const { initialScore, elapsedSeconds, placedPieces } = params;
 
-  if (gameType === 'lettered') {
-    // Lettered game decay: base rate * piece multiplier^placed pieces
-    const config = DEFAULT_DECAY_CONFIGS.lettered;
-    if (!config) return initialScore;
-    const baseRate = config.letteredBaseDecayRate!;
-    const pieceMultiplier = config.letteredPieceMultiplier!;
-    const multiplier = Math.pow(pieceMultiplier, placedPieces ?? 0);
-    const decayAmount = Math.floor(elapsedSeconds * baseRate * multiplier);
-    return Math.max(0, initialScore - decayAmount);
-  } else if (gameType === 'topx') {
-    // TopX game decay: base rate^incorrect count
-    const config = DEFAULT_DECAY_CONFIGS.topx;
-    if (!config) return initialScore;
-    const baseRate = config.topXBaseDecayRate!;
-    const multiplier = Math.pow(baseRate, incorrectCount ?? 0);
-    const decayAmount = Math.floor(elapsedSeconds * multiplier);
-    return Math.max(0, initialScore - decayAmount);
-  }
-
-  // Fallback - no decay
-  return initialScore;
+  // Lettered game decay: base rate * piece multiplier^placed pieces
+  const config = DEFAULT_DECAY_CONFIGS.lettered;
+  if (!config) return initialScore;
+  const baseRate = config.letteredBaseDecayRate!;
+  const pieceMultiplier = config.letteredPieceMultiplier!;
+  const multiplier = Math.pow(pieceMultiplier, placedPieces ?? 0);
+  const decayAmount = Math.floor(elapsedSeconds * baseRate * multiplier);
+  return Math.max(0, initialScore - decayAmount);
 }
 
 /**
  * Calculate decay amount for a given time period
  */
 export function calculateDecayAmount(
-  gameType: 'lettered' | 'topx',
   elapsedSeconds: number,
-  placedPieces?: number,
-  incorrectCount?: number
+  placedPieces?: number
 ): number {
   const initialScore = 10000; // Dummy value, we only care about the decay amount
   const decayedScore = calculateDecayedScore({
     initialScore,
     elapsedSeconds,
-    gameType,
+    gameType: 'lettered',
     placedPieces: placedPieces ?? 0,
-    incorrectCount: incorrectCount ?? 0,
   });
   return initialScore - decayedScore;
 }
@@ -91,25 +67,12 @@ export function calculateDecayAmount(
 /**
  * Get the decay rate for a given game state
  */
-export function getDecayRate(
-  gameType: 'lettered' | 'topx',
-  placedPieces?: number,
-  incorrectCount?: number
-): number {
-  if (gameType === 'lettered') {
-    const config = DEFAULT_DECAY_CONFIGS.lettered;
-    if (!config) return 0;
-    const baseRate = config.letteredBaseDecayRate!;
-    const pieceMultiplier = config.letteredPieceMultiplier!;
-    return baseRate * Math.pow(pieceMultiplier, placedPieces ?? 0);
-  } else if (gameType === 'topx') {
-    const config = DEFAULT_DECAY_CONFIGS.topx;
-    if (!config) return 0;
-    const baseRate = config.topXBaseDecayRate!;
-    return Math.pow(baseRate, incorrectCount ?? 0);
-  }
-
-  return 0;
+export function getDecayRate(placedPieces?: number): number {
+  const config = DEFAULT_DECAY_CONFIGS.lettered;
+  if (!config) return 0;
+  const baseRate = config.letteredBaseDecayRate!;
+  const pieceMultiplier = config.letteredPieceMultiplier!;
+  return baseRate * Math.pow(pieceMultiplier, placedPieces ?? 0);
 }
 
 /**
@@ -123,9 +86,7 @@ export function calculateTimeToZero(currentScore: number, decayRate: number): nu
 /**
  * Create a custom decay configuration
  */
-export function createDecayConfig(
-  config: Partial<DecayConfig> & { gameType: 'lettered' | 'topx' }
-): DecayConfig {
-  const defaults = DEFAULT_DECAY_CONFIGS[config.gameType];
-  return { ...defaults, ...config };
+export function createDecayConfig(config: Partial<DecayConfig>): DecayConfig {
+  const defaults = DEFAULT_DECAY_CONFIGS.lettered;
+  return { ...defaults, ...config, gameType: 'lettered' };
 }

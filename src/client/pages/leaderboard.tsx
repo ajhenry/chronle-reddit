@@ -265,83 +265,7 @@ const UserStatsTab = ({ stats, loading, error }: UserStatsTabProps) => {
       </div>
 
       {/* Game-specific Stats */}
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 sm:gap-6">
-        {/* TopX Stats */}
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex gap-2 items-center">
-              <img src="/topx-logo.svg" alt="TopX" className="w-5 h-5" />
-              Top X Stats
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="space-y-4">
-              <div className="flex justify-between">
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <span className="font-bold cursor-help">Games Played</span>
-                  </TooltipTrigger>
-                  <TooltipContent>Total number of TopX games you've completed</TooltipContent>
-                </Tooltip>
-                <span className="font-semibold">{stats.totalTopxGamesPlayed}</span>
-              </div>
-              <div className="flex justify-between">
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <span className="font-bold cursor-help">Total Points</span>
-                  </TooltipTrigger>
-                  <TooltipContent>Total points earned from all TopX games</TooltipContent>
-                </Tooltip>
-                <span className="font-semibold">{stats.totalTopxPoints.toLocaleString()}</span>
-              </div>
-              <div className="flex justify-between">
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <span className="font-bold cursor-help">Wins</span>
-                  </TooltipTrigger>
-                  <TooltipContent>
-                    Number of TopX games you've won (scored all points)
-                  </TooltipContent>
-                </Tooltip>
-                <span className="font-semibold">{stats.totalTopxWins}</span>
-              </div>
-              <div className="flex justify-between">
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <span className="font-bold cursor-help">Losses</span>
-                  </TooltipTrigger>
-                  <TooltipContent>
-                    Number of TopX games you've lost (didn't score all points)
-                  </TooltipContent>
-                </Tooltip>
-                <span className="font-semibold">{stats.totalTopxLosses}</span>
-              </div>
-              <div className="flex justify-between">
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <span className="font-bold cursor-help">Win Rate</span>
-                  </TooltipTrigger>
-                  <TooltipContent>Percentage of TopX games won (Wins ÷ Total Games)</TooltipContent>
-                </Tooltip>
-                <span className="font-semibold">
-                  {stats.totalTopxWinRate ? `${stats.totalTopxWinRate.toFixed(0)}%` : 'N/A'}
-                </span>
-              </div>
-              <div className="flex justify-between">
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <span className="font-bold cursor-help">Avg Score</span>
-                  </TooltipTrigger>
-                  <TooltipContent>Average points scored per TopX game</TooltipContent>
-                </Tooltip>
-                <span className="font-semibold">
-                  {stats.totalTopxAverageScore ? stats.totalTopxAverageScore.toFixed(1) : 'N/A'}
-                </span>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-1 sm:gap-6">
         {/* Lettered Stats */}
         <Card>
           <CardHeader>
@@ -520,9 +444,8 @@ const SeasonLeaderboardTab = ({
       </div>
 
       <p className="max-w-2xl text-sm text-muted-foreground">
-        Compete with players across all games this season. Rankings are based on total points earned
-        from both TopX and Lettered games, with higher scores placing you higher on the leaderboard.
-        Keep playing daily to climb the ranks!
+        Compete with players across all Lettered games this season. Rankings are based on total points earned,
+        with higher scores placing you higher on the leaderboard. Keep playing daily to climb the ranks!
       </p>
 
       {entries.length === 0 ? (

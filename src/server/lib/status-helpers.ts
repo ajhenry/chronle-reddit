@@ -4,7 +4,6 @@ import { getOrCreateTodaysLetteredGame } from './lettered-game-helpers';
 import type { DailyGame } from '../../shared/types/supabase';
 import { getTodayEST } from './time';
 import { getOrCreateTodaysGame, updateDailyGame } from '../database/game';
-import { findRandomTopXGame, TopXGame } from '../database/topx';
 import { findRandomLetteredGame } from '../database/lettered';
 
 /**
@@ -30,23 +29,12 @@ export const checkAndCreateTodaysGames = async (): Promise<StatusCheckResult> =>
   try {
     let dailyGame = await getOrCreateTodaysGame();
 
-    const hasTopXGame = dailyGame.topxGameId !== null;
     const hasLetteredGame = dailyGame.letteredGameId !== null;
-
-    // Create TopX game if it doesn't exist
-    if (!hasTopXGame) {
-      console.log('Creating TopX game for today...');
-      const topxResult = await findRandomTopXGame();
-      dailyGame.topxGameId = topxResult.id;
-    }
 
     if (!hasLetteredGame) {
       console.log('Creating Lettered game for today...');
       const letteredResult = await findRandomLetteredGame();
       dailyGame.letteredGameId = letteredResult.id;
-    }
-
-    if (!hasTopXGame || !hasLetteredGame) {
       console.log('Updating daily game for today', { day: dailyGame.day });
       dailyGame = await updateDailyGame(dailyGame);
     } else {

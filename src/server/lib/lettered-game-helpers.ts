@@ -66,7 +66,6 @@ export async function getOrCreateTodaysLetteredGame(): Promise<{
 
     // Remove all sessions for the game if they exist
     await supabase.from('lettered_sessions').delete();
-    await supabase.from('topx_sessions').delete();
     await supabase.from('lettered_games').delete();
 
     // Insert the generated game into the database

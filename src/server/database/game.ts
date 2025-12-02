@@ -5,7 +5,6 @@ import { getTodayEST } from '../lib/time';
 export interface DailyGame {
   id: string;
   day: string;
-  topxGameId: string | null;
   letteredGameId: string | null;
   createdAt: string;
   updatedAt: string;
@@ -15,7 +14,6 @@ const convertGame = (game: Database['public']['Tables']['daily_games']['Row']): 
   return {
     id: game.id,
     day: game.day,
-    topxGameId: game.topx_game_id,
     letteredGameId: game.lettered_game_id,
     createdAt: game.created_at,
     updatedAt: game.updated_at,
@@ -61,7 +59,6 @@ export const updateDailyGame = async (game: DailyGame): Promise<DailyGame> => {
   const { data, error } = await supabase
     .from('daily_games')
     .update({
-      topx_game_id: game.topxGameId,
       lettered_game_id: game.letteredGameId,
     })
     .eq('id', game.id)

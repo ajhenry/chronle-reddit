@@ -12,9 +12,6 @@ interface ClearSessionsResponse {
   message: string;
   data: {
     letteredSessionsDeleted: number;
-    topxSessionsDeleted: number;
-    leaderboardEntriesDeleted: number;
-    topxSubmissionsDeleted: number;
     totalDeleted: number;
   };
 }

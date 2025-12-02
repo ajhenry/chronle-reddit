@@ -12,7 +12,6 @@ interface LogoItem {
 }
 
 const GAME_LOGOS: LogoItem[] = [
-  { src: '/topx-logo.svg', alt: 'TopX Logo' },
   { src: '/lettered-logo.svg', alt: 'Lettered Logo' },
   { src: '/podium-logo.svg', alt: 'Podium Logo' },
 ];
@@ -110,7 +109,7 @@ export const BouncingLogo: React.FC<BouncingLogoProps> = ({
         }}
       >
         <img
-          src={GAME_LOGOS[currentLogoIndex]?.src || '/topx-logo.svg'}
+          src={GAME_LOGOS[currentLogoIndex]?.src || '/lettered-logo.svg'}
           alt={GAME_LOGOS[currentLogoIndex]?.alt || 'Logo'}
           className="object-contain w-full h-full"
           style={{

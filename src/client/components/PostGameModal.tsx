@@ -6,7 +6,7 @@ import { Skeleton } from './ui/skeleton';
 export interface PostGameModalProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  gameType: 'lettered' | 'topx';
+  gameType: 'lettered';
   isCustomGame?: boolean; // New prop for custom games
 
   // Loading states
@@ -16,7 +16,7 @@ export interface PostGameModalProps {
   // Core stats
   score: number;
   secondaryStatValue: number | string;
-  secondaryStatLabel: string; // "MOVES" for lettered, "ANSWERS" for topx
+  secondaryStatLabel: string; // "MOVES" for lettered
 
   // Theme/prompt
   theme: string;
@@ -62,8 +62,6 @@ export const PostGameModal: React.FC<PostGameModalProps> = ({
     switch (gameType) {
       case 'lettered':
         return { title: 'PUZZLE', subtitle: 'COMPLETE' };
-      case 'topx':
-        return { title: 'GAME', subtitle: 'COMPLETE' };
       default:
         return { title: 'GAME', subtitle: 'COMPLETE' };
     }

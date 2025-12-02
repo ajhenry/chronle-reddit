@@ -57,7 +57,7 @@ router.get('/api/season/current', async (_req, res): Promise<void> => {
         start_date: now.toISOString(), // Keep as local time for season naming
         end_date: endDate.toISOString(), // Keep as local time for season naming
         is_active: true,
-        game_type: 'topx',
+        game_type: 'lettered',
       };
 
       const { data: newSeason, error: createError } = await supabase
@@ -288,21 +288,13 @@ router.get('/api/user-stats/:seasonId', async (req, res): Promise<void> => {
       bestDailyStreak: 0,
       currentDailyLetteredStreak: 0,
       bestDailyLetteredStreak: 0,
-      currentDailyTopxStreak: 0,
-      bestDailyTopxStreak: 0,
       totalPoints: 0,
       totalGamesPlayed: 0,
-      totalTopxGamesPlayed: 0,
       totalLetteredGamesPlayed: 0,
-      totalTopxPoints: 0,
       totalLetteredPoints: 0,
-      totalTopxWins: 0,
       totalLetteredWins: 0,
-      totalTopxLosses: 0,
       totalLetteredLosses: 0,
-      totalTopxWinRate: null,
       totalLetteredWinRate: null,
-      totalTopxAverageScore: null,
       totalLetteredAverageScore: null,
     };
 
@@ -312,7 +304,7 @@ router.get('/api/user-stats/:seasonId', async (req, res): Promise<void> => {
       seasonId,
       totalScore: stats.totalPoints,
       gamesPlayed: stats.totalGamesPlayed,
-      gamesWon: stats.totalTopxWins + stats.totalLetteredWins,
+      gamesWon: stats.totalLetteredWins,
       currentStreak: stats.currentDailyStreak, // Overall streak considering any game type
       bestStreak: stats.bestDailyStreak, // Best overall streak
       rank: rank || 0,
@@ -347,7 +339,7 @@ router.post('/api/seasons', async (req, res): Promise<void> => {
       start_date,
       end_date,
       is_active: is_active || false,
-      game_type: game_type || 'topx',
+      game_type: game_type || 'lettered',
     };
 
     const { data: season, error } = await supabase

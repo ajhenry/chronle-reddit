@@ -5,8 +5,6 @@ import { getCurrentActiveSeason } from '../database/season';
 import {
   getSeasonLeaderboard,
   getUserSeasonRank,
-  getTopXLeaderboard,
-  getUserTopXRank,
   getLetteredLeaderboard,
   getUserLetteredRank,
   getUserStats,
@@ -71,65 +69,6 @@ router.get('/api/leaderboard', async (req, res): Promise<void> => {
     res.status(500).json({
       status: 'error',
       message: 'Failed to fetch leaderboard',
-    });
-  }
-});
-
-// GET /api/leaderboard/topx - Returns TopX game leaderboard rankings
-router.get('/api/leaderboard/topx', async (req, res): Promise<void> => {
-  try {
-    const { limit = 10, offset = 0 } = req.query;
-
-    const limitNum = Math.min(Math.max(1, parseInt(limit as string) || 10), 50);
-    const offsetNum = Math.max(0, parseInt(offset as string) || 0);
-
-    logRouteInfo('/api/leaderboard/topx', {
-      action: 'fetch_topx_leaderboard',
-      limit: limitNum,
-      offset: offsetNum,
-    });
-
-    // Get current active season
-    const currentSeason = await getCurrentActiveSeason();
-
-    // Get TopX leaderboard rankings
-    const { entries, totalPlayers } = await getTopXLeaderboard(
-      currentSeason.id,
-      limitNum,
-      offsetNum
-    );
-
-    // Get current user's position if authenticated
-    let userRank: number | null = null;
-    const userId = await ensureUserExistsAndGetId();
-    if (userId) {
-      userRank = await getUserTopXRank(currentSeason.id, userId);
-    }
-
-    const response = {
-      type: 'topx_leaderboard',
-      seasonId: currentSeason.id,
-      seasonName: currentSeason.name,
-      entries,
-      totalPlayers,
-      userRank,
-      limit: limitNum,
-      offset: offsetNum,
-    };
-
-    logRouteInfo('/api/leaderboard/topx', {
-      result: 'success',
-      entriesCount: response.entries.length,
-      totalPlayers: response.totalPlayers,
-      userRank,
-    });
-
-    res.json(response);
-  } catch (error) {
-    logError('/api/leaderboard/topx', error);
-    res.status(500).json({
-      status: 'error',
-      message: 'Failed to fetch TopX leaderboard',
     });
   }
 });
@@ -220,21 +159,13 @@ router.get('/api/stats/user', async (_req, res): Promise<void> => {
         bestDailyStreak: 0,
         currentDailyLetteredStreak: 0,
         bestDailyLetteredStreak: 0,
-        currentDailyTopxStreak: 0,
-        bestDailyTopxStreak: 0,
         totalPoints: 0,
         totalGamesPlayed: 0,
-        totalTopxGamesPlayed: 0,
         totalLetteredGamesPlayed: 0,
-        totalTopxPoints: 0,
         totalLetteredPoints: 0,
-        totalTopxWins: 0,
         totalLetteredWins: 0,
-        totalTopxLosses: 0,
         totalLetteredLosses: 0,
-        totalTopxWinRate: null,
         totalLetteredWinRate: null,
-        totalTopxAverageScore: null,
         totalLetteredAverageScore: null,
       },
     };
@@ -289,21 +220,13 @@ router.get('/api/stats/user/season/:seasonId', async (req, res): Promise<void> =
         bestDailyStreak: 0,
         currentDailyLetteredStreak: 0,
         bestDailyLetteredStreak: 0,
-        currentDailyTopxStreak: 0,
-        bestDailyTopxStreak: 0,
         totalPoints: 0,
         totalGamesPlayed: 0,
-        totalTopxGamesPlayed: 0,
         totalLetteredGamesPlayed: 0,
-        totalTopxPoints: 0,
         totalLetteredPoints: 0,
-        totalTopxWins: 0,
         totalLetteredWins: 0,
-        totalTopxLosses: 0,
         totalLetteredLosses: 0,
-        totalTopxWinRate: null,
         totalLetteredWinRate: null,
-        totalTopxAverageScore: null,
         totalLetteredAverageScore: null,
       },
     };
