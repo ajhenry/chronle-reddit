@@ -1,6 +1,6 @@
 {
   "$schema": "https://developers.reddit.com/schema/config-file.v1.json",
-  "name": "podium-game",
+  "name": "ajhenrylet",
   "post": {
     "dir": "dist/client",
     "entrypoints": {
@@ -31,7 +31,7 @@
   "permissions": {
     "http": {
       "enable": true,
-      "domains": ["gwnwsqtfvkgcihmwgrsj.supabase.co"]
+      "domains": []
     },
     "reddit": {
       "enable": true,
@@ -52,6 +52,6 @@
     }
   },
   "dev": {
-    "subreddit": "podiumgame"
+    "subreddit": "ajhenry_playground"
   }
 }
