@@ -412,11 +412,7 @@ export const LetteredPage = ({ onBack }: { onBack?: () => void }) => {
 
         // Initialize game state manager with new game and session data
         if (gameStateManagerRef.current) {
-          gameStateManagerRef.current.initializeGame(
-            apiGameData,
-            gameStartTime,
-            movesForManager
-          );
+          gameStateManagerRef.current.initializeGame(apiGameData, gameStartTime, movesForManager);
 
           // If we have session data and this is NOT a custom game, restore the placed pieces
           if (apiSessionData) {

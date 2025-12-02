@@ -17,11 +17,7 @@ export class LetteredGameStateManager {
   private state: GameState;
   private updateCallbacks: GameStateUpdateCallback[] = [];
 
-  constructor(
-    gameData: LetteredGameData | null = null,
-    gameStartTime?: number,
-    moves?: number
-  ) {
+  constructor(gameData: LetteredGameData | null = null, gameStartTime?: number, moves?: number) {
     this.state = this.createInitialState(gameData, gameStartTime, moves);
     this.notifyUpdates(this.state);
   }
@@ -339,11 +335,9 @@ export class LetteredGameStateManager {
     const mainGridWidth = this.state.gameData.grid[0]?.length || 0;
 
     // Filter out pieces placed in the tray area (below main grid)
-    const mainBoardPieces = Array.from(this.state.placedPieces.entries()).filter(
-      ([, position]) => {
-        return position.row < mainGridHeight && position.col < mainGridWidth;
-      }
-    );
+    const mainBoardPieces = Array.from(this.state.placedPieces.entries()).filter(([, position]) => {
+      return position.row < mainGridHeight && position.col < mainGridWidth;
+    });
 
     // Check if all pieces are placed on the main board
     const totalPieces = this.state.gameData.pieces.length;
