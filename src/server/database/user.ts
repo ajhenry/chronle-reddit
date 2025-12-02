@@ -73,6 +73,28 @@ export const getUserByRedditHandle = async (redditHandle: string): Promise<User>
   }
 };
 
+export const getUserById = async (userId: string): Promise<User | null> => {
+  try {
+    const redis = await getRedisClient();
+
+    // Get user data by ID
+    const userData = await redis.get(RedisKeys.user.byId(userId));
+    if (!userData) {
+      return null;
+    }
+
+    const data = deserialize<ReturnType<typeof convertToStorage>>(userData);
+    if (!data) {
+      return null;
+    }
+
+    return convertUser(data);
+  } catch (error) {
+    console.error('Failed to get user by id:', { error });
+    return null;
+  }
+};
+
 export const createUser = async (
   userData: Omit<User, 'id' | 'createdAt' | 'updatedAt' | 'admin'>
 ): Promise<User> => {

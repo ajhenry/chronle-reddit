@@ -237,6 +237,9 @@ export const LetteredPage = ({
   const [postGameStatsLoading, setPostGameStatsLoading] = useState(false);
   const [postGameStatsError, setPostGameStatsError] = useState<string | null>(null);
 
+  // Session ID for debug display
+  const [sessionId, setSessionId] = useState<string | null>(null);
+
   // Game state manager (core game logic, doesn't cause rerenders)
   const gameStateManagerRef = useRef<LetteredGameStateManager | null>(null);
 
@@ -377,9 +380,13 @@ export const LetteredPage = ({
         // Set the moves count and elapsed time from server data
         setMoves(apiSessionData.moves);
         setElapsedTime(apiSessionData.timeElapsed);
+
+        // Store session ID for debug display
+        setSessionId(apiSessionData.sessionId);
       } else {
         // For new games, start time is now
         gameStartTime = Date.now();
+        setSessionId(null);
       }
 
       // Initialize game state manager with new game and session data
@@ -849,6 +856,7 @@ export const LetteredPage = ({
               {/* Debug Info */}
               <div className="p-2 font-mono text-xs rounded-md bg-muted">
                 <div>Game ID: {gameId || 'N/A'}</div>
+                <div>Session ID: {sessionId || 'N/A'}</div>
                 <div>Moves: {moves}</div>
                 <div>Time: {Math.floor(elapsedTime / 1000)}s</div>
                 <div>Game Complete: {gameComplete ? 'Yes' : 'No'}</div>

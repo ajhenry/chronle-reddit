@@ -373,8 +373,6 @@ export class LetteredGameStateManager {
       console.log('shapePos', { shapePos });
       const gridRow = position.row + shapePos.row;
       const gridCol = position.col + shapePos.col;
-      console.log('gridRow', gridRow);
-      console.log('gridCol', gridCol);
       // Check if position conflicts with other placed pieces (both in main grid and tray)
       for (const [placedPieceId, placedPosition] of this.state.placedPieces.entries()) {
         if (placedPieceId === piece.id) continue; // Skip self
@@ -385,8 +383,6 @@ export class LetteredGameStateManager {
         for (const placedShapePos of placedPiece.shape) {
           const placedGridRow = placedPosition.row + placedShapePos.row;
           const placedGridCol = placedPosition.col + placedShapePos.col;
-          console.log('placedGridRow', placedGridRow);
-          console.log('placedGridCol', placedGridCol);
           if (placedGridRow === gridRow && placedGridCol === gridCol) {
             return { valid: false, reason: 'Piece overlaps with another placed piece' };
           }

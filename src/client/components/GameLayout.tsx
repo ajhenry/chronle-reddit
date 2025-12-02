@@ -55,17 +55,21 @@ export const GameLayout = ({
           </div>
 
           {/* Time and Moves */}
-          <div className="flex items-center gap-6">
+          <div className="flex gap-6 items-center">
             {/* Time */}
             <div className="text-center">
-              <div className="text-3xl font-bold text-foreground">{formatTime(time)}</div>
+              <div className="text-3xl font-bold tabular-nums text-foreground">
+                {formatTime(time)}
+              </div>
               <div className="text-sm font-medium text-foreground">TIME</div>
             </div>
 
             {/* Moves */}
             {moves !== undefined && (
               <div className="text-center">
-                <div className="text-3xl font-bold text-foreground">{moves}</div>
+                <div className="text-3xl font-bold tabular-nums text-foreground min-w-[2ch]">
+                  {moves}
+                </div>
                 <div className="text-sm font-medium text-foreground">MOVES</div>
               </div>
             )}
