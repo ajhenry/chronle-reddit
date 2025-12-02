@@ -1,5 +1,4 @@
 import { getTodayEST } from './time';
-import { getOrCreateTodaysGame, updateDailyGame } from '../database/game';
 import { getOrCreateTodaysLetteredGame } from './lettered-game-helpers';
 
 /**
@@ -23,32 +22,17 @@ export type StatusCheckResult =
 export const checkAndCreateTodaysGames = async (): Promise<StatusCheckResult> => {
   console.log('Checking and creating todays games', { today: getTodayEST() });
   try {
-    let dailyGame = await getOrCreateTodaysGame();
-
-    const hasLetteredGame = dailyGame.letteredGameId !== null;
-
-    if (!hasLetteredGame) {
-      console.log('Creating Lettered game for today...');
-      const letteredResult = await getOrCreateTodaysLetteredGame();
-      
-      if (!letteredResult.success || !letteredResult.data) {
-        return {
-          success: false,
-          error: letteredResult.error || 'Failed to create lettered game',
-          statusCode: letteredResult.statusCode || 500,
-        };
-      }
-      
-      dailyGame.letteredGameId = letteredResult.data.dailyGame.letteredGameId;
-      console.log('Updating daily game for today', { day: dailyGame.day });
-      dailyGame = await updateDailyGame(dailyGame);
-    } else {
-      console.log('Daily game exists for today', { day: dailyGame.day });
-    }
+    const today = getTodayEST();
+    
+    // Create or get today's lettered game (uses ISO date as game ID)
+    console.log('Creating/fetching Lettered game for today...');
+    const letteredGame = await getOrCreateTodaysLetteredGame();
+    
+    console.log('Lettered game ready for today:', { gameId: letteredGame.id, day: today });
 
     return {
       success: true,
-      day: dailyGame.day,
+      day: today,
     };
   } catch (error) {
     console.error('Unexpected error in checkAndCreateTodaysGames:', error);

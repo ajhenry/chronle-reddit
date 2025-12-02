@@ -4,78 +4,27 @@ import { getNextLetteredPhrase } from './phrase-tracker';
 import { getRedisClient } from './redis-provider';
 import { RedisKeys, serialize, deserialize } from '../../shared/types/redis';
 
-interface DailyGame {
-  id: string;
-  day: string;
-  letteredGameId: string;
-  createdAt: string;
-  updatedAt: string;
-}
-
-interface DailyGameStorage {
-  id: string;
-  day: string;
-  lettered_game_id: string;
-  created_at: string;
-  updated_at: string;
-}
-
-// No longer need to remove solution - we send it to the client now
-const removeSolution = (gameData: LetteredGameData): LetteredGameData => {
-  return gameData;
-};
-
 /**
  * Gets or creates today's daily lettered game
+ * Uses ISO date string as the game ID (e.g., '2025-12-02')
  */
-export async function getOrCreateTodaysLetteredGame(): Promise<{
-  success: boolean;
-  data?: { dailyGame: DailyGame; gameData: LetteredGameData };
-  error?: string;
-  statusCode?: number;
-}> {
-  // We need to remove the solution in our return except for in dev mode
+export async function getOrCreateTodaysLetteredGame(): Promise<LetteredGameData> {
   try {
     const redis = await getRedisClient();
 
     // Calculate today's date in EST
     const today = new Date();
     const estDate = new Date(today.toLocaleString('en-US', { timeZone: 'America/New_York' }));
-    const dayString = estDate.toISOString().split('T')[0]!; // YYYY-MM-DD format
+    const gameId = estDate.toISOString().split('T')[0]!; // YYYY-MM-DD format (e.g., '2025-12-02')
 
-    // First try to get today's game from Redis
-    const dailyGameKey = RedisKeys.dailyGame(dayString);
-    const existingDailyGameData = await redis.get(dailyGameKey);
+    // Try to get today's game from Redis
+    const existingGameData = await redis.get(RedisKeys.letteredGame.byId(gameId));
 
-    if (existingDailyGameData) {
-      const dailyGameStorage = deserialize<DailyGameStorage>(existingDailyGameData);
-
-      if (dailyGameStorage) {
-        console.log('Lettered game found for today:', { dailyGameStorage });
-
-        // Get the lettered game data
-        const letteredGameData = await redis.get(
-          RedisKeys.letteredGame.byId(dailyGameStorage.lettered_game_id)
-        );
-
-        if (letteredGameData) {
-          const gameData = deserialize<LetteredGameData>(letteredGameData);
-
-          if (gameData) {
-            const dailyGame: DailyGame = {
-              id: dailyGameStorage.id,
-              day: dailyGameStorage.day,
-              letteredGameId: dailyGameStorage.lettered_game_id,
-              createdAt: dailyGameStorage.created_at,
-              updatedAt: dailyGameStorage.updated_at,
-            };
-
-            return {
-              success: true,
-              data: { dailyGame, gameData: removeSolution(gameData) },
-            };
-          }
-        }
+    if (existingGameData) {
+      const gameData = deserialize<LetteredGameData>(existingGameData);
+      if (gameData) {
+        console.log('Lettered game found for today:', { gameId });
+        return gameData;
       }
     }
 
@@ -92,44 +41,27 @@ export async function getOrCreateTodaysLetteredGame(): Promise<{
     const seed = Math.floor(Math.random() * 1000000);
     const gameData = generateMockGame(phraseData.category, phraseData.phrase, seed);
 
-    // Note: We don't clear old sessions here since Devvit Redis doesn't support key listing
-    // Sessions will naturally be isolated by the day in their key, so old sessions won't interfere
+    // Set the game ID to the ISO date string and postType to 'daily'
+    const now = new Date().toISOString();
+    const dailyGame: LetteredGameData = {
+      ...gameData,
+      id: gameId,
+      postType: 'daily',
+      createdAt: now,
+      updatedAt: now,
+    };
 
     // Store the lettered game in Redis
-    const gameId = crypto.randomUUID();
-    const now = new Date().toISOString();
-
-    await redis.set(RedisKeys.letteredGame.byId(gameId), serialize(gameData));
+    await redis.set(RedisKeys.letteredGame.byId(gameId), serialize(dailyGame));
     // Add to sorted set of all game IDs (using timestamp as score for ordering)
     await redis.zAdd(RedisKeys.letteredGame.all(), { member: gameId, score: Date.now() });
 
-    // Create the daily game entry
-    const dailyGameId = crypto.randomUUID();
-    const dailyGameStorage: DailyGameStorage = {
-      id: dailyGameId,
-      day: dayString,
-      lettered_game_id: gameId,
-      created_at: now,
-      updated_at: now,
-    };
+    console.log('Created daily lettered game:', { gameId, phrase: phraseData.phrase });
 
-    await redis.set(dailyGameKey, serialize(dailyGameStorage));
-
-    const dailyGame: DailyGame = {
-      id: dailyGameStorage.id,
-      day: dailyGameStorage.day,
-      letteredGameId: dailyGameStorage.lettered_game_id,
-      createdAt: dailyGameStorage.created_at,
-      updatedAt: dailyGameStorage.updated_at,
-    };
-
-    return {
-      success: true,
-      data: { dailyGame, gameData: removeSolution(gameData) },
-    };
+    return dailyGame;
   } catch (error) {
     console.error('Error in getOrCreateTodaysLetteredGame:', error);
-    return { success: false, error: 'Internal server error', statusCode: 500 };
+    throw new Error('Failed to get or create today\'s lettered game');
   }
 }
 

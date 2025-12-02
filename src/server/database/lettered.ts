@@ -1,6 +1,4 @@
 import { GridCell, GridPosition, LetterPiece } from '../../shared/types/api';
-import { getTodayEST } from '../lib/time';
-import { getOrCreateTodaysGame } from './game';
 import { getRedisClient } from '../lib/redis-provider';
 import { RedisKeys, serialize, deserialize } from '../../shared/types/redis';
 import { getOrCreateTodaysLetteredGame } from '../lib/lettered-game-helpers';
@@ -23,7 +21,7 @@ export interface LetteredGame {
 export interface LetteredSession {
   id: string;
   userId: string;
-  dailyGameId: string;
+  letteredGameId: string;
   startedAt: string;
   completedAt: string | null;
   timeElapsed: number;
@@ -59,7 +57,7 @@ interface LetteredGameStorage {
 interface LetteredSessionStorage {
   id: string;
   user_id: string;
-  daily_game_id: string;
+  lettered_game_id: string;
   started_at: string;
   completed_at: string | null;
   time_elapsed: number;
@@ -101,7 +99,7 @@ const convertLetteredSession = (session: LetteredSessionStorage): LetteredSessio
   return {
     id: session.id,
     userId: session.user_id,
-    dailyGameId: session.daily_game_id,
+    letteredGameId: session.lettered_game_id,
     startedAt: session.started_at,
     completedAt: session.completed_at,
     timeElapsed: session.time_elapsed ?? 0,
@@ -114,7 +112,7 @@ const convertLetteredSessionToStorage = (session: LetteredSession): LetteredSess
   return {
     id: session.id,
     user_id: session.userId,
-    daily_game_id: session.dailyGameId,
+    lettered_game_id: session.letteredGameId,
     started_at: session.startedAt,
     completed_at: session.completedAt,
     time_elapsed: session.timeElapsed,
@@ -239,14 +237,9 @@ export const findRandomLetteredGame = async (): Promise<LetteredGame> => {
 
 export const getTodaysLetteredGame = async (): Promise<LetteredGame> => {
   try {
-    const result = await getOrCreateTodaysLetteredGame();
+    const gameData = await getOrCreateTodaysLetteredGame();
 
-    if (!result.success || !result.data) {
-      throw new Error(result.error || 'Failed to get or create todays lettered game');
-    }
-
-    // Convert the API format back to database format
-    const gameData = result.data.gameData;
+    // Convert the API format to database format
     const letteredGame: LetteredGame = {
       id: gameData.id,
       category: gameData.category,
@@ -269,38 +262,44 @@ export const getTodaysLetteredGame = async (): Promise<LetteredGame> => {
   }
 };
 
-export const getOrCreateLetteredSessionForToday = async (
-  userId: string
+export const getOrCreateLetteredSession = async (
+  userId: string,
+  gameId: string
 ): Promise<LetteredSession> => {
-  // Ensure today's game exists
-  await getOrCreateTodaysGame();
-  const today = getTodayEST();
-
   try {
     const redis = await getRedisClient();
-    const sessionData = await redis.get(RedisKeys.letteredSession(userId, today));
+    const sessionData = await redis.get(RedisKeys.letteredSession(userId, gameId));
 
     if (!sessionData) {
-      return await createLetteredSession(userId);
+      return await createLetteredSession(userId, gameId);
     }
 
     const data = deserialize<LetteredSessionStorage>(sessionData);
     if (!data) {
-      return await createLetteredSession(userId);
+      return await createLetteredSession(userId, gameId);
     }
 
     return convertLetteredSession(data);
   } catch (error) {
-    console.error('Failed to find todays lettered session:', { error });
-    throw new Error('Failed to find todays lettered session');
+    console.error('Failed to find lettered session:', { error });
+    throw new Error('Failed to find lettered session');
   }
 };
 
-export const getLatestLetteredSubmissionForToday = async (
+export const getOrCreateLetteredSessionForToday = async (
   userId: string
+): Promise<LetteredSession> => {
+  // For backwards compatibility - get today's game ID and create session for it
+  const letteredGame = await getTodaysLetteredGame();
+  return await getOrCreateLetteredSession(userId, letteredGame.id);
+};
+
+export const getLatestLetteredSubmission = async (
+  userId: string,
+  gameId: string
 ): Promise<LetteredSubmission | null> => {
   try {
-    const letteredSession = await getOrCreateLetteredSessionForToday(userId);
+    const letteredSession = await getOrCreateLetteredSession(userId, gameId);
     const redis = await getRedisClient();
 
     const submissionsData = await redis.get(RedisKeys.letteredSubmissions(letteredSession.id));
@@ -320,6 +319,14 @@ export const getLatestLetteredSubmissionForToday = async (
     console.error('Failed to find latest lettered submission:', { error });
     throw new Error('Failed to find latest lettered submission');
   }
+};
+
+export const getLatestLetteredSubmissionForToday = async (
+  userId: string
+): Promise<LetteredSubmission | null> => {
+  // For backwards compatibility
+  const letteredGame = await getTodaysLetteredGame();
+  return await getLatestLetteredSubmission(userId, letteredGame.id);
 };
 
 export const getLetteredSubmissionsForToday = async (
@@ -354,12 +361,12 @@ export const getOrCreateUserLetteredSessionForToday = async (
   return await getOrCreateLetteredSessionForToday(userId);
 };
 
-export const createLetteredSession = async (userId: string): Promise<LetteredSession> => {
-  console.log('createLetteredSession', { userId });
+export const createLetteredSession = async (
+  userId: string,
+  letteredGameId: string
+): Promise<LetteredSession> => {
+  console.log('createLetteredSession', { userId, letteredGameId });
   try {
-    const dailyGame = await getOrCreateTodaysGame();
-    const today = getTodayEST();
-
     if (userId.includes('letteredsession_')) {
       throw new Error('User already has a lettered session');
     }
@@ -370,7 +377,7 @@ export const createLetteredSession = async (userId: string): Promise<LetteredSes
     const session: LetteredSession = {
       id: sessionId,
       userId: userId,
-      dailyGameId: dailyGame.id,
+      letteredGameId: letteredGameId,
       startedAt: now,
       completedAt: null,
       timeElapsed: 0,
@@ -380,17 +387,23 @@ export const createLetteredSession = async (userId: string): Promise<LetteredSes
 
     const redis = await getRedisClient();
     const storageData = convertLetteredSessionToStorage(session);
-    await redis.set(RedisKeys.letteredSession(userId, today), serialize(storageData));
+    await redis.set(RedisKeys.letteredSession(userId, letteredGameId), serialize(storageData));
 
-    // Maintain lookup hash for finding sessions by ID (needed because Devvit Redis doesn't support key listing)
-    const sessionLookupKey = `lettered_session_lookup:${today}`;
+    // Maintain global lookup hash for finding sessions by ID
+    const globalLookupKey = 'lettered_session_global_lookup';
+    await redis.hSet(globalLookupKey, {
+      [sessionId]: serialize({ userId, gameId: letteredGameId }),
+    });
+
+    // Maintain per-game lookup hash for finding sessions (using gameId as key)
+    const sessionLookupKey = `lettered_session_lookup:${letteredGameId}`;
     await redis.hSet(sessionLookupKey, { [sessionId]: userId });
 
-    // Track which days have sessions (for admin operations)
-    const sessionDaysKey = 'lettered_session_days';
-    await redis.zAdd(sessionDaysKey, { member: today, score: Date.now() });
+    // Track which games have sessions (for admin operations)
+    const sessionGamesKey = 'lettered_session_games';
+    await redis.zAdd(sessionGamesKey, { member: letteredGameId, score: Date.now() });
 
-    console.log('Created lettered session:', { sessionId, userId, day: today });
+    console.log('Created lettered session:', { sessionId, userId, letteredGameId });
 
     return session;
   } catch (error) {
@@ -407,8 +420,6 @@ export const updateLetteredSession = async (
     const redis = await getRedisClient();
 
     // First, find the session by ID
-    // We need to search through all possible session keys
-    // Since we store by userId:day, we need to get the session first to know the key
     const session = await findLetteredSessionById(sessionId);
 
     const updatedSession: LetteredSession = {
@@ -416,12 +427,20 @@ export const updateLetteredSession = async (
       ...updates,
     };
 
-    const today = getTodayEST();
     const storageData = convertLetteredSessionToStorage(updatedSession);
-    await redis.set(RedisKeys.letteredSession(session.userId, today), serialize(storageData));
+    await redis.set(
+      RedisKeys.letteredSession(session.userId, session.letteredGameId),
+      serialize(storageData)
+    );
 
-    // Ensure lookup hash is maintained (in case it was missing)
-    const sessionLookupKey = `lettered_session_lookup:${today}`;
+    // Ensure global lookup hash is maintained (in case it was missing)
+    const globalLookupKey = 'lettered_session_global_lookup';
+    await redis.hSet(globalLookupKey, {
+      [sessionId]: serialize({ userId: session.userId, gameId: session.letteredGameId }),
+    });
+
+    // Ensure per-game lookup hash is maintained (in case it was missing)
+    const sessionLookupKey = `lettered_session_lookup:${session.letteredGameId}`;
     await redis.hSet(sessionLookupKey, { [sessionId]: session.userId });
 
     console.log('Updated lettered session:', { sessionId });
@@ -436,21 +455,22 @@ export const updateLetteredSession = async (
 export const findLetteredSessionById = async (sessionId: string): Promise<LetteredSession> => {
   try {
     const redis = await getRedisClient();
-    const today = getTodayEST();
 
-    // Since Devvit Redis doesn't support key pattern matching, we need to maintain
-    // a sorted set that tracks session IDs to user IDs for lookup
-    const sessionLookupKey = `lettered_session_lookup:${today}`;
+    // First, look up the gameId and userId from the global session mapping
+    const globalLookupKey = 'lettered_session_global_lookup';
+    const lookupData = await redis.hGet(globalLookupKey, sessionId);
 
-    // Try to find the userId from the lookup
-    const userId = await redis.hGet(sessionLookupKey, sessionId);
-
-    if (!userId) {
+    if (!lookupData) {
       throw new Error('Lettered session not found');
     }
 
-    // Now we can get the session with the userId
-    const sessionKey = RedisKeys.letteredSession(userId, today);
+    const lookup = deserialize<{ userId: string; gameId: string }>(lookupData);
+    if (!lookup) {
+      throw new Error('Lettered session lookup data corrupted');
+    }
+
+    // Now we can get the session with the userId and gameId
+    const sessionKey = RedisKeys.letteredSession(lookup.userId, lookup.gameId);
     const sessionData = await redis.get(sessionKey);
 
     if (!sessionData) {
@@ -513,9 +533,12 @@ export const createLetteredSubmission = async (
   }
 };
 
-export const getTotalLetteredSubmissionsForToday = async (userId: string): Promise<number> => {
+export const getTotalLetteredSubmissions = async (
+  userId: string,
+  gameId: string
+): Promise<number> => {
   try {
-    const session = await getOrCreateUserLetteredSessionForToday(userId);
+    const session = await getOrCreateLetteredSession(userId, gameId);
     const redis = await getRedisClient();
 
     const submissionsData = await redis.get(RedisKeys.letteredSubmissions(session.id));
@@ -530,4 +553,10 @@ export const getTotalLetteredSubmissionsForToday = async (userId: string): Promi
     console.error('Failed to find total lettered submissions:', { error });
     throw new Error('Failed to find total lettered submissions');
   }
+};
+
+export const getTotalLetteredSubmissionsForToday = async (userId: string): Promise<number> => {
+  // For backwards compatibility
+  const letteredGame = await getTodaysLetteredGame();
+  return await getTotalLetteredSubmissions(userId, letteredGame.id);
 };

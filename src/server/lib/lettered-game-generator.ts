@@ -539,7 +539,10 @@ const createBalancedLayout = (
 };
 
 // Generate letter pieces using the new algorithm from lettered.md
-export const generateLetterPieces = (grid: GridCell[][], seed?: number): LetterPiece[] => {
+export const generateLetterPieces = (
+  grid: GridCell[][],
+  seed?: number
+): { pieces: LetterPiece[]; solution: Record<string, GridPosition> } => {
   // Create intermediate grid with skipped tracking for piece generation
   const generationGrid: GenerationGridCell[][] = grid.map((row) =>
     row.map((cell) => ({ ...cell, isSkipped: false }))
@@ -565,18 +568,18 @@ export const generateLetterPieces = (grid: GridCell[][], seed?: number): LetterP
   }
 
   if (availableLetters.length === 0) {
-    return [];
+    return { pieces: [], solution: {} };
   }
 
   // Use the new algorithm from lettered.md
   const skippedLetters: Array<{ letter: string; position: GridPosition }> = [];
-  const pieces = generatePiecesWithNewAlgorithm(
+  const { pieces, solution } = generatePiecesWithNewAlgorithm(
     availableLetters,
     generationGrid,
     seed,
     skippedLetters
   );
-  return pieces;
+  return { pieces, solution };
 };
 
 // Enhanced seeded random number generator with better entropy
@@ -617,7 +620,7 @@ const generatePiecesWithNewAlgorithm = (
   grid: GenerationGridCell[][],
   seed?: number,
   skippedLetters?: Array<{ letter: string; position: GridPosition }>
-): LetterPiece[] => {
+): { pieces: LetterPiece[]; solution: Record<string, GridPosition> } => {
   console.log(`🔢 New Scanner Algorithm: Total available letters: ${availableLetters.length}`);
   console.log(
     `📝 Available letters: ${availableLetters.map((l) => `${l.letter}(${l.position.row},${l.position.col})`).join(', ')}`
@@ -631,6 +634,7 @@ const generatePiecesWithNewAlgorithm = (
 
   const usedLetters = new Set<string>();
   const pieces: LetterPiece[] = [];
+  const solution: Record<string, GridPosition> = {};
 
   // Continue until all letters are used
   while (usedLetters.size < availableLetters.length) {
@@ -662,17 +666,18 @@ const generatePiecesWithNewAlgorithm = (
     );
 
     // Step 3-7: Build piece by randomly selecting adjacent letters
-    const piece = buildPieceWithRandomDirections(
+    const result = buildPieceWithRandomDirections(
       startingLetter,
       availableLetters,
       usedLetters,
       random,
       colorAssigner
     );
-    if (piece && piece.letters.length >= 1) {
-      pieces.push(piece);
+    if (result && result.piece.letters.length >= 1) {
+      pieces.push(result.piece);
+      solution[result.piece.id] = result.gridPosition;
       console.log(
-        `✅ Generated piece ${pieces.length}: "${piece.letters.join('')}" (${piece.letters.length} letters)`
+        `✅ Generated piece ${pieces.length}: "${result.piece.letters.join('')}" (${result.piece.letters.length} letters) at position (${result.gridPosition.row},${result.gridPosition.col})`
       );
     } else {
       // Mark starting letter as used so scanner won't retry it
@@ -712,6 +717,7 @@ const generatePiecesWithNewAlgorithm = (
     console.log(`🔄 Attempting to generate pieces from ${skippedLetters.length} skipped letters`);
     handleSkippedLetters(
       pieces,
+      solution,
       skippedLetters,
       availableLetters,
       usedLetters,
@@ -721,7 +727,7 @@ const generatePiecesWithNewAlgorithm = (
   }
 
   // Step 11b: Handle any remaining stranded pieces
-  handleStrandedPieces(pieces, grid, usedLetters, random, colorAssigner);
+  handleStrandedPieces(pieces, solution, grid, usedLetters, random, colorAssigner);
 
   console.log(
     `🏁 New algorithm complete: ${pieces.length} pieces generated, ${usedLetters.size}/${availableLetters.length} letters used, ${skippedLetters?.length || 0} skipped letters collected`
@@ -739,7 +745,7 @@ const generatePiecesWithNewAlgorithm = (
     console.log(`🔀 Shuffled ${pieces.length} pieces for better randomization`);
   }
 
-  return pieces;
+  return { pieces, solution };
 };
 
 // Find next available letter using scanner from top-left (Step 2)
@@ -778,7 +784,7 @@ const buildPieceWithRandomDirections = (
   usedLetters: Set<string>,
   random: () => number,
   colorAssigner: ColorAssigner
-): LetterPiece | null => {
+): { piece: LetterPiece; gridPosition: GridPosition } | null => {
   const pieceLetters: string[] = [];
   const piecePositions: GridPosition[] = [];
   let currentPos = startingLetter.position;
@@ -865,11 +871,14 @@ const buildPieceWithRandomDirections = (
     color: colorAssigner.getNextColor(),
   };
 
+  // Track the grid position (anchor point) where this piece was generated
+  const gridPosition: GridPosition = { row: minRow, col: minCol };
+
   console.log(
-    `✅ Created piece: "${pieceLetters.join('')}" with shape ${shape.map((s) => `(${s.row},${s.col})`).join(' ')}`
+    `✅ Created piece: "${pieceLetters.join('')}" with shape ${shape.map((s) => `(${s.row},${s.col})`).join(' ')} at grid position (${gridPosition.row},${gridPosition.col})`
   );
 
-  return finalPiece;
+  return { piece: finalPiece, gridPosition };
 };
 
 // Find adjacent letters in 4 directions (up, down, left, right)
@@ -916,6 +925,7 @@ const findAdjacentLetters = (
 // Handle skipped letters by attempting to generate smaller pieces from them
 const handleSkippedLetters = (
   pieces: LetterPiece[],
+  solution: Record<string, GridPosition>,
   skippedLetters: Array<{ letter: string; position: GridPosition }>,
   availableLetters: Array<{ letter: string; position: GridPosition }>,
   usedLetters: Set<string>,
@@ -936,7 +946,7 @@ const handleSkippedLetters = (
     }
 
     // Try to generate a piece from this skipped letter
-    const piece = buildPieceWithRandomDirections(
+    const result = buildPieceWithRandomDirections(
       skippedLetter,
       availableLetters,
       usedLetters,
@@ -944,10 +954,11 @@ const handleSkippedLetters = (
       colorAssigner
     );
 
-    if (piece && piece.letters.length >= 2) {
-      pieces.push(piece);
+    if (result && result.piece.letters.length >= 2) {
+      pieces.push(result.piece);
+      solution[result.piece.id] = result.gridPosition;
       console.log(
-        `✅ Generated piece from skipped letter: "${piece.letters.join('')}" (${piece.letters.length} letters)`
+        `✅ Generated piece from skipped letter: "${result.piece.letters.join('')}" (${result.piece.letters.length} letters) at position (${result.gridPosition.row},${result.gridPosition.col})`
       );
     } else {
       console.log(
@@ -962,6 +973,7 @@ const handleSkippedLetters = (
 // Handle stranded pieces by connecting them to nearest piece (Step 11)
 const handleStrandedPieces = (
   pieces: LetterPiece[],
+  solution: Record<string, GridPosition>,
   grid: GenerationGridCell[][],
   usedLetters: Set<string>,
   random: () => number,
@@ -1227,6 +1239,18 @@ const handleStrandedPieces = (
           col: pos.col - minCol,
         }));
 
+        // Update the solution position to reflect the new anchor point after normalization
+        const oldSolutionPos = solution[adjacentPiece.id];
+        if (oldSolutionPos) {
+          solution[adjacentPiece.id] = {
+            row: pieceOffsetRow + minRow,
+            col: pieceOffsetCol + minCol,
+          };
+          console.log(
+            `🔄 Updated solution position from (${oldSolutionPos.row},${oldSolutionPos.col}) to (${solution[adjacentPiece.id]!.row},${solution[adjacentPiece.id]!.col})`
+          );
+        }
+
         // Update the used letters set
         usedLetters.add(`${strandedLetter.position.row},${strandedLetter.position.col}`);
 
@@ -1253,6 +1277,7 @@ const handleStrandedPieces = (
         color: colorAssigner.getNextColor(),
       };
       pieces.push(singlePiece);
+      solution[singlePiece.id] = strandedLetter.position;
       usedLetters.add(`${strandedLetter.position.row},${strandedLetter.position.col}`);
       positionToPiece.set(
         `${strandedLetter.position.row},${strandedLetter.position.col}`,
@@ -1260,7 +1285,7 @@ const handleStrandedPieces = (
       );
 
       console.log(
-        `📍 Added new single piece: ${strandedLetter.position.row},${strandedLetter.position.col} -> ${singlePiece.letters.join('')}`
+        `📍 Added new single piece: ${strandedLetter.position.row},${strandedLetter.position.col} -> ${singlePiece.letters.join('')} to solution`
       );
     }
   }
@@ -2219,7 +2244,25 @@ const validateConnectivity = (grid: GridCell[][]): boolean => {
 };
 
 // Generate solution positions for each piece
+// This function now prefers tracked solutions from generation but falls back to the old method
 export const generateSolutionPositions = (
+  pieces: LetterPiece[],
+  grid: GridCell[][],
+  trackedSolution?: Record<string, GridPosition>
+): Record<string, GridPosition> => {
+  // If we have a tracked solution from generation, use it
+  if (trackedSolution) {
+    console.log(`✅ Using tracked solution positions from generation`);
+    return trackedSolution;
+  }
+
+  // Fallback to old method if no tracked solution provided (for backwards compatibility)
+  console.log(`⚠️ No tracked solution provided, falling back to position search`);
+  return generateSolutionPositionsFallback(pieces, grid);
+};
+
+// Fallback method: search for positions after generation (deprecated but kept for compatibility)
+const generateSolutionPositionsFallback = (
   pieces: LetterPiece[],
   grid: GridCell[][]
 ): Record<string, GridPosition> => {
@@ -2649,9 +2692,9 @@ export const generateMockGame = (
     const trimmedGrid = trimBoard(boardWithAnchors);
     printBoard(trimmedGrid, 'Step 4: After Trimming & Centering');
 
-    // Step 5: Generate pieces
+    // Step 5: Generate pieces (with tracked solution positions)
     console.log('Step 5: Generating letter pieces...');
-    const pieces = generateLetterPieces(trimmedGrid, seed);
+    const { pieces, solution: trackedSolution } = generateLetterPieces(trimmedGrid, seed);
     console.log(`Generated ${pieces.length} pieces:`);
     pieces.forEach((piece, i) => {
       console.log(
@@ -2666,10 +2709,10 @@ export const generateMockGame = (
       `Generated initial positions for ${Object.keys(initialPiecePositions).length} pieces`
     );
 
-    // Step 7: Generate solution
-    console.log('Step 7: Generating solution positions...');
-    const solution = generateSolutionPositions(pieces, trimmedGrid);
-    console.log(`Generated solutions for ${Object.keys(solution).length} pieces`);
+    // Step 7: Use tracked solution from piece generation
+    console.log('Step 7: Using tracked solution positions...');
+    const solution = trackedSolution;
+    console.log(`Using tracked solutions for ${Object.keys(solution).length} pieces`);
 
     console.log('\n✅ Game generation complete!\n');
 
@@ -2755,9 +2798,9 @@ const generateFallbackGame = (category: string, phrase: string): LetteredGameDat
     }
   }
 
-  const pieces = generateLetterPieces(grid);
+  const { pieces, solution: trackedSolution } = generateLetterPieces(grid);
   const initialPiecePositions = generateInitialPiecePositions(pieces, grid);
-  const solution = generateSolutionPositions(pieces, grid);
+  const solution = trackedSolution;
 
   // Create secure grid
   const secureGrid = createSecureGrid(grid);

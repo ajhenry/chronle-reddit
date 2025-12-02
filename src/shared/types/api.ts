@@ -116,6 +116,7 @@ export type LetterPiece = {
 
 export type LetteredGameData = {
   id: string;
+  postType: 'daily' | 'custom';
   category: string;
   phrase: string;
   grid: GridCell[][]; // NxM grid
@@ -135,10 +136,8 @@ export type LetteredGameResponse = {
 };
 
 export type LetteredDailyGameResponse = {
-  type: 'lettered_daily_game';
-  dailyGameId: string;
+  type: 'lettered_game';
   game: LetteredGameData;
-  day: string; // ISO date string
   session?: LetteredGameSessionResponse;
 };
 
@@ -199,7 +198,7 @@ export type User = {
 
 export type LetteredPostGameResponse = {
   type: 'lettered_post_game';
-  dailyGame: LetteredGameData;
+  game: LetteredGameData;
   isValid: boolean;
   pieces: Record<string, GridPosition>;
   movesUsed: number;

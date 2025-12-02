@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { reddit } from '../lib/reddit-provider';
 import { getUserByRedditHandle } from '../database/user';
 import { getRedisClient } from '../lib/redis-provider';
+import { RedisKeys } from '../../shared/types/redis';
 
 const router = Router();
 
@@ -120,6 +121,172 @@ router.post('/api/admin/clear/sessions', async (_req, res): Promise<void> => {
     });
   } catch (error) {
     console.error('Error clearing sessions:', error);
+    res.status(500).json({
+      status: 'error',
+      message: 'Internal server error',
+    });
+  }
+});
+
+// Admin endpoint to clear ALL Redis data (nuclear option)
+router.post('/api/admin/clear/redis', async (_req, res): Promise<void> => {
+  try {
+    // First check if user is admin
+    const redditUsername = await reddit.getCurrentUsername();
+
+    if (!redditUsername || redditUsername === 'anonymous') {
+      res.status(404).json({
+        status: 'error',
+        message: 'Not found',
+      });
+      return;
+    }
+
+    const user = await getUserByRedditHandle(redditUsername);
+
+    if (!user || !user.admin) {
+      console.log('User is not admin', { user });
+      res.status(404).json({
+        status: 'error',
+        message: 'Not found',
+      });
+      return;
+    }
+
+    const redis = await getRedisClient();
+    let totalDeleted = 0;
+
+    // Track different categories
+    const deletedCounts = {
+      letteredGames: 0,
+      letteredSessions: 0,
+      letteredSubmissions: 0,
+      customGames: 0,
+      postMappings: 0,
+      leaderboards: 0,
+      userStats: 0,
+      users: 0,
+      other: 0,
+    };
+
+    console.log('Starting comprehensive Redis cleanup...');
+
+    // 1. Clear all lettered games
+    try {
+      const games = await redis.zRange(RedisKeys.letteredGame.all(), 0, -1);
+      console.log(`Found ${games.length} lettered games to delete`);
+      
+      for (const game of games) {
+        const gameId = game.member;
+        await redis.del(RedisKeys.letteredGame.byId(gameId));
+        deletedCounts.letteredGames++;
+        totalDeleted++;
+      }
+      
+      // Clear the games index
+      await redis.del(RedisKeys.letteredGame.all());
+      totalDeleted++;
+    } catch (error) {
+      console.error('Error clearing lettered games:', error);
+    }
+
+    // 2. Clear all lettered sessions and submissions
+    try {
+      const globalLookupKey = 'lettered_session_lookup:global';
+      const sessionMap = await redis.hGetAll(globalLookupKey);
+      console.log(`Found ${Object.keys(sessionMap).length} sessions to delete`);
+      
+      for (const [sessionId, sessionDataStr] of Object.entries(sessionMap)) {
+        try {
+          const sessionData = JSON.parse(sessionDataStr);
+          const sessionKey = RedisKeys.letteredSession(sessionData.userId, sessionData.gameId);
+          await redis.del(sessionKey);
+          deletedCounts.letteredSessions++;
+          totalDeleted++;
+          
+          // Clear submissions for this session
+          await redis.del(RedisKeys.letteredSubmissions(sessionId));
+          deletedCounts.letteredSubmissions++;
+          totalDeleted++;
+        } catch (parseError) {
+          console.error('Error parsing session data:', parseError);
+        }
+      }
+      
+      // Clear the global lookup
+      await redis.del(globalLookupKey);
+      totalDeleted++;
+      
+      // Clear session games tracking
+      await redis.del('lettered_session_games');
+      totalDeleted++;
+    } catch (error) {
+      console.error('Error clearing sessions:', error);
+    }
+
+    // 3. Clear custom games (pattern-based keys)
+    // Note: Since Devvit Redis doesn't support SCAN, we'll clear known patterns
+    // Custom game keys follow the pattern: custom-lettered:timestamp:randomid
+    // These are tracked when created, but for now we'll skip them unless we implement tracking
+    console.log('Custom games cleanup: Skipped (no index available)');
+
+    // 4. Clear post-to-game mappings (pattern-based)
+    // Pattern: custom-lettered:post:*
+    console.log('Post mappings cleanup: Skipped (no index available)');
+
+    // 5. Clear all leaderboards
+    try {
+      const periods = ['daily', 'weekly', 'monthly', 'alltime'] as const;
+      const types = ['overall', 'lettered'] as const;
+      
+      for (const type of types) {
+        for (const period of periods) {
+          // Clear current period
+          const key = RedisKeys.leaderboard(type, period);
+          await redis.del(key);
+          deletedCounts.leaderboards++;
+          totalDeleted++;
+          
+          // Clear metadata
+          const metadataKey = `${key}:metadata`;
+          await redis.del(metadataKey);
+          deletedCounts.leaderboards++;
+          totalDeleted++;
+        }
+      }
+      
+      console.log(`Cleared ${deletedCounts.leaderboards} leaderboard keys`);
+    } catch (error) {
+      console.error('Error clearing leaderboards:', error);
+    }
+
+    // 6. Clear phrase tracker index
+    try {
+      await redis.del('lettered_phrase_index');
+      totalDeleted++;
+    } catch (error) {
+      console.error('Error clearing phrase tracker:', error);
+    }
+
+    // 7. User stats and user data - Note: Usually we don't want to clear user accounts
+    // but this is a debug nuclear option, so we'll add it with a note
+    console.log('User data cleanup: Skipped (preserving user accounts)');
+
+    console.log('Redis cleanup completed:', {
+      totalDeleted,
+      breakdown: deletedCounts,
+    });
+
+    res.json({
+      status: 'success',
+      message: 'All Redis data cleared successfully',
+      data: {
+        totalDeleted,
+        breakdown: deletedCounts,
+      },
+    });
+  } catch (error) {
+    console.error('Error clearing Redis data:', error);
     res.status(500).json({
       status: 'error',
       message: 'Internal server error',

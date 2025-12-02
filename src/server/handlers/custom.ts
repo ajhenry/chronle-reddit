@@ -118,7 +118,8 @@ router.post('/api/custom/lettered', async (req, res): Promise<void> => {
     // Generate game data using the lettered-game-generator
     console.log(`Generating custom lettered game for phrase: "${cleanPhrase}"`);
     const seed = Math.floor(Math.random() * 1000000);
-    const gameData = generateMockGame(category, cleanPhrase, seed);
+    const generatedGame = generateMockGame(category, cleanPhrase, seed);
+    const gameData = { ...generatedGame, postType: 'custom' as const };
 
     // Create unique game ID for Redis storage
     const gameId = `custom-lettered:${Date.now()}:${Math.random().toString(36).substr(2, 9)}`;
@@ -163,8 +164,10 @@ router.post('/api/custom/lettered', async (req, res): Promise<void> => {
         },
         // Store gameId in the post data - the webview should read this
         webviewMetadata: {
-          customGameId: gameId,
+          gameId: gameId, // Standardized field name (used by both daily and custom)
+          customGameId: gameId, // Keep for backwards compatibility
           gameType: 'lettered',
+          postType: 'custom',
           autoLaunch: true, // Flag to indicate this should launch directly
           theme: category, // Store the theme/category for display
         },
@@ -255,7 +258,8 @@ router.post('/api/dev/lettered', async (req, res): Promise<void> => {
 
     // Generate game data using the lettered-game-generator
     console.log(`Generating dev lettered game for phrase: "${cleanPhrase}" with seed: ${seed}`);
-    const gameData = generateMockGame('Dev Test', cleanPhrase, seed);
+    const generatedGame = generateMockGame('Dev Test', cleanPhrase, seed);
+    const gameData = { ...generatedGame, postType: 'custom' as const };
 
     res.json({
       status: 'success',

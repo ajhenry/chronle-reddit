@@ -112,12 +112,11 @@ export const RedisKeys = {
     byId: (userId: string) => `users:id:${userId}`,
     byHandle: (handle: string) => `users:handle:${handle}`,
   },
-  dailyGame: (day: string) => `daily_games:${day}`,
   letteredGame: {
     byId: (gameId: string) => `lettered_games:id:${gameId}`,
     all: () => 'lettered_games:all',
   },
-  letteredSession: (userId: string, day: string) => `lettered_sessions:${userId}:${day}`,
+  letteredSession: (userId: string, gameId: string) => `lettered_sessions:${userId}:${gameId}`,
   letteredSubmissions: (sessionId: string) => `lettered_submissions:${sessionId}`,
   userStats: (userId: string) => `user_stats:${userId}`,
   leaderboard: (type: 'overall' | 'lettered', period: TimePeriod, date?: Date) =>
