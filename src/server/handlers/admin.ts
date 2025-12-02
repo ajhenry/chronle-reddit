@@ -78,14 +78,35 @@ router.post('/api/admin/clear/sessions', async (_req, res): Promise<void> => {
     }
 
     // Clear all lettered sessions from Redis
+    // Note: Since Devvit Redis doesn't support key listing, we track active session days
+    // in a sorted set and clear those explicitly
     const redis = await getRedisClient();
-    const pattern = 'lettered_sessions:*';
-    const keys = await redis.keys(pattern);
+    const sessionDaysKey = 'lettered_session_days';
+    
+    // Get all days that have sessions
+    const days = await redis.zRange(sessionDaysKey, 0, -1);
     
     let letteredSessionsDeleted = 0;
-    if (keys.length > 0) {
-      letteredSessionsDeleted = await redis.del(...keys);
+    for (const day of days) {
+      const dayStr = day.member;
+      const lookupKey = `lettered_session_lookup:${dayStr}`;
+      
+      // Get all sessionId -> userId mappings for this day
+      const sessionMap = await redis.hGetAll(lookupKey);
+      
+      // Delete each session
+      for (const [sessionId, userId] of Object.entries(sessionMap)) {
+        const sessionKey = `lettered_sessions:${userId}:${dayStr}`;
+        await redis.del(sessionKey);
+        letteredSessionsDeleted++;
+      }
+      
+      // Clear the lookup hash for this day
+      await redis.del(lookupKey);
     }
+    
+    // Clear the session days tracker
+    await redis.del(sessionDaysKey);
 
     console.log('Cleared lettered sessions:', { count: letteredSessionsDeleted });
 

@@ -1,6 +1,6 @@
 import { getTodayEST } from './time';
 import { getOrCreateTodaysGame, updateDailyGame } from '../database/game';
-import { findRandomLetteredGame } from '../database/lettered';
+import { getOrCreateTodaysLetteredGame } from './lettered-game-helpers';
 
 /**
  * Result type for status check
@@ -29,8 +29,17 @@ export const checkAndCreateTodaysGames = async (): Promise<StatusCheckResult> =>
 
     if (!hasLetteredGame) {
       console.log('Creating Lettered game for today...');
-      const letteredResult = await findRandomLetteredGame();
-      dailyGame.letteredGameId = letteredResult.id;
+      const letteredResult = await getOrCreateTodaysLetteredGame();
+      
+      if (!letteredResult.success || !letteredResult.data) {
+        return {
+          success: false,
+          error: letteredResult.error || 'Failed to create lettered game',
+          statusCode: letteredResult.statusCode || 500,
+        };
+      }
+      
+      dailyGame.letteredGameId = letteredResult.data.dailyGame.letteredGameId;
       console.log('Updating daily game for today', { day: dailyGame.day });
       dailyGame = await updateDailyGame(dailyGame);
     } else {

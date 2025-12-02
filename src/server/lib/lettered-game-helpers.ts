@@ -1,8 +1,25 @@
-import { supabase } from '../../shared/supabase-server';
 import type { LetteredGameData, LetterPiece } from '../../shared/types/api';
-import type { DailyGame } from '../../shared/types/supabase';
 import { generateMockGame } from './lettered-game-generator';
 import { isDevelopment } from '../../shared/utils';
+import { getNextLetteredPhrase } from './phrase-tracker';
+import { getRedisClient } from './redis-provider';
+import { RedisKeys, serialize, deserialize } from '../../shared/types/redis';
+
+interface DailyGame {
+  id: string;
+  day: string;
+  letteredGameId: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+interface DailyGameStorage {
+  id: string;
+  day: string;
+  lettered_game_id: string;
+  created_at: string;
+  updated_at: string;
+}
 
 const removeSolution = (gameData: LetteredGameData): LetteredGameData => {
   if (!isDevelopment()) {
@@ -23,91 +40,92 @@ export async function getOrCreateTodaysLetteredGame(): Promise<{
 }> {
   // We need to remove the solution in our return except for in dev mode
   try {
+    const redis = await getRedisClient();
+
     // Calculate today's date in EST
     const today = new Date();
     const estDate = new Date(today.toLocaleString('en-US', { timeZone: 'America/New_York' }));
-    const dayString = estDate.toISOString().split('T')[0]; // YYYY-MM-DD format
+    const dayString = estDate.toISOString().split('T')[0]!; // YYYY-MM-DD format
 
-    // First try to get today's game using direct SQL
-    const { data: existingGame, error: fetchError } = await supabase
-      .from('daily_games')
-      .select(
-        `
-        *,
-        lettered_games (*)
-      `
-      )
-      .eq('day', dayString)
-      .single();
+    // First try to get today's game from Redis
+    const dailyGameKey = RedisKeys.dailyGame(dayString);
+    const existingDailyGameData = await redis.get(dailyGameKey);
 
-    if (fetchError && fetchError.code !== 'PGRST116') {
-      console.error("Error fetching today's lettered game:", fetchError);
-      return { success: false, error: "Failed to fetch today's game", statusCode: 500 };
-    }
+    if (existingDailyGameData) {
+      const dailyGameStorage = deserialize<DailyGameStorage>(existingDailyGameData);
 
-    if (existingGame && existingGame.lettered_games) {
-      console.log('Lettered game found for today:', { existingGame });
-      // Game already exists for today
-      const dailyGame = existingGame;
-      const gameData = existingGame.lettered_games as LetteredGameData;
+      if (dailyGameStorage) {
+        console.log('Lettered game found for today:', { dailyGameStorage });
 
-      return {
-        success: true,
-        data: { dailyGame, gameData: removeSolution(gameData) },
-      };
+        // Get the lettered game data
+        const letteredGameData = await redis.get(
+          RedisKeys.letteredGame.byId(dailyGameStorage.lettered_game_id)
+        );
+
+        if (letteredGameData) {
+          const gameData = deserialize<LetteredGameData>(letteredGameData);
+
+          if (gameData) {
+            const dailyGame: DailyGame = {
+              id: dailyGameStorage.id,
+              day: dailyGameStorage.day,
+              letteredGameId: dailyGameStorage.lettered_game_id,
+              createdAt: dailyGameStorage.created_at,
+              updatedAt: dailyGameStorage.updated_at,
+            };
+
+            return {
+              success: true,
+              data: { dailyGame, gameData: removeSolution(gameData) },
+            };
+          }
+        }
+      }
     }
 
     // No game exists for today, create one
     console.log('No lettered game found for today, creating one...');
 
-    // Generate a new game using the server-side generator
-    // For now, we'll use a fixed phrase and category - in production this could be randomized
-    const gameData = generateMockGame('movies', 'LETTER', 1234);
+    // Get the next phrase from the sequential list
+    const phraseData = await getNextLetteredPhrase();
+    console.log(
+      `Creating game with phrase: "${phraseData.phrase}" from category: ${phraseData.category}`
+    );
 
-    // Remove all sessions for the game if they exist
-    await supabase.from('lettered_sessions').delete();
-    await supabase.from('lettered_games').delete();
+    // Generate a new game using the server-side generator with a random seed
+    const seed = Math.floor(Math.random() * 1000000);
+    const gameData = generateMockGame(phraseData.category, phraseData.phrase, seed);
 
-    // Insert the generated game into the database
-    const { data: insertedGame, error: insertError } = await supabase
-      .from('lettered_games')
-      .insert({
-        category: gameData.category,
-        phrase: gameData.phrase,
-        grid: gameData.grid,
-        rows: gameData.rows,
-        cols: gameData.cols,
-        pieces: gameData.pieces,
-        solution: gameData.solution,
-        solution_hash: gameData.solutionHash,
-      })
-      .select()
-      .single();
+    // Note: We don't clear old sessions here since Devvit Redis doesn't support key listing
+    // Sessions will naturally be isolated by the day in their key, so old sessions won't interfere
 
-    if (insertError) {
-      console.error('Error inserting generated lettered game:', insertError);
-      return { success: false, error: 'Failed to create lettered game', statusCode: 500 };
-    }
+    // Store the lettered game in Redis
+    const gameId = crypto.randomUUID();
+    const now = new Date().toISOString();
 
-    // Calculate today's date in EST
-    const today = new Date();
-    const estDate = new Date(today.toLocaleString('en-US', { timeZone: 'America/New_York' }));
-    const dayString = estDate.toISOString().split('T')[0]; // YYYY-MM-DD format
+    await redis.set(RedisKeys.letteredGame.byId(gameId), serialize(gameData));
+    // Add to sorted set of all game IDs (using timestamp as score for ordering)
+    await redis.zAdd(RedisKeys.letteredGame.all(), { member: gameId, score: Date.now() });
 
     // Create the daily game entry
-    const { data: dailyGame, error: createError } = await supabase
-      .from('daily_games')
-      .insert({
-        day: dayString,
-        lettered_game_id: insertedGame.id,
-      })
-      .select()
-      .single();
+    const dailyGameId = crypto.randomUUID();
+    const dailyGameStorage: DailyGameStorage = {
+      id: dailyGameId,
+      day: dayString,
+      lettered_game_id: gameId,
+      created_at: now,
+      updated_at: now,
+    };
 
-    if (createError) {
-      console.error('Error creating daily lettered game:', createError);
-      return { success: false, error: 'Failed to create daily game', statusCode: 500 };
-    }
+    await redis.set(dailyGameKey, serialize(dailyGameStorage));
+
+    const dailyGame: DailyGame = {
+      id: dailyGameStorage.id,
+      day: dailyGameStorage.day,
+      letteredGameId: dailyGameStorage.lettered_game_id,
+      createdAt: dailyGameStorage.created_at,
+      updatedAt: dailyGameStorage.updated_at,
+    };
 
     return {
       success: true,
@@ -128,15 +146,19 @@ export async function validateLetteredPlacement(
   position: { row: number; col: number }
 ): Promise<{ valid: boolean; error?: string }> {
   try {
-    // Get the game data
-    const { data: game, error: gameError } = await supabase
-      .from('lettered_games')
-      .select('*')
-      .eq('id', gameId)
-      .single();
+    const redis = await getRedisClient();
 
-    if (gameError || !game) {
+    // Get the game data from Redis
+    const gameData = await redis.get(RedisKeys.letteredGame.byId(gameId));
+
+    if (!gameData) {
       return { valid: false, error: 'Game not found' };
+    }
+
+    const game = deserialize<LetteredGameData>(gameData);
+
+    if (!game) {
+      return { valid: false, error: 'Failed to parse game data' };
     }
 
     // Find the piece
@@ -157,7 +179,12 @@ export async function validateLetteredPlacement(
         return { valid: false, error: 'Piece placement is out of bounds' };
       }
 
-      const cell = grid[gridRow][gridCol];
+      const row = grid[gridRow];
+      if (!row) {
+        return { valid: false, error: 'Invalid grid row' };
+      }
+
+      const cell = row[gridCol];
       if (!cell || cell.isUnused || cell.isSpace) {
         return { valid: false, error: 'Invalid grid position for piece' };
       }
