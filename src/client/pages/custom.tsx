@@ -1,12 +1,28 @@
 import { FormEvent, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { navigateTo } from '@devvit/web/client';
-import { Card, CardHeader, CardTitle, CardContent } from '../components/ui/card';
-import { Button } from '../components/ui/button';
-import { Input } from '../components/ui/input';
 import { ArrowLeft, Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { apiFetch } from '../lib/utils';
+import { Button } from '../components/ui/button';
+
+// LETTERED logo component with yellow tile styling
+function LetteredLogo() {
+  const letters = ['L', 'E', 'T', 'T', 'E', 'R', 'E', 'D'];
+
+  return (
+    <div className="flex gap-1">
+      {letters.map((letter, index) => (
+        <div
+          key={index}
+          className="flex items-center justify-center w-7 h-7 sm:w-10 sm:h-10 bg-[#F7C846] text-black font-black text-base sm:text-xl rounded-sm"
+        >
+          {letter}
+        </div>
+      ))}
+    </div>
+  );
+}
 
 export const CustomGamePage = () => {
   const navigate = useNavigate();
@@ -98,128 +114,128 @@ export const CustomGamePage = () => {
   };
 
   return (
-    <div className="flex relative flex-col min-h-screen bg-background">
-      <div className="container px-4 py-6 mx-auto max-w-2xl">
+    <div className="flex relative flex-col min-h-screen bg-black">
+      <div className="container px-4 py-6 mx-auto max-w-lg">
         <div className="flex flex-col gap-6">
-          {/* Header with back button */}
-          <div className="flex gap-4 items-center">
-            <Button
-              variant="outline"
-              onClick={handleBack}
-              type="button"
-              className="flex gap-2 items-center"
-            >
-              <ArrowLeft className="w-4 h-4" />
-              Back
-            </Button>
-            <h1 className="text-3xl font-bold">Create Custom Game</h1>
+          {/* Header with Logo */}
+          <div className="flex flex-col items-center pt-4 pb-2">
+            <LetteredLogo />
+            <p className="mt-3 text-sm font-semibold tracking-wide text-white/80">CREATE YOUR OWN PUZZLE</p>
           </div>
 
-          {/* Info Card */}
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-center">How it works</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-2 text-sm text-muted-foreground">
-              <p className="flex-end">
-                <span className="mr-3 text-xl font-bold text-primary">1</span> Enter your custom
-                title and phrase below
-              </p>
-              <p className="flex-end">
-                <span className="mr-2 text-xl font-bold text-primary">2</span> Click "Create Custom
-                Game" to generate the puzzle
-              </p>
-              <p className="flex-end">
-                <span className="mr-2 text-xl font-bold text-primary">3</span> A new Reddit post
-                will be created with your custom Lettered game
-              </p>
-              <p className="flex-end">
-                <span className="mr-2 text-xl font-bold text-primary">4</span> Share the post with
-                others to let them solve your puzzle!
-              </p>
-            </CardContent>
-          </Card>
+          {/* Back Button */}
+          <Button
+            onClick={handleBack}
+            type="button"
+            variant="outline"
+            className="self-start"
+          >
+            <ArrowLeft className="w-4 h-4" />
+            Back
+          </Button>
 
-          {/* Form Card */}
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-center">Custom Lettered Game</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <form onSubmit={handleSubmit} className="space-y-6">
-                <div className="space-y-2">
-                  <label htmlFor="category" className="text-sm font-medium">
-                    Title <span className="text-primary">*</span>
-                  </label>
-                  <Input
-                    id="category"
-                    placeholder="Your title (e.g. NOLAN FILM)"
-                    value={formData.category}
-                    onChange={(e) => setFormData((prev) => ({ ...prev, category: e.target.value }))}
-                    disabled={isLoading}
-                  />
-                  <div className="text-xs text-muted-foreground">
-                    This will be displayed as the puzzle theme to help players guess
-                  </div>
+          {/* How it works */}
+          <div className="p-4 space-y-3 bg-zinc-900 rounded-lg border border-zinc-700">
+            <h3 className="text-sm font-bold tracking-wider text-white/70">HOW IT WORKS</h3>
+            <div className="space-y-2">
+              <div className="flex items-start gap-3">
+                <div className="w-6 h-6 bg-[#F7C846] text-black flex items-center justify-center text-xs font-black flex-shrink-0 rounded-sm">
+                  1
                 </div>
-
-                <div className="space-y-2">
-                  <label htmlFor="phrase" className="text-sm font-medium">
-                    Phrase <span className="text-primary">*</span>
-                  </label>
-                  <textarea
-                    id="phrase"
-                    className="flex min-h-[80px] w-full rounded-md border-2 border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
-                    placeholder="Your phrase (e.g., THE DARK KNIGHT RISES)"
-                    value={formData.phrase}
-                    onChange={(e) => setFormData((prev) => ({ ...prev, phrase: e.target.value }))}
-                    disabled={isLoading}
-                    rows={3}
-                    maxLength={70}
-                  />
-                  <div className="text-sm text-muted-foreground">
-                    {formData.phrase.length}/70 characters
-                  </div>
+                <p className="text-sm text-white/80">Enter your custom title and phrase below</p>
+              </div>
+              <div className="flex items-start gap-3">
+                <div className="w-6 h-6 bg-[#F7C846] text-black flex items-center justify-center text-xs font-black flex-shrink-0 rounded-sm">
+                  2
                 </div>
-
-                <div className="">
-                  <h3 className="mb-2 font-semibold">Puzzle Requirements</h3>
-                  <ul className="space-y-1 text-sm text-muted-foreground">
-                    <li>
-                      <span className="text-xl text-primary">•</span> Maximum 70 characters total
-                      (including spaces)
-                    </li>
-                    <li>
-                      <span className="text-xl text-primary">•</span> Maximum 9 letters per word
-                    </li>
-                    <li>
-                      <span className="text-xl text-primary">•</span> Letters and spaces only (no
-                      numbers or special characters)
-                    </li>
-                    <li>
-                      <span className="text-xl text-primary">•</span> Try phrases like movie titles,
-                      song names, or common sayings
-                    </li>
-                  </ul>
+                <p className="text-sm text-white/80">Click "Create Puzzle" to generate the game</p>
+              </div>
+              <div className="flex items-start gap-3">
+                <div className="w-6 h-6 bg-[#F7C846] text-black flex items-center justify-center text-xs font-black flex-shrink-0 rounded-sm">
+                  3
                 </div>
+                <p className="text-sm text-white/80">A new Reddit post will be created with your puzzle</p>
+              </div>
+              <div className="flex items-start gap-3">
+                <div className="w-6 h-6 bg-[#F7C846] text-black flex items-center justify-center text-xs font-black flex-shrink-0 rounded-sm">
+                  4
+                </div>
+                <p className="text-sm text-white/80">Share with others and see who can solve it!</p>
+              </div>
+            </div>
+          </div>
 
-                <Button
-                  type="submit"
-                  className="w-full"
-                  disabled={isLoading || !formData.phrase.trim() || !formData.category.trim()}
-                >
-                  {isLoading ? (
-                    <>
-                      <Loader2 className="mr-2 w-4 h-4 animate-spin" />
-                      Creating Game...
-                    </>
-                  ) : (
-                    'Create Custom Game'
-                  )}
-                </Button>
-              </form>
-            </CardContent>
-          </Card>
+          {/* Form */}
+          <form onSubmit={handleSubmit} className="space-y-5">
+            <div className="space-y-2">
+              <label htmlFor="category" className="text-sm font-bold text-white">
+                Title <span className="text-[#F7C846]">*</span>
+              </label>
+              <input
+                id="category"
+                type="text"
+                placeholder="e.g. NOLAN FILM"
+                value={formData.category}
+                onChange={(e) => setFormData((prev) => ({ ...prev, category: e.target.value }))}
+                disabled={isLoading}
+                className="w-full px-4 py-3 text-white placeholder-white/40 bg-zinc-900 rounded-lg border border-zinc-700 focus:outline-none focus:ring-2 focus:ring-[#F7C846] focus:border-transparent disabled:opacity-50"
+              />
+              <p className="text-xs text-white/50">
+                This will be displayed as the puzzle theme to help players guess
+              </p>
+            </div>
+
+            <div className="space-y-2">
+              <label htmlFor="phrase" className="text-sm font-bold text-white">
+                Phrase <span className="text-[#F7C846]">*</span>
+              </label>
+              <textarea
+                id="phrase"
+                placeholder="e.g. THE DARK KNIGHT RISES"
+                value={formData.phrase}
+                onChange={(e) => setFormData((prev) => ({ ...prev, phrase: e.target.value }))}
+                disabled={isLoading}
+                rows={3}
+                maxLength={70}
+                className="w-full px-4 py-3 text-white placeholder-white/40 bg-zinc-900 rounded-lg border border-zinc-700 focus:outline-none focus:ring-2 focus:ring-[#F7C846] focus:border-transparent disabled:opacity-50 resize-none"
+              />
+              <p className="text-xs text-white/50">
+                {formData.phrase.length}/70 characters
+              </p>
+            </div>
+
+            {/* Requirements */}
+            <div className="p-4 space-y-2 bg-zinc-900 rounded-lg border border-zinc-700">
+              <h4 className="text-xs font-bold tracking-wider text-white/70">REQUIREMENTS</h4>
+              <ul className="space-y-1 text-sm text-white/60">
+                <li className="flex items-center gap-2">
+                  <span className="text-[#F7C846]">-</span> Maximum 70 characters total
+                </li>
+                <li className="flex items-center gap-2">
+                  <span className="text-[#F7C846]">-</span> Maximum 9 letters per word
+                </li>
+                <li className="flex items-center gap-2">
+                  <span className="text-[#F7C846]">-</span> Letters and spaces only
+                </li>
+              </ul>
+            </div>
+
+            <Button
+              type="submit"
+              disabled={isLoading || !formData.phrase.trim() || !formData.category.trim()}
+              className="w-full text-lg tracking-wide"
+              size="lg"
+            >
+              {isLoading ? (
+                <>
+                  <Loader2 className="w-5 h-5 animate-spin" />
+                  Creating Puzzle...
+                </>
+              ) : (
+                'Create Puzzle'
+              )}
+            </Button>
+          </form>
         </div>
       </div>
     </div>

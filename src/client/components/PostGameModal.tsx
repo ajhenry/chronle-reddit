@@ -73,102 +73,110 @@ export const PostGameModal: React.FC<PostGameModalProps> = ({
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
       <DialogContent
-        className="flex overflow-y-visible flex-col p-0 w-full h-full border-4 border-black bg-card sm:max-w-xl"
+        className="flex overflow-y-visible flex-col p-0 w-full h-full border-0 bg-black sm:max-w-xl"
         hideCloseButton
       >
-        <DialogClose className="absolute top-4 right-4 z-30 text-white rounded-sm transition-colors hover:text-white/80 focus:outline-none focus:ring-2 focus:ring-white focus:ring-offset-2 focus:ring-offset-black disabled:pointer-events-none">
-          <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+        <DialogClose className="absolute top-4 right-4 z-30 text-white rounded-sm transition-colors hover:text-[#F7C846] focus:outline-none focus:ring-2 focus:ring-[#F7C846] focus:ring-offset-2 focus:ring-offset-black disabled:pointer-events-none">
+          <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
             <path
               strokeLinecap="round"
               strokeLinejoin="round"
-              strokeWidth={2}
               d="M6 18L18 6M6 6l12 12"
             />
           </svg>
           <span className="sr-only">Close</span>
         </DialogClose>
 
-        {/* Header Banner */}
-        <div className="relative flex-shrink-0 py-6 text-center text-white bg-black">
-          <h1 className="text-4xl font-black tracking-tight text-white">PUZZLE</h1>
-          <h2 className="-mt-1 text-2xl font-black tracking-wider text-white">COMPLETE</h2>
+        {/* Header Banner with Logo */}
+        <div className="relative flex-shrink-0 py-8 text-center bg-black">
+          <div className="flex gap-1 justify-center mb-3">
+            {['P', 'U', 'Z', 'Z', 'L', 'E'].map((letter, index) => (
+              <div
+                key={index}
+                className="flex items-center justify-center w-9 h-9 sm:w-12 sm:h-12 bg-[#F7C846] text-black font-black text-xl sm:text-2xl rounded-sm"
+              >
+                {letter}
+              </div>
+            ))}
+          </div>
+          <p className="text-lg font-bold tracking-wider text-white">COMPLETE!</p>
         </div>
 
-        <div className="overflow-y-auto flex-1 p-6 space-y-6 min-h-auto">
+        <div className="overflow-y-auto flex-1 px-6 pb-6 space-y-5 min-h-auto bg-black">
           {/* Error State */}
           {error && (
-            <div className="py-8 text-center">
-              <div className="text-xl font-bold text-destructive">Failed to load stats</div>
-              <div className="mt-2 text-sm text-muted-foreground">{error}</div>
+            <div className="p-4 text-center bg-red-900/30 rounded-lg border border-red-500/50">
+              <div className="text-lg font-bold text-red-400">Failed to load stats</div>
+              <div className="mt-1 text-sm text-red-300/70">{error}</div>
             </div>
           )}
 
           {/* Stats Grid */}
-          <div className="grid grid-cols-2 gap-4">
-            <div className="p-4 text-center bg-white border-4 border-black shadow-lg">
-              <div className="mb-1 text-3xl font-black text-black">
-                {loading ? <Skeleton className="mx-auto w-16 h-9 bg-gray-300" /> : formatTime(time)}
+          <div className="grid grid-cols-2 gap-3">
+            <div className="p-4 text-center bg-zinc-900 rounded-lg border border-zinc-700">
+              <div className="mb-1 text-3xl font-black text-[#F7C846]">
+                {loading ? <Skeleton className="mx-auto w-16 h-9 bg-zinc-700" /> : formatTime(time)}
               </div>
-              <div className="text-sm font-bold tracking-wide text-black">
-                {loading ? <Skeleton className="mx-auto w-12 h-4 bg-gray-300" /> : 'TIME'}
+              <div className="text-xs font-bold tracking-wider text-white/70">
+                {loading ? <Skeleton className="mx-auto w-12 h-4 bg-zinc-700" /> : 'TIME'}
               </div>
             </div>
-            <div className="p-4 text-center bg-white border-4 border-black shadow-lg">
-              <div className="mb-1 text-3xl font-black text-black">
-                {loading ? <Skeleton className="mx-auto w-8 h-9 bg-gray-300" /> : moves}
+            <div className="p-4 text-center bg-zinc-900 rounded-lg border border-zinc-700">
+              <div className="mb-1 text-3xl font-black text-[#F7C846]">
+                {loading ? <Skeleton className="mx-auto w-8 h-9 bg-zinc-700" /> : moves}
               </div>
-              <div className="text-sm font-bold tracking-wide text-black">
-                {loading ? <Skeleton className="mx-auto w-12 h-4 bg-gray-300" /> : 'MOVES'}
+              <div className="text-xs font-bold tracking-wider text-white/70">
+                {loading ? <Skeleton className="mx-auto w-12 h-4 bg-zinc-700" /> : 'MOVES'}
               </div>
             </div>
           </div>
 
           {/* Theme Display */}
-          <div className="p-4 text-center border-4 border-black shadow-lg bg-primary">
-            <div className="mb-1 text-sm font-black tracking-wide text-black">
-              {loading ? <Skeleton className="mx-auto w-28 h-4 bg-gray-600" /> : "TODAY'S THEME"}
+          <div className="p-4 text-center bg-[#F7C846] rounded-lg">
+            <div className="mb-1 text-xs font-bold tracking-wider text-black/70">
+              {loading ? <Skeleton className="mx-auto w-28 h-4 bg-black/20" /> : 'THE PHRASE'}
             </div>
-            <div className="text-xl font-black text-black Howing-tight">
-              {loading ? <Skeleton className="mx-auto w-48 h-7 bg-gray-600" /> : theme}
+            <div className="text-xl font-black text-black tracking-tight">
+              {loading ? <Skeleton className="mx-auto w-48 h-7 bg-black/20" /> : theme}
             </div>
           </div>
 
-          {/* Leaderboard Display - always shown */}
-          <div className="p-4 bg-white border-4 border-black shadow-lg">
-            <div className="mb-3 text-lg font-black text-center text-black">LEADERBOARD</div>
+          {/* Leaderboard Display */}
+          <div className="p-4 bg-zinc-900 rounded-lg border border-zinc-700">
+            <div className="mb-3 text-sm font-bold tracking-wider text-center text-white/70">LEADERBOARD</div>
             {leaderboard && leaderboard.length > 0 ? (
               <>
                 <div className="space-y-2">
                   {leaderboard.slice(0, 5).map((entry, index) => (
                     <div
                       key={`${entry.username}-${entry.timeElapsed}-${entry.moves}`}
-                      className={`flex justify-between items-center p-2 border-2 border-black ${
+                      className={`flex justify-between items-center p-2.5 rounded-md ${
                         index === (playerRank ? playerRank - 1 : -1)
-                          ? 'bg-yellow-300 font-bold'
-                          : 'bg-gray-100'
+                          ? 'bg-[#F7C846] text-black'
+                          : 'bg-zinc-800 text-white'
                       }`}
                     >
                       <div className="flex gap-2 items-center">
-                        <span className="font-black text-black">#{index + 1}</span>
-                        <span className="font-bold text-black">{entry.username}</span>
+                        <span className={`font-black ${index === (playerRank ? playerRank - 1 : -1) ? 'text-black' : 'text-[#F7C846]'}`}>#{index + 1}</span>
+                        <span className="font-bold">{entry.username}</span>
                       </div>
                       <div className="flex gap-2 items-center">
-                        <span className="font-black text-black">
+                        <span className="font-black">
                           {formatTime(entry.timeElapsed)}
                         </span>
-                        <span className="text-xs font-bold text-black">({entry.moves} moves)</span>
+                        <span className={`text-xs font-bold ${index === (playerRank ? playerRank - 1 : -1) ? 'text-black/70' : 'text-white/60'}`}>({entry.moves} moves)</span>
                       </div>
                     </div>
                   ))}
                 </div>
                 {playerRank && totalPlayers && (
-                  <div className="mt-3 text-sm font-bold text-center text-black">
+                  <div className="mt-3 text-sm font-bold text-center text-white/60">
                     Your Rank: #{playerRank} of {totalPlayers} players
                   </div>
                 )}
               </>
             ) : (
-              <div className="py-4 text-sm text-center text-gray-500">
+              <div className="py-4 text-sm text-center text-white/50">
                 {loading ? 'Loading leaderboard...' : 'Be the first on the leaderboard!'}
               </div>
             )}
@@ -181,7 +189,7 @@ export const PostGameModal: React.FC<PostGameModalProps> = ({
           <div className="flex justify-center pt-4">
             <Button
               onClick={onClose}
-              className="bg-foreground text-background border-4 border-foreground font-black text-xl py-4 px-8 shadow-lg hover:shadow-xl transition-all duration-200 hover:translate-x-[-2px] hover:translate-y-[-2px] tracking-wider"
+              className="px-10 py-3 text-lg tracking-wide"
             >
               CLOSE
             </Button>
