@@ -45,10 +45,6 @@
   },
   "scheduler": {
     "tasks": {
-      "daily-item-fetch": {
-        "endpoint": "/internal/cron/daily-item-fetch",
-        "cron": "0 2 * * *"
-      },
       "daily-post": {
         "endpoint": "/internal/cron/daily-post",
         "cron": "0 0 * * *"

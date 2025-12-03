@@ -85,10 +85,7 @@ router.post('/api/custom/lettered', async (req, res): Promise<void> => {
     const { phrase, category } = validationResult.data;
 
     // Clean and validate phrase (only letters and spaces)
-    const cleanPhrase = phrase
-      .replace(/[^a-zA-Z\s]/g, '')
-      .toUpperCase()
-      .trim();
+    const cleanPhrase = phrase.replace(/[^a-zA-Z\s]/g, '').trim();
     if (!cleanPhrase) {
       res.status(400).json({
         error: 'Phrase must contain at least one letter',
@@ -165,7 +162,7 @@ router.post('/api/custom/lettered', async (req, res): Promise<void> => {
     try {
       const post = await reddit.submitCustomPost({
         subredditName: subredditName,
-        title: `LETTERED - ${category.toUpperCase()} by ${username}`,
+        title: `Lettered - ${category}`,
         splash: {
           appDisplayName: 'Lettered',
         },
@@ -234,10 +231,7 @@ router.post('/api/dev/lettered', async (req, res): Promise<void> => {
     const { phrase, seed } = validationResult.data;
 
     // Clean and validate phrase (only letters and spaces)
-    const cleanPhrase = phrase
-      .replace(/[^a-zA-Z\s]/g, '')
-      .toUpperCase()
-      .trim();
+    const cleanPhrase = phrase.replace(/[^a-zA-Z\s]/g, '').trim();
     if (!cleanPhrase) {
       res.status(400).json({
         error: 'Phrase must contain at least one letter',

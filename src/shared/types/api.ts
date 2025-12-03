@@ -82,7 +82,6 @@ export type UserStatsResponse = {
   stats: UserStats;
 };
 
-
 export type UserLeaderboardPositionResponse = {
   type: 'user_leaderboard_position';
   userId: string;

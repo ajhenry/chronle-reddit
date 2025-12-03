@@ -59,7 +59,10 @@ export const InGameCustomButton: React.FC<InGameCustomButtonProps> = ({
         <Plus className="mr-1 w-4 h-4" />
         Create Game
       </Button>
-      <Button onClick={() => void handleShare()} variant="outline" className="flex-1">
+      <Button
+        onClick={() => void handleShare()}
+        className="flex-1 bg-[#F7C846] text-black border-[#F7C846] hover:bg-[#E5B83D] hover:border-[#E5B83D]"
+      >
         <Share2 className="mr-1 w-4 h-4" />
         Share
       </Button>

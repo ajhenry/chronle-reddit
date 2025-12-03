@@ -308,21 +308,15 @@ export const LetteredInstructionsDialog: React.FC<LetteredInstructionsDialogProp
             key={cellKey}
             className={`w-5 h-5 rounded-sm flex items-center justify-center text-xs font-bold transition-all duration-50 ${
               isOccupied
-                ? 'text-white border-2 border-white/20'
+                ? 'text-black border-2 border-black/20 dark:border-white/20'
                 : isTray
-                  ? 'bg-gray-600' // No border for tray cells
+                  ? 'bg-muted' // No border for tray cells
                   : isLetterPosition
-                    ? 'bg-gray-300 border border-border'
-                    : 'bg-gray-700 border border-border'
+                    ? 'bg-gray-200 dark:bg-gray-300 border border-border'
+                    : 'bg-muted-foreground/30 dark:bg-gray-700 border border-border'
             }`}
             style={{
-              backgroundColor: isOccupied
-                ? occupyingPiece?.color
-                : isTray
-                  ? '#6B7280'
-                  : isLetterPosition
-                    ? '#D1D5DB'
-                    : '#374151',
+              backgroundColor: isOccupied ? occupyingPiece?.color : undefined,
             }}
             initial={{ scale: 0.8, opacity: 0 }}
             animate={{ scale: 1, opacity: isOccupied ? 1 : 0.7 }}
@@ -342,10 +336,10 @@ export const LetteredInstructionsDialog: React.FC<LetteredInstructionsDialogProp
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent
-        className="flex overflow-y-visible flex-col p-0 h-full bg-black border-0 sm:max-w-4xl"
+        className="flex overflow-y-visible flex-col p-0 h-full bg-background border-0 sm:max-w-4xl"
         hideCloseButton
       >
-        <DialogClose className="absolute top-4 right-4 z-30 text-white rounded-sm transition-colors hover:text-[#F7C846] focus:outline-none focus:ring-2 focus:ring-[#F7C846] focus:ring-offset-2 focus:ring-offset-black disabled:pointer-events-none">
+        <DialogClose className="absolute top-4 right-4 z-30 text-foreground rounded-sm transition-colors hover:text-[#F7C846] focus:outline-none focus:ring-2 focus:ring-[#F7C846] focus:ring-offset-2 focus:ring-offset-background disabled:pointer-events-none">
           <svg
             className="w-5 h-5"
             fill="none"
@@ -359,7 +353,7 @@ export const LetteredInstructionsDialog: React.FC<LetteredInstructionsDialogProp
         </DialogClose>
 
         {/* Header with Logo */}
-        <div className="relative flex-shrink-0 py-8 text-center bg-black">
+        <div className="relative flex-shrink-0 py-8 text-center bg-background">
           <div className="flex gap-1 justify-center mb-2">
             {['L', 'E', 'T', 'T', 'E', 'R', 'E', 'D'].map((letter, index) => (
               <div
@@ -370,15 +364,15 @@ export const LetteredInstructionsDialog: React.FC<LetteredInstructionsDialogProp
               </div>
             ))}
           </div>
-          <p className="text-sm font-semibold tracking-wide text-white/80 sm:text-base">
+          <p className="text-sm font-semibold tracking-wide text-muted-foreground sm:text-base">
             HOW TO PLAY
           </p>
         </div>
 
-        <div className="overflow-y-auto flex-1 px-6 pb-6 space-y-6 bg-black min-h-auto">
+        <div className="overflow-y-auto flex-1 px-6 pb-6 space-y-6 bg-background min-h-auto">
           {/* Game Board Animation */}
           <div className="flex justify-center">
-            <div className="p-4 rounded-lg border bg-zinc-900 border-zinc-700">
+            <div className="p-4 rounded-lg border bg-card border-border">
               <div className="flex justify-center">
                 <div
                   className="grid gap-1"
@@ -397,17 +391,17 @@ export const LetteredInstructionsDialog: React.FC<LetteredInstructionsDialogProp
           <div className="flex gap-8 justify-center">
             <div className="flex flex-col items-center">
               <div className="text-3xl font-black text-[#F7C846]">{moveCount}</div>
-              <div className="text-xs font-bold tracking-wider text-white/70">MOVES</div>
+              <div className="text-xs font-bold tracking-wider text-muted-foreground">MOVES</div>
             </div>
             <div className="flex flex-col items-center">
               <div className="text-3xl font-black text-[#F7C846]">{elapsedTime}s</div>
-              <div className="text-xs font-bold tracking-wider text-white/70">TIME</div>
+              <div className="text-xs font-bold tracking-wider text-muted-foreground">TIME</div>
             </div>
           </div>
 
           {/* Game Explanation */}
-          <div className="p-4 space-y-3 rounded-lg border bg-zinc-900 border-zinc-700">
-            <p className="text-sm leading-relaxed text-white/90">
+          <div className="p-4 space-y-3 rounded-lg border bg-card border-border">
+            <p className="text-sm leading-relaxed text-foreground">
               Arrange letter pieces to form a complete phrase. Each piece contains multiple letters
               that must be placed together on the grid.
             </p>
@@ -415,46 +409,46 @@ export const LetteredInstructionsDialog: React.FC<LetteredInstructionsDialogProp
 
           {/* How to Play Steps */}
           <div className="space-y-3">
-            <div className="flex items-start p-3 space-x-3 rounded-lg border bg-zinc-900 border-zinc-700">
+            <div className="flex items-start p-3 space-x-3 rounded-lg border bg-card border-border">
               <div className="w-7 h-7 bg-[#F7C846] text-black flex items-center justify-center text-sm font-black flex-shrink-0 rounded-sm">
                 1
               </div>
               <div>
-                <h5 className="font-bold text-white">Drag pieces from the tray</h5>
-                <p className="text-sm text-white/60">
+                <h5 className="font-bold text-foreground">Drag pieces from the tray</h5>
+                <p className="text-sm text-muted-foreground">
                   The tray contains all the letter pieces you need.
                 </p>
               </div>
             </div>
-            <div className="flex items-start p-3 space-x-3 rounded-lg border bg-zinc-900 border-zinc-700">
+            <div className="flex items-start p-3 space-x-3 rounded-lg border bg-card border-border">
               <div className="w-7 h-7 bg-[#F7C846] text-black flex items-center justify-center text-sm font-black flex-shrink-0 rounded-sm">
                 2
               </div>
               <div>
-                <h5 className="font-bold text-white">Place on the grid</h5>
-                <p className="text-sm text-white/60">
+                <h5 className="font-bold text-foreground">Place on the grid</h5>
+                <p className="text-sm text-muted-foreground">
                   Pieces can only be placed where they fit without overlapping.
                 </p>
               </div>
             </div>
-            <div className="flex items-start p-3 space-x-3 rounded-lg border bg-zinc-900 border-zinc-700">
+            <div className="flex items-start p-3 space-x-3 rounded-lg border bg-card border-border">
               <div className="w-7 h-7 bg-[#F7C846] text-black flex items-center justify-center text-sm font-black flex-shrink-0 rounded-sm">
                 3
               </div>
               <div>
-                <h5 className="font-bold text-white">Form the phrase</h5>
-                <p className="text-sm text-white/60">
+                <h5 className="font-bold text-foreground">Form the phrase</h5>
+                <p className="text-sm text-muted-foreground">
                   Arrange all pieces correctly to reveal the hidden phrase.
                 </p>
               </div>
             </div>
-            <div className="flex items-start p-3 space-x-3 rounded-lg border bg-zinc-900 border-zinc-700">
+            <div className="flex items-start p-3 space-x-3 rounded-lg border bg-card border-border">
               <div className="w-7 h-7 bg-[#F7C846] text-black flex items-center justify-center text-sm font-black flex-shrink-0 rounded-sm">
                 4
               </div>
               <div>
-                <h5 className="font-bold text-white">Finish fast</h5>
-                <p className="text-sm text-white/60">
+                <h5 className="font-bold text-foreground">Finish fast</h5>
+                <p className="text-sm text-muted-foreground">
                   Minimize moves and solve quickly for the best score!
                 </p>
               </div>

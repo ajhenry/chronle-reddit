@@ -25,6 +25,7 @@ export const LetteredLoadingAnimation: React.FC<LetteredLoadingAnimationProps> =
   console.log('gameId', gameId);
 
   // Mock pieces for the animation - spelling "LETTERED" in diagonal pattern
+  // Using the yellow color from the logo (#F7C846)
   const mockPieces: MockPiece[] = [
     {
       id: 'piece1',
@@ -34,7 +35,7 @@ export const LetteredLoadingAnimation: React.FC<LetteredLoadingAnimationProps> =
         { row: 0, col: 1 },
         { row: 0, col: 2 },
       ],
-      color: '#3B82F6', // blue
+      color: '#F7C846', // logo yellow
       position: null,
     },
     {
@@ -45,7 +46,7 @@ export const LetteredLoadingAnimation: React.FC<LetteredLoadingAnimationProps> =
         { row: 0, col: 1 },
         { row: 0, col: 2 },
       ],
-      color: '#10B981', // green
+      color: '#F7C846', // logo yellow
       position: null,
     },
     {
@@ -55,7 +56,7 @@ export const LetteredLoadingAnimation: React.FC<LetteredLoadingAnimationProps> =
         { row: 0, col: 0 },
         { row: 0, col: 1 },
       ],
-      color: '#F59E0B', // yellow
+      color: '#F7C846', // logo yellow
       position: null,
     },
   ];
@@ -135,7 +136,7 @@ export const LetteredLoadingAnimation: React.FC<LetteredLoadingAnimationProps> =
           <motion.div
             key={cellKey}
             className={`w-8 h-8 border border-border rounded-sm flex items-center justify-center text-xs font-bold transition-colors ${
-              isOccupied ? 'text-white' : 'bg-gray-200'
+              isOccupied ? 'text-black border-black' : 'bg-gray-200'
             }`}
             style={{
               backgroundColor: isOccupied ? occupyingPiece?.color : '#E5E7EB',
