@@ -1,5 +1,4 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { motion } from 'framer-motion';
 import { Dialog, DialogContent, DialogClose } from './ui/dialog';
 import { Button } from './ui/button';
 
@@ -90,7 +89,7 @@ const finalPieces: MockPiece[] = [
       { row: 0, col: 1 },
       { row: 0, col: 2 },
     ],
-    color: '#3B82F6', // Blue (T is TLIK group)
+    color: '#F7C846', // Gold (completed)
     position: { row: 1, col: 2 }, // Final position
   },
   {
@@ -102,7 +101,7 @@ const finalPieces: MockPiece[] = [
       { row: 0, col: 2 },
       { row: 0, col: 3 },
     ],
-    color: '#3B82F6', // Blue (L,I are TLIK group, O,N are ONNG group - mixed)
+    color: '#F7C846', // Gold (completed)
     position: { row: 2, col: 2 }, // Final position
   },
   {
@@ -114,7 +113,7 @@ const finalPieces: MockPiece[] = [
       { row: 0, col: 2 },
       { row: 0, col: 3 },
     ],
-    color: '#3B82F6', // Blue (K,I are TLIK group, N,G are ONNG group - mixed)
+    color: '#F7C846', // Gold (completed)
     position: { row: 3, col: 1 }, // Final position
   },
 ];
@@ -304,28 +303,26 @@ export const LetteredInstructionsDialog: React.FC<LetteredInstructionsDialogProp
         const isLetterPosition = letterPositions.has(cellKey) && !isOccupied && !isTray;
 
         cells.push(
-          <motion.div
+          <div
             key={cellKey}
-            className={`w-5 h-5 rounded-sm flex items-center justify-center text-xs font-bold transition-all duration-50 ${
+            className={`w-5 h-5 rounded-sm flex items-center justify-center text-xs font-bold ${
               isOccupied
                 ? 'text-black border-2 border-black/20 dark:border-white/20'
                 : isTray
                   ? 'bg-muted' // No border for tray cells
                   : isLetterPosition
-                    ? 'bg-gray-200 dark:bg-gray-300 border border-border'
-                    : 'bg-muted-foreground/30 dark:bg-gray-700 border border-border'
+                    ? 'bg-gray-200 border dark:bg-gray-300 border-border'
+                    : 'border bg-muted-foreground/30 dark:bg-gray-700 border-border'
             }`}
             style={{
               backgroundColor: isOccupied ? occupyingPiece?.color : undefined,
+              opacity: isOccupied ? 1 : 0.7,
             }}
-            initial={{ scale: 0.8, opacity: 0 }}
-            animate={{ scale: 1, opacity: isOccupied ? 1 : 0.7 }}
-            transition={{ duration: 0.3 }}
           >
             {isOccupied && occupyingPiece && localShapeIndex !== -1
               ? occupyingPiece.letters[localShapeIndex] || ''
               : ''}
-          </motion.div>
+          </div>
         );
       }
     }
@@ -336,7 +333,7 @@ export const LetteredInstructionsDialog: React.FC<LetteredInstructionsDialogProp
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent
-        className="flex overflow-y-visible flex-col p-0 h-full bg-background border-0 sm:max-w-4xl"
+        className="flex overflow-y-visible flex-col p-0 h-full border-0 bg-background sm:max-w-4xl"
         hideCloseButton
       >
         <DialogClose className="absolute top-4 right-4 z-30 text-foreground rounded-sm transition-colors hover:text-[#F7C846] focus:outline-none focus:ring-2 focus:ring-[#F7C846] focus:ring-offset-2 focus:ring-offset-background disabled:pointer-events-none">
@@ -394,7 +391,7 @@ export const LetteredInstructionsDialog: React.FC<LetteredInstructionsDialogProp
               <div className="text-xs font-bold tracking-wider text-muted-foreground">MOVES</div>
             </div>
             <div className="flex flex-col items-center">
-              <div className="text-3xl font-black text-[#F7C846]">{elapsedTime}s</div>
+              <div className="text-3xl font-black text-[#F7C846]">0:0{elapsedTime}</div>
               <div className="text-xs font-bold tracking-wider text-muted-foreground">TIME</div>
             </div>
           </div>
@@ -403,7 +400,7 @@ export const LetteredInstructionsDialog: React.FC<LetteredInstructionsDialogProp
           <div className="p-4 space-y-3 rounded-lg border bg-card border-border">
             <p className="text-sm leading-relaxed text-foreground">
               Arrange letter pieces to form a complete phrase. Each piece contains multiple letters
-              that must be placed together on the grid.
+              that must be placed together on the grid. The timer starts when you open the game.
             </p>
           </div>
 
