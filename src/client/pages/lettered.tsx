@@ -350,7 +350,7 @@ export const LetteredPage = ({
 
       // Game ID is required - all posts must have a gameId
       if (!gameId) {
-        throw new Error('Game ID is required');
+        throw new Error('Something went wrong fetching the game.');
       }
 
       // Reset state for new game load

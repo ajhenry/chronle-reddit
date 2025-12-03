@@ -174,15 +174,7 @@ export const LetteredLoadingAnimation: React.FC<LetteredLoadingAnimationProps> =
 
       {/* Loading text */}
       <div className="text-xl font-bold text-card-foreground">
-        {gameId ? (
-          <>
-            Loading custom <span className="text-primary">Lettered</span>
-          </>
-        ) : (
-          <>
-            Loading today's <span className="text-primary">Lettered</span>
-          </>
-        )}
+        Loading <span className="text-primary">Lettered</span>
       </div>
     </div>
   );

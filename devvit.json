@@ -1,6 +1,6 @@
 {
   "$schema": "https://developers.reddit.com/schema/config-file.v1.json",
-  "name": "ajhenrylet",
+  "name": "lettered-app",
   "post": {
     "dir": "dist/client",
     "entrypoints": {
@@ -21,8 +21,8 @@
   "menu": {
     "items": [
       {
-        "label": "Create a new Lettered post",
-        "description": "lettered-game",
+        "label": "Create a daily Lettered game",
+        "description": "Create's a post for today's current Lettered game. This value will be different across subreddits.",
         "location": "subreddit",
         "forUserType": "moderator",
         "endpoint": "/internal/menu/post-create"
@@ -56,6 +56,6 @@
     }
   },
   "dev": {
-    "subreddit": "ajhenry_playground"
+    "subreddit": "lettered"
   }
 }

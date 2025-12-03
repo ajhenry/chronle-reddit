@@ -1,6 +1,6 @@
 {
   "private": true,
-  "name": "ajhenrylet",
+  "name": "lettered-app",
   "version": "0.0.0",
   "license": "BSD-3-Clause",
   "type": "module",
@@ -33,8 +33,8 @@
     "type-check": "tsc --build"
   },
   "dependencies": {
-    "@devvit/public-api": "^0.12.5",
-    "@devvit/redis": "^0.12.5",
+    "@devvit/public-api": "0.12.5",
+    "@devvit/redis": "0.12.5",
     "@devvit/server": "0.12.5",
     "@devvit/shared-types": "0.12.5",
     "@devvit/web": "0.12.5",
