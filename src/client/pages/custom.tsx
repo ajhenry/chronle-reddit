@@ -1,5 +1,6 @@
 import { FormEvent, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { navigateTo } from '@devvit/web/client';
 import { Card, CardHeader, CardTitle, CardContent } from '../components/ui/card';
 import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
@@ -72,15 +73,16 @@ export const CustomGamePage = () => {
 
       toast.success('Custom game created successfully!');
 
-      // Navigate to the custom game
-      if (data.gameId) {
-        void navigate(`/lettered/${data.gameId}`);
+      // Navigate to the newly created Reddit post
+      if (data.postPermalink) {
+        navigateTo(data.postPermalink);
       } else {
-        // Fallback to opening Reddit post if gameId is not available
-        if (data.postPermalink) {
-          window.open(data.postPermalink, '_blank');
+        // Fallback to in-app navigation if postPermalink is not available
+        if (data.gameId) {
+          void navigate(`/lettered/${data.gameId}`);
+        } else {
+          void navigate('/');
         }
-        void navigate('/');
       }
     } catch (error) {
       console.error('Error creating custom game:', error);
