@@ -513,4 +513,160 @@ router.get('/api/admin/session/:sessionId', async (req, res): Promise<void> => {
   }
 });
 
+// Admin endpoint to clear the leaderboard for a specific game
+router.delete('/api/admin/lettered/:gameId/leaderboard', async (req, res): Promise<void> => {
+  try {
+    // First check if user is admin
+    const redditUsername = await reddit.getCurrentUsername();
+
+    if (!redditUsername || redditUsername === 'anonymous') {
+      res.status(404).json({
+        status: 'error',
+        message: 'Not found',
+      });
+      return;
+    }
+
+    const user = await getUserByRedditHandle(redditUsername);
+
+    if (!user || !user.admin) {
+      console.log('User is not admin', { user });
+      res.status(404).json({
+        status: 'error',
+        message: 'Not found',
+      });
+      return;
+    }
+
+    const { gameId } = req.params;
+
+    if (!gameId) {
+      res.status(400).json({
+        status: 'error',
+        message: 'Game ID is required',
+      });
+      return;
+    }
+
+    const redis = await getRedisClient();
+    let deletedCount = 0;
+
+    console.log('Clearing leaderboard for game:', gameId);
+
+    // Delete the game leaderboard sorted set
+    const leaderboardKey = RedisKeys.letteredGameLeaderboard(gameId);
+    await redis.del(leaderboardKey);
+    deletedCount++;
+
+    // Delete the game leaderboard metadata hash
+    const metadataKey = RedisKeys.letteredGameLeaderboardMeta(gameId);
+    await redis.del(metadataKey);
+    deletedCount++;
+
+    console.log('Cleared game leaderboard:', { gameId, deletedCount });
+
+    res.json({
+      status: 'success',
+      message: `Leaderboard cleared for game ${gameId}`,
+      data: {
+        gameId,
+        deletedCount,
+      },
+    });
+  } catch (error) {
+    console.error('Error clearing game leaderboard:', error);
+    res.status(500).json({
+      status: 'error',
+      message: 'Internal server error',
+    });
+  }
+});
+
+// Admin endpoint to clear all sessions and submissions for a specific game
+router.delete('/api/admin/lettered/:gameId/stats', async (req, res): Promise<void> => {
+  try {
+    // First check if user is admin
+    const redditUsername = await reddit.getCurrentUsername();
+
+    if (!redditUsername || redditUsername === 'anonymous') {
+      res.status(404).json({
+        status: 'error',
+        message: 'Not found',
+      });
+      return;
+    }
+
+    const user = await getUserByRedditHandle(redditUsername);
+
+    if (!user || !user.admin) {
+      console.log('User is not admin', { user });
+      res.status(404).json({
+        status: 'error',
+        message: 'Not found',
+      });
+      return;
+    }
+
+    const { gameId } = req.params;
+
+    if (!gameId) {
+      res.status(400).json({
+        status: 'error',
+        message: 'Game ID is required',
+      });
+      return;
+    }
+
+    const redis = await getRedisClient();
+    let sessionsDeleted = 0;
+    let submissionsDeleted = 0;
+
+    console.log('Clearing all sessions and submissions for game:', gameId);
+
+    // Get all sessions for this game from the per-game lookup
+    const sessionLookupKey = `lettered_session_lookup:${gameId}`;
+    const sessionMap = await redis.hGetAll(sessionLookupKey);
+
+    for (const [sessionId, userId] of Object.entries(sessionMap)) {
+      try {
+        // Delete session
+        const sessionKey = RedisKeys.letteredSession(userId, gameId);
+        await redis.del(sessionKey);
+        sessionsDeleted++;
+
+        // Delete submissions for this session
+        await redis.del(RedisKeys.letteredSubmissions(sessionId));
+        submissionsDeleted++;
+
+        // Remove from global lookup
+        const globalLookupKey = 'lettered_session_global_lookup';
+        await redis.hDel(globalLookupKey, [sessionId]);
+      } catch (err) {
+        console.error('Error deleting session:', sessionId, err);
+      }
+    }
+
+    // Clear the per-game lookup hash
+    await redis.del(sessionLookupKey);
+
+    console.log('Cleared game stats:', { gameId, sessionsDeleted, submissionsDeleted });
+
+    res.json({
+      status: 'success',
+      message: `Stats cleared for game ${gameId}`,
+      data: {
+        gameId,
+        sessionsDeleted,
+        submissionsDeleted,
+      },
+    });
+  } catch (error) {
+    console.error('Error clearing game stats:', error);
+    res.status(500).json({
+      status: 'error',
+      message: 'Internal server error',
+    });
+  }
+});
+
 export default router;

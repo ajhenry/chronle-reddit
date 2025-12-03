@@ -667,6 +667,60 @@ export const LetteredPage = ({
     await clearSession();
   };
 
+  // Clear leaderboard entries for current game (admin only)
+  const clearGameLeaderboard = async () => {
+    if (!gameId) return;
+
+    try {
+      const response = await apiFetch(`/api/admin/lettered/${gameId}/leaderboard`, {
+        method: 'DELETE',
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        console.error('Failed to clear leaderboard:', errorData);
+        toast.error('Failed to clear leaderboard');
+        return;
+      }
+
+      const data = await response.json();
+      toast.success(`Leaderboard cleared (${data.data.deletedCount} entries)`);
+      // Reload postgame stats
+      await loadPostGameStats();
+    } catch (error) {
+      console.error('Error clearing leaderboard:', error);
+      toast.error('Error clearing leaderboard');
+    }
+  };
+
+  // Clear all player stats for current game (admin only)
+  const clearGameStats = async () => {
+    if (!gameId) return;
+
+    try {
+      const response = await apiFetch(`/api/admin/lettered/${gameId}/stats`, {
+        method: 'DELETE',
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        console.error('Failed to clear game stats:', errorData);
+        toast.error('Failed to clear game stats');
+        return;
+      }
+
+      const data = await response.json();
+      toast.success(
+        `Game stats cleared (${data.data.sessionsDeleted} sessions, ${data.data.submissionsDeleted} submissions)`
+      );
+      // Reload the game to refresh state
+      await loadGame();
+    } catch (error) {
+      console.error('Error clearing game stats:', error);
+      toast.error('Error clearing game stats');
+    }
+  };
+
   const boardTileClass = (x: number, y: number) => {
     const baseClass = 'bg-card hover:bg-accent transition-colors';
 
@@ -841,6 +895,27 @@ export const LetteredPage = ({
                   type="button"
                 >
                   Regenerate Game
+                </Button>
+              </div>
+              {/* Admin-only Actions */}
+              <div className="flex flex-wrap gap-2">
+                <Button
+                  variant="destructive"
+                  size="sm"
+                  onClick={clearGameLeaderboard}
+                  className="text-xs bg-red-700 hover:bg-red-800"
+                  type="button"
+                >
+                  Clear Leaderboard
+                </Button>
+                <Button
+                  variant="destructive"
+                  size="sm"
+                  onClick={clearGameStats}
+                  className="text-xs bg-red-900 hover:bg-red-950"
+                  type="button"
+                >
+                  Clear All Game Stats
                 </Button>
               </div>
               {/* Debug Info */}
