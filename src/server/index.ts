@@ -9,6 +9,7 @@ import adminRoutes from './handlers/admin';
 import leaderboardRoutes from './handlers/leaderboard';
 import customRoutes from './handlers/custom';
 import contextRoutes from './handlers/context';
+import splashRoutes from './handlers/splash';
 
 // Environment detection
 // LOCAL_MODE=true: Use Express server + stubbed Reddit API for local development
@@ -57,6 +58,7 @@ app.use(adminRoutes);
 app.use(leaderboardRoutes);
 app.use(customRoutes);
 app.use(contextRoutes);
+app.use(splashRoutes);
 // Health check endpoint for development modes
 if (isLocal || isRedditDev) {
   app.get('/health', (_req, res) => {

@@ -128,6 +128,9 @@ export type LetteredGameData = {
   seed: number | null; // seed used for game generation
   createdAt: string;
   updatedAt: string;
+  // Creator info for custom games
+  creatorUsername?: string;
+  creatorIconUrl?: string;
 };
 
 export type LetteredGameResponse = {
@@ -217,3 +220,19 @@ export type LetteredPostGameResponse = {
   totalPlayers?: number;
   leaderboard?: GameLeaderboardEntryResponse[];
 };
+
+// Splash screen stats response
+export interface SplashStatsResponse {
+  gameId: string;
+  postType: 'daily' | 'custom';
+  // For daily games
+  formattedDate?: string; // e.g., "December 2nd, 2025"
+  // For custom games
+  title?: string; // category/theme
+  creatorUsername?: string;
+  creatorIconUrl?: string;
+  // Stats
+  totalCompletions: number;
+  averageTimeMs: number; // average time in milliseconds
+  averageMoves: number;
+}

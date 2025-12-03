@@ -115,11 +115,28 @@ router.post('/api/custom/lettered', async (req, res): Promise<void> => {
       return;
     }
 
+    // Get current user for the post title and creator info
+    let username = 'Anonymous';
+    let userIconUrl: string | undefined;
+    try {
+      const user = await reddit.getCurrentUser();
+      username = user?.username || 'Anonymous';
+      userIconUrl = user?.snoovatarUrl || user?.profileImage || undefined;
+      console.log('Creating custom game for user:', username, 'icon:', userIconUrl);
+    } catch (error) {
+      console.error('Error getting current user:', error);
+    }
+
     // Generate game data using the lettered-game-generator
     console.log(`Generating custom lettered game for phrase: "${cleanPhrase}"`);
     const seed = Math.floor(Math.random() * 1000000);
     const generatedGame = generateMockGame(category, cleanPhrase, seed);
-    const gameData = { ...generatedGame, postType: 'custom' as const };
+    const gameData = {
+      ...generatedGame,
+      postType: 'custom' as const,
+      creatorUsername: username,
+      creatorIconUrl: userIconUrl,
+    };
 
     // Create unique game ID for Redis storage
     const gameId = `custom-lettered:${Date.now()}:${Math.random().toString(36).substr(2, 9)}`;
@@ -142,16 +159,6 @@ router.post('/api/custom/lettered', async (req, res): Promise<void> => {
         error: 'Subreddit context not available',
       });
       return;
-    }
-
-    // Get current user for the post title
-    let username = 'Anonymous';
-    try {
-      const user = await reddit.getCurrentUser();
-      username = user?.username || 'Anonymous';
-      console.log('🔍 Creating custom game for user:', username);
-    } catch (error) {
-      console.error('Error getting current user:', error);
     }
 
     // Create Reddit post with the custom game

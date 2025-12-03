@@ -777,6 +777,81 @@ export const getGameLeaderboardTotalPlayers = async (gameId: string): Promise<nu
 };
 
 /**
+ * Game stats for splash screen display.
+ */
+export interface GameStats {
+  totalCompletions: number;
+  averageTimeMs: number; // average time in milliseconds
+  averageMoves: number;
+}
+
+/**
+ * Get aggregated stats for a game (total completions, average time, average moves).
+ * Used for splash screen display.
+ */
+export const getGameStats = async (gameId: string): Promise<GameStats> => {
+  try {
+    const redis = await getRedisClient();
+    const leaderboardKey = RedisKeys.letteredGameLeaderboard(gameId);
+    const metadataKey = RedisKeys.letteredGameLeaderboardMeta(gameId);
+
+    // Get total count
+    const totalCompletions = await redis.zCard(leaderboardKey);
+
+    if (!totalCompletions || totalCompletions === 0) {
+      return {
+        totalCompletions: 0,
+        averageTimeMs: 0,
+        averageMoves: 0,
+      };
+    }
+
+    // Get all entries to calculate averages (limit to 1000 for performance)
+    const rankings = await redis.zRange(leaderboardKey, 0, 999, { by: 'rank' });
+
+    if (!rankings || rankings.length === 0) {
+      return {
+        totalCompletions,
+        averageTimeMs: 0,
+        averageMoves: 0,
+      };
+    }
+
+    // Aggregate stats from metadata
+    let totalTimeMs = 0;
+    let totalMoves = 0;
+    let validEntries = 0;
+
+    for (const ranking of rankings) {
+      const userId = ranking.member as string;
+      const metadataStr = await redis.hGet(metadataKey, userId);
+
+      if (metadataStr) {
+        const metadata = deserialize<GameLeaderboardEntryStorage>(metadataStr);
+        if (metadata) {
+          totalTimeMs += metadata.time_elapsed;
+          totalMoves += metadata.moves;
+          validEntries++;
+        }
+      }
+    }
+
+    return {
+      totalCompletions,
+      averageTimeMs: validEntries > 0 ? Math.round(totalTimeMs / validEntries) : 0,
+      averageMoves: validEntries > 0 ? Math.round(totalMoves / validEntries) : 0,
+    };
+  } catch (error) {
+    console.error('Failed to get game stats:', { error });
+    return {
+      totalCompletions: 0,
+      averageTimeMs: 0,
+      averageMoves: 0,
+    };
+  }
+};
+
+/**
  * Check if a user already has an entry in a game's leaderboard.
  */
 export const hasUserCompletedGame = async (gameId: string, userId: string): Promise<boolean> => {
