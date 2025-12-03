@@ -1,6 +1,7 @@
 import { LetteredGameData, GridPosition, LetterPiece, GridCell } from '../../shared/types/api';
 
 export type GameStateUpdateCallback = (updates: Partial<GameState>) => void;
+export type FirstTimeCompletionCallback = () => void;
 
 export interface LayoutUpdateResult {
   hasChanges: boolean;
@@ -22,6 +23,7 @@ export interface GameState {
 export class LetteredGameStateManager {
   private state: GameState;
   private updateCallbacks: GameStateUpdateCallback[] = [];
+  private firstTimeCompletionCallbacks: FirstTimeCompletionCallback[] = [];
 
   constructor(gameData: LetteredGameData | null = null, gameStartTime?: number, moves?: number) {
     this.state = this.createInitialState(gameData, gameStartTime, moves);
@@ -66,6 +68,22 @@ export class LetteredGameStateManager {
     };
   }
 
+  // Subscribe to first-time completion events (only fires on fresh wins, not restored games)
+  onFirstTimeCompletion(callback: FirstTimeCompletionCallback): () => void {
+    this.firstTimeCompletionCallbacks.push(callback);
+    return () => {
+      const index = this.firstTimeCompletionCallbacks.indexOf(callback);
+      if (index > -1) {
+        this.firstTimeCompletionCallbacks.splice(index, 1);
+      }
+    };
+  }
+
+  // Notify first-time completion subscribers
+  private notifyFirstTimeCompletion(): void {
+    this.firstTimeCompletionCallbacks.forEach((callback) => callback());
+  }
+
   // Notify all subscribers of state changes
   private notifyUpdates(updates: Partial<GameState>): void {
     this.updateCallbacks.forEach((callback) => callback(updates));
@@ -105,11 +123,16 @@ export class LetteredGameStateManager {
         moves: this.state.moves,
       });
 
-      // Also check game completion now that restoration is done
-      void this.checkGameCompletion();
+      // Check game completion for restored games (isFirstTime=false to prevent confetti)
+      void this.checkGameCompletion(false);
     } else {
       this.notifyUpdates({ isRestoring });
     }
+  }
+
+  setGameComplete(gameComplete: boolean): void {
+    this.state.gameComplete = gameComplete;
+    this.notifyUpdates({ gameComplete });
   }
 
   // Check if in restoration mode
@@ -468,7 +491,8 @@ export class LetteredGameStateManager {
   }
 
   // Check if the game is complete
-  private async checkGameCompletion(): Promise<void> {
+  // isFirstTime: true for fresh gameplay completions, false for restored game checks
+  private async checkGameCompletion(isFirstTime: boolean = true): Promise<void> {
     if (!this.state.gameData || this.state.gameComplete) {
       return;
     }
@@ -487,7 +511,10 @@ export class LetteredGameStateManager {
 
     if (isSolutionCorrect) {
       this.state.gameComplete = true;
-      // Don't notify here - let the caller send all state updates atomically
+      // Fire first-time completion callback only for fresh wins, not restored games
+      if (isFirstTime) {
+        this.notifyFirstTimeCompletion();
+      }
     }
   }
 
@@ -589,5 +616,6 @@ export class LetteredGameStateManager {
   // Clean up resources
   destroy(): void {
     this.updateCallbacks = [];
+    this.firstTimeCompletionCallbacks = [];
   }
 }

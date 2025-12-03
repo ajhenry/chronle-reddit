@@ -226,12 +226,6 @@ export const LetteredPage = ({
   });
   const { theme } = useTheme();
 
-  // Flag to track if this is a reloaded completed game
-  const [isReloadedCompletedGame, setIsReloadedCompletedGame] = useState(false);
-
-  // Flag to track if session restoration is in progress
-  const [isRestoringSession, setIsRestoringSession] = useState(false);
-
   // Postgame stats state
   const [postGameStats, setPostGameStats] = useState<LetteredPostGameResponse | null>(null);
   const [postGameStatsLoading, setPostGameStatsLoading] = useState(false);
@@ -335,7 +329,7 @@ export const LetteredPage = ({
 
   // Update elapsed time display every second
   useEffect(() => {
-    if (!gameComplete && !isReloadedCompletedGame && gameStateManagerRef.current) {
+    if (!gameComplete && gameStateManagerRef.current) {
       const timer = setInterval(() => {
         const elapsed = gameStateManagerRef.current?.getElapsedTime() ?? 0;
         setElapsedTime(elapsed);
@@ -343,7 +337,7 @@ export const LetteredPage = ({
 
       return () => clearInterval(timer);
     }
-  }, [gameComplete, isReloadedCompletedGame]);
+  }, [gameComplete]);
 
   // Load game data from API
   const loadGame = useCallback(async () => {
@@ -355,15 +349,14 @@ export const LetteredPage = ({
         throw new Error('Game ID is required');
       }
 
-      // Reset flags for new game load
-      setIsReloadedCompletedGame(false);
-      setIsRestoringSession(false);
-      setMoves(0); // Reset moves for new game
+      // Reset state for new game load
+      setMoves(0);
 
       // Fetch game data using unified endpoint (works for both daily and custom games)
       console.log('Loading game:', gameId);
       const response = await fetchGameById(gameId);
       const { game: apiGameData, session: apiSessionData } = response;
+      console.log('response', { response });
 
       setGameData(apiGameData);
 
@@ -383,6 +376,9 @@ export const LetteredPage = ({
 
         // Store session ID for debug display
         setSessionId(apiSessionData.sessionId);
+
+        // Set if the game is complete
+        setGameComplete(apiSessionData.isCompleted);
       } else {
         // For new games, start time is now
         gameStartTime = Date.now();
@@ -395,14 +391,8 @@ export const LetteredPage = ({
 
         // If we have session data, restore the placed pieces
         if (apiSessionData) {
-          // Set restoration flags to prevent race conditions
-          setIsRestoringSession(true);
+          // Set restoration flag in manager to prevent first-time completion events
           gameStateManagerRef.current.setRestoring(true);
-
-          // Check if this is a reloaded completed game
-          if (apiSessionData.isCompleted) {
-            setIsReloadedCompletedGame(true);
-          }
 
           // Place pieces from the session data
           for (const [pieceId, position] of Object.entries(apiSessionData.pieces)) {
@@ -412,9 +402,11 @@ export const LetteredPage = ({
           // Update moves count from server
           setMoves(apiSessionData.moves);
 
-          // Clear restoration flags after all pieces are restored
+          // Clear restoration flag after all pieces are restored
           gameStateManagerRef.current.setRestoring(false);
-          setIsRestoringSession(false);
+
+          // Set if the game is complete
+          gameStateManagerRef.current.setGameComplete(apiSessionData.isCompleted);
         }
       }
 
@@ -448,20 +440,14 @@ export const LetteredPage = ({
     void initializeGame();
   }, [loadGame, isCheckingContext]);
 
-  // Handle game completion effects (UI side)
-  const handleGameComplete = useCallback(() => {
-    console.log('handleGameComplete called:', {
-      gameComplete,
-      isReloadedCompletedGame,
-      gameId,
-      postType: gameData?.postType,
-    });
+  // Subscribe to first-time completion events (only fires on fresh wins)
+  useEffect(() => {
+    if (!gameStateManagerRef.current) return;
 
-    if (gameComplete && !isReloadedCompletedGame) {
-      // Game completion is handled server-side via the session endpoint
-      // which detects wins and updates leaderboards automatically
+    const unsubscribe = gameStateManagerRef.current.onFirstTimeCompletion(() => {
+      console.log('First-time completion event received');
 
-      // Only show confetti and modal for NEW completions, not reloaded ones
+      // Show toast for the win
       toast.success('Congratulations!', {
         description: 'You completed the puzzle!',
         duration: 1500,
@@ -482,8 +468,10 @@ export const LetteredPage = ({
         clearTimeout(confettiTimer);
         clearTimeout(modalTimer);
       };
-    }
-  }, [gameComplete, isReloadedCompletedGame, gameId, gameData?.postType]);
+    });
+
+    return unsubscribe;
+  }, []);
 
   // Function to load postgame stats
   const loadPostGameStats = useCallback(async () => {
@@ -504,34 +492,18 @@ export const LetteredPage = ({
     }
   }, [gameId]);
 
-  // Handle game completion effects when game state changes
+  // Fetch postgame stats when game is complete (for restored completed games)
   useEffect(() => {
-    console.log('Game state changed:', {
-      gameComplete,
-      isReloadedCompletedGame,
-      gameId,
-      postType: gameData?.postType,
-    });
-
-    if (gameComplete && !isReloadedCompletedGame) {
-      console.log('Game completed - calling handleGameComplete');
-      handleGameComplete();
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [gameComplete, isReloadedCompletedGame, handleGameComplete]);
-
-  // Fetch postgame stats on load for reloaded completed games
-  useEffect(() => {
-    // Only fetch on load for previously completed games (not for fresh completions)
-    // Fresh completions will fetch stats after session save completes in handleGridLayoutChange
-    if (gameId && isReloadedCompletedGame) {
-      console.log('Fetching postgame stats for reloaded completed game:', {
+    // Fetch stats for completed games - this handles both restored and fresh completions
+    // Fresh completions also fetch stats after session save in handleGridLayoutChange
+    if (gameId && gameComplete && !loading) {
+      console.log('Fetching postgame stats for completed game:', {
         gameId,
         postType: gameData?.postType,
       });
       void loadPostGameStats();
     }
-  }, [gameId, isReloadedCompletedGame, gameData?.postType, loadPostGameStats]);
+  }, [gameId, gameComplete, loading, gameData?.postType, loadPostGameStats]);
 
   // Load postgame stats when modal opens
   useEffect(() => {
@@ -565,7 +537,7 @@ export const LetteredPage = ({
   // Handle layout changes from the grid
   const handleGridLayoutChange = useCallback(
     async (layout: (string | null)[][]) => {
-      if (!gameStateManagerRef.current || isRestoringSession) {
+      if (!gameStateManagerRef.current) {
         return;
       }
 
@@ -608,7 +580,7 @@ export const LetteredPage = ({
         }
       }
     },
-    [gameId, isRestoringSession, loadPostGameStats]
+    [gameId, loadPostGameStats]
   );
 
   const handleBackToMenu = () => {
@@ -677,7 +649,6 @@ export const LetteredPage = ({
     setGameComplete(false);
     setMoves(0);
     setElapsedTime(0);
-    setIsReloadedCompletedGame(false);
     setPostGameStats(null);
     setUIState({
       showConfetti: false,
@@ -724,12 +695,7 @@ export const LetteredPage = ({
       'text-primary-foreground transition-all touch-none duration-500 overflow-hidden';
     return cn(
       baseClass,
-      !(
-        gameStateManagerRef.current?.isGameComplete() ||
-        gameComplete ||
-        isRestoringSession ||
-        isReloadedCompletedGame
-      )
+      !(gameStateManagerRef.current?.isGameComplete() || gameComplete)
         ? piece.color
         : 'bg-muted-foreground gold-shimmer-number'
     );
@@ -890,14 +856,14 @@ export const LetteredPage = ({
       )}
 
       {/* In-Game Custom Game Button */}
-      {!isReloadedCompletedGame && !postGameStats && (
+      {!gameComplete && (
         <div className="flex flex-row justify-center mb-8 space-x-2">
           <InGameCustomButton className={cn('w-auto')} />
         </div>
       )}
 
-      {/* Completion Banner for Reloaded Games */}
-      {(isReloadedCompletedGame || postGameStats) && (
+      {/* Completion Banner for Completed Games */}
+      {gameComplete && (
         <div className="p-4 mb-4 rounded-lg border-2 border-foreground">
           <div
             className={cn(
@@ -950,7 +916,7 @@ export const LetteredPage = ({
       {/* Game Content */}
       <div className="flex justify-center">
         <Grid
-          key={`${gameComplete}-${isRestoringSession}`}
+          key={`${gameComplete}`}
           gridSize={{
             width: gameData.grid[0]!.length || 8,
             height: gameData.grid.length + 20, // Extend grid height to match server's maxRows for letter pieces area
@@ -960,7 +926,7 @@ export const LetteredPage = ({
           initialItems={convertGridDataToItems({
             grid: gameData.grid,
             placedPieces:
-              placedPieces.size === 0 && !isRestoringSession
+              placedPieces.size === 0
                 ? new Map(Object.entries(gameData.initialPiecePositions))
                 : placedPieces,
             pieces: gameData.pieces,
@@ -972,7 +938,7 @@ export const LetteredPage = ({
           defaultItemClassName="bg-primary text-primary-foreground"
           getBoardTileClassName={boardTileClass}
           getTileDraggingClassName={pieceTileDraggingClass}
-          disabled={gameComplete || isRestoringSession}
+          disabled={gameComplete}
         />
       </div>
       {/* Confetti Animation */}

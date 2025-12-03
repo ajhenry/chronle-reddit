@@ -70,10 +70,6 @@ export const PostGameModal: React.FC<PostGameModalProps> = ({
     onOpenChange(newOpen);
   };
 
-  console.log('leaderboard', leaderboard);
-  console.log('playerRank', playerRank);
-  console.log('totalPlayers', totalPlayers);
-
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
       <DialogContent
