@@ -14,8 +14,14 @@ router.get('/api/context', async (_req, res): Promise<void> => {
       status: 'success',
       context: {
         subredditName: 'test',
+        postId: 't3_test123',
+        metadata: {
+          postId: 't3_test123',
+          subredditName: 'test',
+        },
       },
     });
+    return;
   }
   try {
     // Access the post context to get metadata
@@ -60,8 +66,11 @@ router.get('/api/context', async (_req, res): Promise<void> => {
       status: 'success',
       context: {
         subredditName: postContext.subredditName,
+        postId: postId,
         metadata: {
           ...metadata,
+          postId: postId, // Post ID for sharing
+          subredditName: postContext.subredditName, // Subreddit name for sharing
           gameId: gameId, // Unified game ID (from Redis or metadata)
           customGameId: metadata.customGameId, // Keep for backwards compatibility
           gameType: gameId ? 'lettered' : metadata.gameType,

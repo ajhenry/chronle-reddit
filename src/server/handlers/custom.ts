@@ -15,11 +15,10 @@ import {
   addScoreToGlobalLeaderboard,
   getPlayerScoreForGame,
   getPlayerRankInGame,
-  CustomGameScore,
 } from '../database/redis';
-import { LetteredGameSessionResponse } from '../../shared/types/api';
+import { CustomGameScore } from '../../shared/types/api';
 
-const router = Router();
+const router: Router = Router();
 
 // Schema for custom lettered game creation
 const customLetteredSchema = z.object({
@@ -117,11 +116,12 @@ router.post('/api/custom/lettered', async (req, res): Promise<void> => {
 
     // Get current user for the post title and creator info
     let username = 'Anonymous';
-    let userIconUrl: string | undefined;
+    let userIconUrl: string =
+      'https://www.redditstatic.com/avatars/defaults/v2/avatar_default_1.png';
     try {
       const user = await reddit.getCurrentUser();
       username = user?.username || 'Anonymous';
-      userIconUrl = user?.snoovatarUrl || user?.profileImage || undefined;
+      userIconUrl = (await user?.getSnoovatarUrl()) ?? userIconUrl;
       console.log('Creating custom game for user:', username, 'icon:', userIconUrl);
     } catch (error) {
       console.error('Error getting current user:', error);
@@ -389,6 +389,8 @@ router.post('/api/custom/lettered/:gameId/complete', async (req, res): Promise<v
     }
 
     // Create completion entry
+    // Score = time in seconds + moves (lower is better)
+    const score = Math.floor(timeElapsed / 1000) + moves;
     const completionEntry: CustomGameScore = {
       username,
       gameId,
@@ -396,6 +398,7 @@ router.post('/api/custom/lettered/:gameId/complete', async (req, res): Promise<v
       completedAt: new Date().toISOString(),
       timeElapsed,
       moves,
+      score,
     };
 
     // Store completion in Redis using helper functions
@@ -403,7 +406,9 @@ router.post('/api/custom/lettered/:gameId/complete', async (req, res): Promise<v
     await addScoreToPlayerHistory(username, completionEntry);
     await addScoreToGlobalLeaderboard(completionEntry);
 
-    console.log(`Stored custom game completion: ${username} completed game ${gameId} in ${timeElapsed}ms with ${moves} moves`);
+    console.log(
+      `Stored custom game completion: ${username} completed game ${gameId} in ${timeElapsed}ms with ${moves} moves`
+    );
 
     res.json({
       status: 'success',

@@ -2,7 +2,6 @@ import React, { useState, useEffect, useRef } from 'react';
 import { motion } from 'framer-motion';
 import { Dialog, DialogContent, DialogClose } from './ui/dialog';
 import { Button } from './ui/button';
-import { calculateDecayAmount, DEFAULT_INITIAL_SCORE } from '../../shared/score-decay';
 
 interface LetteredInstructionsDialogProps {
   open: boolean;
@@ -147,35 +146,46 @@ export const LetteredInstructionsDialog: React.FC<LetteredInstructionsDialogProp
   >('idle');
   const [placedPieces, setPlacedPieces] = useState<MockPiece[]>([]);
   const [transformStep, setTransformStep] = useState(0);
-  const [currentScore, setCurrentScore] = useState(DEFAULT_INITIAL_SCORE);
-  const countdownRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const [moveCount, setMoveCount] = useState(0);
+  const [elapsedTime, setElapsedTime] = useState(0);
+  const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const [startTime, setStartTime] = useState(Date.now());
 
-  // Score countdown effect - rapid decay while dialog is open
+  // Timer effect - count up elapsed time while playing
   useEffect(() => {
-    if (!open && animationPhase !== 'idle') return;
+    if (!open) return;
 
-    countdownRef.current = setInterval(() => {
-      setCurrentScore((prevAmount) => {
-        const newScore =
-          prevAmount - calculateDecayAmount('lettered', (Date.now() - startTime) / 1000);
-        return newScore;
-      });
-    }, 1000); // Update every 100ms for rapid countdown
+    if (animationPhase === 'transforming') {
+      timerRef.current = setInterval(() => {
+        setElapsedTime(Math.floor((Date.now() - startTime) / 1000));
+      }, 100);
+    }
 
-    return () => clearInterval(countdownRef.current!);
+    return () => {
+      if (timerRef.current) clearInterval(timerRef.current);
+    };
   }, [animationPhase, open, startTime]);
 
-  // Reset score when animation loops back to idle
+  // Reset time and moves when animation loops back to idle
   useEffect(() => {
     if (animationPhase === 'idle' && open) {
-      setCurrentScore(DEFAULT_INITIAL_SCORE);
+      setElapsedTime(0);
+      setMoveCount(0);
       setStartTime(Date.now());
     }
     if (animationPhase === 'complete' && open) {
-      clearInterval(countdownRef.current!);
+      if (timerRef.current) clearInterval(timerRef.current);
     }
   }, [animationPhase, open]);
+
+  // Update move count based on transform step
+  useEffect(() => {
+    if (animationPhase === 'transforming') {
+      setMoveCount(transformStep - 1);
+    } else if (animationPhase === 'complete') {
+      setMoveCount(3); // Final move count
+    }
+  }, [transformStep, animationPhase]);
 
   // Animation logic - pieces start in tray, then transform to final positions
   useEffect(() => {
@@ -377,10 +387,16 @@ export const LetteredInstructionsDialog: React.FC<LetteredInstructionsDialogProp
 
             {/* Animation Description */}
             <div className="space-y-2 text-center">
-              {/* Dynamic Score Display */}
-              <div className="flex flex-col justify-center">
-                <div className="text-2xl font-black text-foreground">{currentScore}</div>
-                <div className="font-black text-md text-foreground">SCORE</div>
+              {/* Dynamic Moves and Time Display */}
+              <div className="flex gap-8 justify-center">
+                <div className="flex flex-col items-center">
+                  <div className="text-2xl font-black text-foreground">{moveCount}</div>
+                  <div className="font-black text-md text-foreground">MOVES</div>
+                </div>
+                <div className="flex flex-col items-center">
+                  <div className="text-2xl font-black text-foreground">{elapsedTime}s</div>
+                  <div className="font-black text-md text-foreground">TIME</div>
+                </div>
               </div>
             </div>
           </div>
@@ -441,8 +457,8 @@ export const LetteredInstructionsDialog: React.FC<LetteredInstructionsDialogProp
                 <h4 className="text-foreground">
                   <h5 className="text-lg font-black">Finish Fast</h5>
                   <p className="text-sm text-muted-foreground">
-                    Score decreases over time, the faster you complete the puzzle the higher your
-                    score will be.
+                    Your score is based on fewest moves in the shortest time. Minimize your moves
+                    and solve quickly for the best score!
                   </p>
                 </h4>
               </div>

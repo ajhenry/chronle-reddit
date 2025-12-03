@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
 import { requestExpandedMode } from '@devvit/web/client';
 import { apiFetch } from '../lib/utils';
 import type { SplashStatsResponse } from '../../shared/types/api';
@@ -11,6 +11,9 @@ function formatTime(ms: number): string {
   return `${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
 }
 
+// Default Reddit avatar URL
+const DEFAULT_AVATAR_URL = 'https://www.redditstatic.com/avatars/defaults/v2/avatar_default_1.png';
+
 // LETTERED logo component with yellow tile styling
 function LetteredLogo() {
   const letters = ['L', 'E', 'T', 'T', 'E', 'R', 'E', 'D'];
@@ -20,7 +23,7 @@ function LetteredLogo() {
       {letters.map((letter, index) => (
         <div
           key={index}
-          className="flex items-center justify-center w-10 h-10 sm:w-12 sm:h-12 bg-[#F7C846] text-black font-black text-xl sm:text-2xl rounded-sm"
+          className="flex items-center justify-center w-8 h-8 sm:w-12 sm:h-12 bg-[#F7C846] text-black font-black text-lg sm:text-2xl rounded-sm"
         >
           {letter}
         </div>
@@ -29,10 +32,22 @@ function LetteredLogo() {
   );
 }
 
-// Loading skeleton for the splash screen - matches exact layout of loaded state
-function SplashSkeleton() {
+// Play button component - shown in all states
+function PlayButton({ onClick }: { onClick: (e: React.MouseEvent) => void }) {
   return (
-    <div className="flex flex-col justify-between items-center px-6 py-8 min-h-screen bg-black">
+    <button
+      onClick={onClick}
+      className="mt-6 px-12 py-3 bg-[#F7C846] text-black font-bold text-lg rounded cursor-pointer hover:bg-[#E5B83D] transition-colors"
+    >
+      Play
+    </button>
+  );
+}
+
+// Loading skeleton for the splash screen - matches exact layout of loaded state
+function SplashSkeleton({ onPlay }: { onPlay: (e: React.MouseEvent) => void }) {
+  return (
+    <div className="flex flex-col gap-8 justify-center items-center px-6 py-8 min-h-screen bg-black">
       {/* Top section - Logo and tagline */}
       <div className="flex flex-col items-center">
         <LetteredLogo />
@@ -41,26 +56,18 @@ function SplashSkeleton() {
         </p>
       </div>
 
-      {/* Middle section - Game info and play button skeleton */}
+      {/* Middle section - Game info skeleton and real play button */}
       <div className="flex flex-col items-center">
         <div className="text-center animate-pulse">
           <div className="mx-auto mb-2 w-32 h-5 bg-gray-700 rounded" />
           <div className="mx-auto w-48 h-6 bg-gray-700 rounded" />
         </div>
-        {/* Play button skeleton */}
-        <div className="px-12 py-3 mt-6 bg-gray-700 rounded animate-pulse">
-          <div className="w-12 h-6 opacity-0">Play</div>
-        </div>
+        <PlayButton onClick={onPlay} />
       </div>
 
-      {/* Bottom section - Stats and create button skeleton */}
-      <div className="flex flex-col gap-4 justify-between items-center w-full sm:flex-row">
-        <div className="text-left animate-pulse">
-          <div className="w-64 h-4 bg-gray-700 rounded" />
-        </div>
-        <div className="px-6 py-3 bg-gray-700 rounded animate-pulse">
-          <div className="w-28 h-5 opacity-0">Create your own</div>
-        </div>
+      {/* Bottom section - Stats skeleton */}
+      <div className="text-center animate-pulse">
+        <div className="w-64 h-4 bg-gray-700 rounded" />
       </div>
     </div>
   );
@@ -127,19 +134,15 @@ export function Splash() {
     void requestExpandedMode(e.nativeEvent, 'game');
   };
 
-  const handleCreateYourOwn = (e: React.MouseEvent) => {
-    void requestExpandedMode(e.nativeEvent, 'game', '/custom');
-  };
-
   // Loading state
   if (loading || !splashData) {
-    return <SplashSkeleton />;
+    return <SplashSkeleton onPlay={handlePlay} />;
   }
 
-  // Error state - matches exact layout of loaded state
+  // Error state - centered layout
   if (error) {
     return (
-      <div className="flex flex-col justify-between items-center px-6 py-8 min-h-screen bg-black">
+      <div className="flex flex-col gap-8 justify-center items-center px-6 py-8 min-h-screen bg-black">
         {/* Top section - Logo and tagline */}
         <div className="flex flex-col items-center">
           <LetteredLogo />
@@ -158,21 +161,6 @@ export function Splash() {
             Try Again
           </button>
         </div>
-
-        {/* Bottom section - Empty placeholder to maintain layout */}
-        <div className="flex flex-col gap-4 justify-between items-center w-full sm:flex-row">
-          <div className="text-left">
-            <p className="text-sm sm:text-base font-semibold text-[#F7C846] opacity-0">
-              Placeholder
-            </p>
-          </div>
-          <button
-            onClick={handleCreateYourOwn}
-            className="px-6 py-3 bg-[#F7C846] text-black font-bold text-sm sm:text-base rounded cursor-pointer hover:bg-[#E5B83D] transition-colors whitespace-nowrap"
-          >
-            Create your own
-          </button>
-        </div>
       </div>
     );
   }
@@ -180,8 +168,10 @@ export function Splash() {
   const isDaily = splashData.postType === 'daily';
   const hasStats = splashData.totalCompletions > 0;
 
+  console.log(splashData);
+
   return (
-    <div className="flex flex-col justify-between items-center px-6 py-8 min-h-screen bg-black">
+    <div className="flex flex-col gap-8 justify-center items-center px-6 py-8 min-h-screen bg-black">
       {/* Top section - Logo and tagline */}
       <div className="flex flex-col items-center">
         <LetteredLogo />
@@ -195,28 +185,22 @@ export function Splash() {
         {/* Game-specific info */}
         {isDaily ? (
           <div className="text-center">
-            <p className="text-base font-semibold text-white sm:text-lg">Daily Game For</p>
-            <p className="text-lg font-bold text-white sm:text-xl">{splashData.formattedDate}</p>
+            <p className="text-base font-bold text-white sm:text-lg">Daily Game For</p>
+            <p className="text-lg font-black text-white sm:text-xl">{splashData.formattedDate}</p>
           </div>
         ) : (
           <div className="text-center">
-            <p className="text-lg font-bold tracking-wide text-white uppercase sm:text-xl">
-              {'<'}
+            <p className="text-lg font-black tracking-wide text-white uppercase sm:text-xl">
               {splashData.title || 'CUSTOM PUZZLE'}
-              {'>'}
             </p>
             {splashData.creatorUsername && (
               <div className="flex gap-2 justify-center items-center mt-2">
                 <span className="text-sm text-white sm:text-base">By</span>
-                {splashData.creatorIconUrl ? (
-                  <img
-                    src={splashData.creatorIconUrl}
-                    alt={splashData.creatorUsername}
-                    className="w-6 h-6 bg-gray-600 rounded-full"
-                  />
-                ) : (
-                  <div className="w-6 h-6 bg-gray-600 rounded-full" />
-                )}
+                <img
+                  src={splashData.creatorIconUrl || DEFAULT_AVATAR_URL}
+                  alt={splashData.creatorUsername}
+                  className="w-6 h-6 bg-gray-600 rounded-full"
+                />
                 <span className="text-sm text-white sm:text-base">
                   u/{splashData.creatorUsername}
                 </span>
@@ -225,40 +209,23 @@ export function Splash() {
           </div>
         )}
 
-        {/* Play button */}
-        <button
-          onClick={handlePlay}
-          className="mt-6 px-12 py-3 bg-[#F7C846] text-black font-bold text-lg rounded cursor-pointer hover:bg-[#E5B83D] transition-colors"
-        >
-          Play
-        </button>
+        <PlayButton onClick={handlePlay} />
       </div>
 
-      {/* Bottom section - Stats and create button */}
-      <div className="flex flex-col gap-4 justify-between items-center w-full sm:flex-row">
-        {/* Stats */}
-        <div className="text-left">
-          {hasStats ? (
-            <p className="text-sm sm:text-base font-semibold text-[#F7C846]">
-              Solved {splashData.totalCompletions}{' '}
-              {splashData.totalCompletions === 1 ? 'time' : 'times'} with an
-              <br className="sm:hidden" /> average of {formatTime(splashData.averageTimeMs)} and{' '}
-              {splashData.averageMoves} {splashData.averageMoves === 1 ? 'move' : 'moves'}
-            </p>
-          ) : (
-            <p className="text-sm sm:text-base font-semibold text-[#F7C846]">
-              Be the first to solve this puzzle!
-            </p>
-          )}
-        </div>
-
-        {/* Create your own button */}
-        <button
-          onClick={handleCreateYourOwn}
-          className="px-6 py-3 bg-[#F7C846] text-black font-bold text-sm sm:text-base rounded cursor-pointer hover:bg-[#E5B83D] transition-colors whitespace-nowrap"
-        >
-          Create your own
-        </button>
+      {/* Bottom section - Stats */}
+      <div className="text-center">
+        {hasStats ? (
+          <p className="text-sm font-semibold text-white sm:text-base">
+            Solved {splashData.totalCompletions}{' '}
+            {splashData.totalCompletions === 1 ? 'time' : 'times'} with an
+            <br className="sm:hidden" /> average of {formatTime(splashData.averageTimeMs)} and{' '}
+            {splashData.averageMoves} {splashData.averageMoves === 1 ? 'move' : 'moves'}
+          </p>
+        ) : (
+          <p className="text-sm font-semibold text-white sm:text-base">
+            Be the first to solve this puzzle!
+          </p>
+        )}
       </div>
     </div>
   );

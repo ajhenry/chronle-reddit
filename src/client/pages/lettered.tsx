@@ -211,6 +211,9 @@ export const LetteredPage = ({
 
   // Game ID from context API (primary source of truth)
   const [contextGameId, setContextGameId] = useState<string | null>(null);
+  // Post info for sharing
+  const [postId, setPostId] = useState<string | null>(null);
+  const [subredditName, setSubredditName] = useState<string | null>(null);
 
   // Effective game ID - prefer context, fallback to URL param
   const gameId = contextGameId || urlGameId;
@@ -263,12 +266,13 @@ export const LetteredPage = ({
           // Get gameId from context (primary source of truth)
           const gameIdFromContext = metadata?.gameId || metadata?.customGameId || debug?.gameId;
 
-          console.log('Lettered: Context data:', {
-            gameIdFromContext,
-            urlGameId,
-            gameType: metadata?.gameType,
-            postType: metadata?.postType,
-          });
+          // Store post info for sharing
+          if (metadata?.postId) {
+            setPostId(metadata.postId);
+          }
+          if (metadata?.subredditName) {
+            setSubredditName(metadata.subredditName);
+          }
 
           if (gameIdFromContext) {
             console.log('Lettered: Using gameId from context:', gameIdFromContext);
@@ -858,7 +862,11 @@ export const LetteredPage = ({
       {/* In-Game Custom Game Button */}
       {!gameComplete && (
         <div className="flex flex-row justify-center mb-8 space-x-2">
-          <InGameCustomButton className={cn('w-auto')} />
+          <InGameCustomButton
+            className={cn('w-auto')}
+            postId={postId}
+            subredditName={subredditName}
+          />
         </div>
       )}
 
@@ -879,7 +887,7 @@ export const LetteredPage = ({
                 <div className="text-sm text-muted-foreground">
                   {gameData.postType === 'daily'
                     ? 'Check back in tomorrow for a new puzzle'
-                    : 'You already solved this puzzle'}
+                    : 'Congrats, you solved the puzzle'}
                 </div>
               </div>
             </div>
@@ -900,6 +908,8 @@ export const LetteredPage = ({
               {/* In-Game Custom Game Button */}
               <InGameCustomButton
                 className={cn('w-full', gameData.postType === 'daily' && 'sm:w-auto')}
+                postId={postId}
+                subredditName={subredditName}
               />
             </div>
           </div>

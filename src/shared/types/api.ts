@@ -152,6 +152,7 @@ export interface CustomGameScore {
   completedAt: string;
   timeElapsed: number;
   moves: number;
+  score: number; // time in seconds + moves (lower is better)
   timestamp?: number; // Optional timestamp for sorting
 }
 
