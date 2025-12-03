@@ -110,7 +110,7 @@ export const CustomGamePage = () => {
 
   const handleBack = (e?: React.MouseEvent) => {
     e?.preventDefault();
-    void (window.history.length > 1 ? navigate(-1) : navigate('/'));
+    void navigate('/');
   };
 
   return (
@@ -120,43 +120,42 @@ export const CustomGamePage = () => {
           {/* Header with Logo */}
           <div className="flex flex-col items-center pt-4 pb-2">
             <LetteredLogo />
-            <p className="mt-3 text-sm font-semibold tracking-wide text-white/80">CREATE YOUR OWN PUZZLE</p>
+            <p className="mt-3 text-sm font-semibold tracking-wide text-white/80">
+              CREATE YOUR OWN PUZZLE
+            </p>
           </div>
 
           {/* Back Button */}
-          <Button
-            onClick={handleBack}
-            type="button"
-            variant="outline"
-            className="self-start"
-          >
+          <Button onClick={handleBack} type="button" variant="outline" className="self-start">
             <ArrowLeft className="w-4 h-4" />
             Back
           </Button>
 
           {/* How it works */}
-          <div className="p-4 space-y-3 bg-zinc-900 rounded-lg border border-zinc-700">
+          <div className="p-4 space-y-3 rounded-lg border bg-zinc-900 border-zinc-700">
             <h3 className="text-sm font-bold tracking-wider text-white/70">HOW IT WORKS</h3>
             <div className="space-y-2">
-              <div className="flex items-start gap-3">
+              <div className="flex gap-3 items-start">
                 <div className="w-6 h-6 bg-[#F7C846] text-black flex items-center justify-center text-xs font-black flex-shrink-0 rounded-sm">
                   1
                 </div>
                 <p className="text-sm text-white/80">Enter your custom title and phrase below</p>
               </div>
-              <div className="flex items-start gap-3">
+              <div className="flex gap-3 items-start">
                 <div className="w-6 h-6 bg-[#F7C846] text-black flex items-center justify-center text-xs font-black flex-shrink-0 rounded-sm">
                   2
                 </div>
                 <p className="text-sm text-white/80">Click "Create Puzzle" to generate the game</p>
               </div>
-              <div className="flex items-start gap-3">
+              <div className="flex gap-3 items-start">
                 <div className="w-6 h-6 bg-[#F7C846] text-black flex items-center justify-center text-xs font-black flex-shrink-0 rounded-sm">
                   3
                 </div>
-                <p className="text-sm text-white/80">A new Reddit post will be created with your puzzle</p>
+                <p className="text-sm text-white/80">
+                  A new Reddit post will be created with your puzzle
+                </p>
               </div>
-              <div className="flex items-start gap-3">
+              <div className="flex gap-3 items-start">
                 <div className="w-6 h-6 bg-[#F7C846] text-black flex items-center justify-center text-xs font-black flex-shrink-0 rounded-sm">
                   4
                 </div>
@@ -199,22 +198,20 @@ export const CustomGamePage = () => {
                 maxLength={70}
                 className="w-full px-4 py-3 text-white placeholder-white/40 bg-zinc-900 rounded-lg border border-zinc-700 focus:outline-none focus:ring-2 focus:ring-[#F7C846] focus:border-transparent disabled:opacity-50 resize-none"
               />
-              <p className="text-xs text-white/50">
-                {formData.phrase.length}/70 characters
-              </p>
+              <p className="text-xs text-white/50">{formData.phrase.length}/70 characters</p>
             </div>
 
             {/* Requirements */}
-            <div className="p-4 space-y-2 bg-zinc-900 rounded-lg border border-zinc-700">
+            <div className="p-4 space-y-2 rounded-lg border bg-zinc-900 border-zinc-700">
               <h4 className="text-xs font-bold tracking-wider text-white/70">REQUIREMENTS</h4>
               <ul className="space-y-1 text-sm text-white/60">
-                <li className="flex items-center gap-2">
+                <li className="flex gap-2 items-center">
                   <span className="text-[#F7C846]">-</span> Maximum 70 characters total
                 </li>
-                <li className="flex items-center gap-2">
+                <li className="flex gap-2 items-center">
                   <span className="text-[#F7C846]">-</span> Maximum 9 letters per word
                 </li>
-                <li className="flex items-center gap-2">
+                <li className="flex gap-2 items-center">
                   <span className="text-[#F7C846]">-</span> Letters and spaces only
                 </li>
               </ul>

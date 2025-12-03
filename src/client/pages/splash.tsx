@@ -227,6 +227,14 @@ export function Splash() {
           </p>
         )}
       </div>
+
+      {/* Create your own button */}
+      <button
+        onClick={(e) => requestExpandedMode(e.nativeEvent, 'creator')}
+        className="absolute right-4 bottom-4 px-6 py-2 text-sm font-bold text-[#F7C846] bg-transparent border-2 border-[#F7C846] rounded cursor-pointer hover:bg-[#F7C846] hover:text-black transition-colors"
+      >
+        Create your own
+      </button>
     </div>
   );
 }

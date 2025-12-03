@@ -18,6 +18,7 @@ export default defineConfig({
       input: {
         splash: 'splash.html',
         index: 'index.html',
+        creator: 'creator.html',
       },
       output: {
         entryFileNames: '[name].js',
