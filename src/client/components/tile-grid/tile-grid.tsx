@@ -1170,6 +1170,40 @@ const DragPreviewComponent = React.memo(
 
 DragPreviewComponent.displayName = 'DragPreview';
 
+// Scroll Zone Indicator Component - shows visible zones at top/bottom when dragging
+const ScrollZoneIndicator = React.memo(
+  ({ position, isVisible }: { position: 'top' | 'bottom'; isVisible: boolean }) => {
+    const zoneHeight = `${AUTO_SCROLL_CONFIG.edgeThresholdPercent * 100}vh`;
+
+    return (
+      <div
+        className={cn(
+          'fixed left-0 right-0 pointer-events-none z-[9999]',
+          'flex items-center justify-center',
+          'bg-black border-white/30',
+          'transition-all duration-200 ease-out overflow-hidden',
+          position === 'top' ? 'top-0 border-b origin-top' : 'bottom-0 border-t origin-bottom'
+        )}
+        style={{
+          height: isVisible ? zoneHeight : '0',
+        }}
+      >
+        <span
+          className={cn(
+            'text-white/50 text-sm font-medium tracking-wide',
+            'transition-opacity duration-150 delay-75',
+            isVisible ? 'opacity-100' : 'opacity-0'
+          )}
+        >
+          Drag Here to Scroll
+        </span>
+      </div>
+    );
+  }
+);
+
+ScrollZoneIndicator.displayName = 'ScrollZoneIndicator';
+
 // Main Grid component
 type GridProps = {
   gridSize: GridSize;
@@ -1253,6 +1287,7 @@ function GridContent({
     cellSize,
     spacing,
     dragPreview,
+    draggedItemId,
     setDragPreview,
     setDraggedItemId,
     setGrabOffset,
@@ -1261,6 +1296,10 @@ function GridContent({
 
   const gridRef = React.useRef<HTMLDivElement>(null);
 
+  // Track scroll position to hide indicators when at top/bottom
+  const [canScrollUp, setCanScrollUp] = useState(false);
+  const [canScrollDown, setCanScrollDown] = useState(true);
+
   // Capture grid bounds when component mounts or resizes
   React.useEffect(() => {
     if (gridRef.current) {
@@ -1268,25 +1307,38 @@ function GridContent({
     }
   }, [setGridBounds, gridSize, cellSize]);
 
-  // Update grid bounds when page scrolls
+  // Update grid bounds and scroll state when page scrolls
   React.useEffect(() => {
-    const updateGridBounds = () => {
+    const updateScrollState = () => {
       if (gridRef.current) {
         setGridBounds(gridRef.current.getBoundingClientRect());
       }
+
+      // Check if we can scroll up (not at top)
+      const scrollTop = window.scrollY || document.documentElement.scrollTop;
+      setCanScrollUp(scrollTop > 5); // Small threshold to avoid floating point issues
+
+      // Check if we can scroll down (not at bottom)
+      const scrollHeight = document.documentElement.scrollHeight;
+      const clientHeight = window.innerHeight;
+      const maxScroll = scrollHeight - clientHeight;
+      setCanScrollDown(scrollTop < maxScroll - 5); // Small threshold
     };
 
+    // Initial check
+    updateScrollState();
+
     // Listen for scroll events on window and document
-    window.addEventListener('scroll', updateGridBounds, { passive: true });
-    document.addEventListener('scroll', updateGridBounds, { passive: true });
+    window.addEventListener('scroll', updateScrollState, { passive: true });
+    document.addEventListener('scroll', updateScrollState, { passive: true });
 
     // Also listen for resize events in case the viewport changes
-    window.addEventListener('resize', updateGridBounds, { passive: true });
+    window.addEventListener('resize', updateScrollState, { passive: true });
 
     return () => {
-      window.removeEventListener('scroll', updateGridBounds);
-      document.removeEventListener('scroll', updateGridBounds);
-      window.removeEventListener('resize', updateGridBounds);
+      window.removeEventListener('scroll', updateScrollState);
+      document.removeEventListener('scroll', updateScrollState);
+      window.removeEventListener('resize', updateScrollState);
     };
   }, [setGridBounds]);
 
@@ -1336,39 +1388,45 @@ function GridContent({
   );
 
   return (
-    <div className={cn('inline-block', className)}>
-      <div ref={gridRef} style={{ ...gridStyle, pointerEvents: dragPreview ? 'none' : 'auto' }}>
-        {/* Grid cells as drop zones */}
-        {gridCells}
+    <>
+      {/* Scroll zone indicators - animate in/out when dragging, hide when at scroll limits */}
+      <ScrollZoneIndicator position="top" isVisible={!!draggedItemId && canScrollUp} />
+      <ScrollZoneIndicator position="bottom" isVisible={!!draggedItemId && canScrollDown} />
 
-        {/* Draggable items */}
-        {items.map((item) => (
-          <DraggableItemComponent
-            key={item.id}
-            item={item}
-            onDragStart={handleDragStart}
-            onDragEnd={handleDragEnd}
-            defaultClassName={defaultItemClassName}
-          />
-        ))}
+      <div className={cn('inline-block', className)}>
+        <div ref={gridRef} style={{ ...gridStyle, pointerEvents: dragPreview ? 'none' : 'auto' }}>
+          {/* Grid cells as drop zones */}
+          {gridCells}
 
-        {/* Drag preview */}
-        {dragPreview && (
-          <DragPreviewComponent
-            item={dragPreview.item}
-            position={dragPreview.position}
-            isValid={dragPreview.isValid}
-            cellSize={cellSize}
-            spacing={spacing}
-            getTileDraggingClassName={getTileDraggingClassName}
-            defaultClassName={defaultItemClassName}
-          />
-        )}
+          {/* Draggable items */}
+          {items.map((item) => (
+            <DraggableItemComponent
+              key={item.id}
+              item={item}
+              onDragStart={handleDragStart}
+              onDragEnd={handleDragEnd}
+              defaultClassName={defaultItemClassName}
+            />
+          ))}
 
-        {/* Custom children (for additional content) */}
-        {children}
+          {/* Drag preview */}
+          {dragPreview && (
+            <DragPreviewComponent
+              item={dragPreview.item}
+              position={dragPreview.position}
+              isValid={dragPreview.isValid}
+              cellSize={cellSize}
+              spacing={spacing}
+              getTileDraggingClassName={getTileDraggingClassName}
+              defaultClassName={defaultItemClassName}
+            />
+          )}
+
+          {/* Custom children (for additional content) */}
+          {children}
+        </div>
       </div>
-    </div>
+    </>
   );
 }
 
