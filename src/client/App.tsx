@@ -15,6 +15,19 @@ import type { User } from '../shared/types/api';
 export const App = () => {
   const navigate = useNavigate();
   const [userInfo, setUserInfo] = useState<User | null>(null);
+  const [showAdminUI, setShowAdminUI] = useState(true);
+
+  // Toggle admin UI visibility with backtick key
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === '`') {
+        setShowAdminUI((prev) => !prev);
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, []);
 
   // Check game status and create games if needed
   useEffect(() => {
@@ -77,7 +90,7 @@ export const App = () => {
 
   return (
     <>
-      <AdminBanner user={userInfo} />
+      {showAdminUI && <AdminBanner user={userInfo} />}
       <ScrollToTop />
 
       <Routes>
@@ -92,7 +105,12 @@ export const App = () => {
         <Route path="/admin" element={<AdminPage />} />
         <Route
           path="*"
-          element={<LetteredPage onBack={handleBackToMenu} isAdmin={userInfo?.admin ?? false} />}
+          element={
+            <LetteredPage
+              onBack={handleBackToMenu}
+              isAdmin={showAdminUI && (userInfo?.admin ?? false)}
+            />
+          }
         />
       </Routes>
     </>
