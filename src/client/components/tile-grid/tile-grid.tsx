@@ -1204,6 +1204,66 @@ const ScrollZoneIndicator = React.memo(
 
 ScrollZoneIndicator.displayName = 'ScrollZoneIndicator';
 
+// Pieces Below Indicator - shows when pieces are below the viewport
+const PiecesBelowIndicator = React.memo(
+  ({ isVisible, onClick }: { isVisible: boolean; onClick: () => void }) => {
+    return (
+      <div
+        className={cn(
+          'fixed left-0 right-0 bottom-0 z-[9998]',
+          'flex items-center justify-center',
+          'bg-black/80 border-t border-white/30',
+          'transition-all duration-200 ease-out overflow-hidden cursor-pointer',
+          'hover:bg-black/90'
+        )}
+        style={{
+          height: isVisible ? '40px' : '0',
+          pointerEvents: isVisible ? 'auto' : 'none',
+        }}
+        onClick={onClick}
+      >
+        <span
+          className={cn(
+            'text-white/70 text-sm font-medium tracking-wide flex items-center gap-2',
+            'transition-opacity duration-150 delay-75',
+            isVisible ? 'opacity-100' : 'opacity-0'
+          )}
+        >
+          <svg
+            xmlns="http://www.w3.org/2000/svg"
+            width="16"
+            height="16"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          >
+            <path d="m6 9 6 6 6-6" />
+          </svg>
+          Pieces Below
+          <svg
+            xmlns="http://www.w3.org/2000/svg"
+            width="16"
+            height="16"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          >
+            <path d="m6 9 6 6 6-6" />
+          </svg>
+        </span>
+      </div>
+    );
+  }
+);
+
+PiecesBelowIndicator.displayName = 'PiecesBelowIndicator';
+
 // Main Grid component
 type GridProps = {
   gridSize: GridSize;
@@ -1300,6 +1360,67 @@ function GridContent({
   const [canScrollUp, setCanScrollUp] = useState(false);
   const [canScrollDown, setCanScrollDown] = useState(true);
 
+  // Track if pieces are below the viewport (80%+ hidden)
+  const [hasPiecesBelow, setHasPiecesBelow] = useState(false);
+  const lowestPieceBottomRef = useRef<number>(0);
+
+  // Check if any piece is 80%+ below the viewport
+  const checkPiecesBelow = useCallback(() => {
+    if (!gridRef.current || items.length === 0) {
+      setHasPiecesBelow(false);
+      return;
+    }
+
+    const gridRect = gridRef.current.getBoundingClientRect();
+    const viewportBottom = window.innerHeight;
+    let anyPieceBelow = false;
+    let lowestBottom = 0;
+
+    items.forEach((item) => {
+      // Calculate item's dimensions and position
+      const itemHeight = item.shape.height * cellSize.height + (item.shape.height - 1) * spacing;
+      const itemTop = item.position.y * (cellSize.height + spacing);
+      const itemBottom = itemTop + itemHeight;
+
+      // Convert to viewport position
+      const itemTopOnScreen = gridRect.top + itemTop;
+      const itemBottomOnScreen = gridRect.top + itemBottom;
+
+      // Calculate how much of the item is visible
+      const visibleTop = Math.max(0, itemTopOnScreen);
+      const visibleBottom = Math.min(viewportBottom, itemBottomOnScreen);
+      const visibleHeight = Math.max(0, visibleBottom - visibleTop);
+      const visibilityRatio = visibleHeight / itemHeight;
+
+      // If less than 20% is visible (80%+ is hidden) and it's below viewport
+      if (visibilityRatio < 0.2 && itemTopOnScreen > viewportBottom * 0.5) {
+        anyPieceBelow = true;
+      }
+
+      // Track lowest piece bottom for scrolling
+      const itemBottomOnPage = gridRect.top + window.scrollY + itemBottom;
+      if (itemBottomOnPage > lowestBottom) {
+        lowestBottom = itemBottomOnPage;
+      }
+    });
+
+    lowestPieceBottomRef.current = lowestBottom;
+    setHasPiecesBelow(anyPieceBelow);
+  }, [items, cellSize, spacing]);
+
+  // Scroll to the lowest piece
+  const scrollToLowestPiece = useCallback(() => {
+    const lowestBottom = lowestPieceBottomRef.current;
+    if (lowestBottom > 0) {
+      // Scroll so the lowest piece is visible with some padding
+      const targetScroll = lowestBottom - window.innerHeight + 60;
+      window.scrollTo({
+        top: Math.max(0, targetScroll),
+        behavior: 'smooth',
+      });
+    }
+  }, []);
+
   // Capture grid bounds when component mounts or resizes
   React.useEffect(() => {
     if (gridRef.current) {
@@ -1323,6 +1444,9 @@ function GridContent({
       const clientHeight = window.innerHeight;
       const maxScroll = scrollHeight - clientHeight;
       setCanScrollDown(scrollTop < maxScroll - 5); // Small threshold
+
+      // Check for pieces below viewport
+      checkPiecesBelow();
     };
 
     // Initial check
@@ -1340,7 +1464,7 @@ function GridContent({
       document.removeEventListener('scroll', updateScrollState);
       window.removeEventListener('resize', updateScrollState);
     };
-  }, [setGridBounds]);
+  }, [setGridBounds, checkPiecesBelow]);
 
   const handleDragStart = useCallback(
     (item: DraggableItem, initialGrabOffset?: GridPosition) => {
@@ -1392,6 +1516,12 @@ function GridContent({
       {/* Scroll zone indicators - animate in/out when dragging, hide when at scroll limits */}
       <ScrollZoneIndicator position="top" isVisible={!!draggedItemId && canScrollUp} />
       <ScrollZoneIndicator position="bottom" isVisible={!!draggedItemId && canScrollDown} />
+
+      {/* Pieces below indicator - shows when pieces are 80%+ below viewport, hidden during drag */}
+      <PiecesBelowIndicator
+        isVisible={hasPiecesBelow && !draggedItemId}
+        onClick={scrollToLowestPiece}
+      />
 
       <div className={cn('inline-block', className)}>
         <div ref={gridRef} style={{ ...gridStyle, pointerEvents: dragPreview ? 'none' : 'auto' }}>
