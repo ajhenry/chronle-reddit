@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { useParams } from 'react-router-dom';
+import { useParams, useNavigate } from 'react-router-dom';
 import Confetti from 'react-confetti';
 import { GameLayout } from '../components/GameLayout';
 import { toast } from 'sonner';
@@ -8,7 +8,6 @@ import { Button } from '../components/ui/button';
 import { PostGameModal } from '../components/PostGameModal';
 import { LetteredLoadingAnimation } from '../components/LetteredLoadingAnimation';
 import { LetteredInstructionsDialog } from '../components/LetteredInstructionsDialog';
-import { InGameCustomButton } from '../components/InGameCustomButton';
 import { LetteredGameData, GridPosition, LetterPiece, GridCell } from '../../shared/types/api';
 import { getResponsiveCellSize, getResponsiveCellSpacing } from '../lib/lettered-utils';
 import { useViewport } from '../hooks/useViewport';
@@ -201,6 +200,7 @@ export const LetteredPage = ({
   isAdmin?: boolean;
 }) => {
   const { gameId: urlGameId } = useParams<{ gameId?: string }>();
+  const navigate = useNavigate();
   const [showDebugTools, setShowDebugTools] = useState(false);
   const [, setShowGoldShimmer] = useState(false);
   const [showInstructions, setShowInstructions] = useState(false);
@@ -596,6 +596,10 @@ export const LetteredPage = ({
     }
   };
 
+  const handleCreateGame = () => {
+    void navigate('/custom');
+  };
+
   const resetGame = () => {
     // void navigate(0);
   };
@@ -781,6 +785,9 @@ export const LetteredPage = ({
         time={0}
         moves={0}
         onBack={handleBackToMenu}
+        onCreateGame={handleCreateGame}
+        postId={postId}
+        subredditName={subredditName}
         logoSrc="/lettered-logo.svg"
       >
         <CardContent className="flex flex-col justify-center items-center p-8 space-y-4">
@@ -801,6 +808,9 @@ export const LetteredPage = ({
         time={0}
         moves={0}
         onBack={handleBackToMenu}
+        onCreateGame={handleCreateGame}
+        postId={postId}
+        subredditName={subredditName}
         logoSrc="/lettered-logo.svg"
       >
         <CardContent className="flex justify-center items-center p-8">
@@ -818,6 +828,9 @@ export const LetteredPage = ({
         time={0}
         moves={0}
         onBack={handleBackToMenu}
+        onCreateGame={handleCreateGame}
+        postId={postId}
+        subredditName={subredditName}
         logoSrc="/lettered-logo.svg"
       >
         <CardContent className="flex flex-col justify-center items-center p-8 space-y-4">
@@ -840,6 +853,9 @@ export const LetteredPage = ({
       onBack={handleBackToMenu}
       onLeaderboard={() => setUIState((prev) => ({ ...prev, showGameOverModal: true }))}
       onHelp={() => setShowInstructions(true)}
+      onCreateGame={handleCreateGame}
+      postId={postId}
+      subredditName={subredditName}
       logoSrc="/lettered-logo.svg"
     >
       {/* Admin Debug Controls */}
@@ -934,17 +950,6 @@ export const LetteredPage = ({
         </div>
       )}
 
-      {/* In-Game Custom Game Button */}
-      {!gameComplete && (
-        <div className="flex flex-row justify-center mb-8 space-x-2">
-          <InGameCustomButton
-            className={cn('w-auto')}
-            postId={postId}
-            subredditName={subredditName}
-          />
-        </div>
-      )}
-
       {/* Completion Banner for Completed Games */}
       {gameComplete && (
         <div className="p-4 mb-4 rounded-lg border-2 border-foreground">
@@ -966,27 +971,14 @@ export const LetteredPage = ({
                 </div>
               </div>
             </div>
-            <div
-              className={cn(
-                'flex flex-col gap-2 w-full sm:w-auto sm:flex-row',
-                gameData.postType === 'daily' ? 'sm:flex-row' : 'sm:w-full'
-              )}
+            <Button
+              onClick={() => setUIState((prev) => ({ ...prev, showGameOverModal: true }))}
+              variant="outline"
+              className="self-start"
+              type="button"
             >
-              <Button
-                onClick={() => setUIState((prev) => ({ ...prev, showGameOverModal: true }))}
-                variant="outline"
-                className={cn('self-start w-full', gameData.postType === 'daily' && 'sm:w-auto')}
-                type="button"
-              >
-                View Stats
-              </Button>
-              {/* In-Game Custom Game Button */}
-              <InGameCustomButton
-                className={cn('w-full', gameData.postType === 'daily' && 'sm:w-auto')}
-                postId={postId}
-                subredditName={subredditName}
-              />
-            </div>
+              View Stats
+            </Button>
           </div>
         </div>
       )}

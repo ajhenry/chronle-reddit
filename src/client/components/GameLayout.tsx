@@ -2,6 +2,13 @@ import { ReactNode, useState } from 'react';
 import { Button } from './ui/button';
 import { Card, CardContent } from './ui/card';
 import { cn } from '../lib/utils';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from './ui/dropdown-menu';
+import { Menu, Plus, Share2, HelpCircle } from 'lucide-react';
 
 interface GameLayoutProps {
   gameTitle: string;
@@ -11,6 +18,9 @@ interface GameLayoutProps {
   onBack: () => void;
   onLeaderboard?: () => void;
   onHelp?: () => void;
+  onCreateGame?: () => void;
+  postId?: string | null;
+  subredditName?: string | null;
   logoSrc?: string;
   className?: string;
 }
@@ -28,6 +38,38 @@ const formatTime = (ms: number): string => {
   return `${minutes}:${seconds.toString().padStart(2, '0')}`;
 };
 
+// Helper to get Reddit post URL for sharing
+const getRedditPostUrl = (postId?: string | null, subredditName?: string | null) => {
+  if (!postId || !subredditName) return null;
+  // Remove t3_ prefix if present
+  const cleanPostId = postId.startsWith('t3_') ? postId.slice(3) : postId;
+  return `https://www.reddit.com/r/${subredditName}/comments/${cleanPostId}/`;
+};
+
+// Handle share action
+const handleShare = async (postId?: string | null, subredditName?: string | null) => {
+  const redditUrl = getRedditPostUrl(postId, subredditName);
+  const shareUrl = redditUrl || window.location.href;
+
+  const shareData = {
+    title: 'Lettered',
+    text: 'Check out this puzzle game on Reddit!',
+    url: shareUrl,
+  };
+
+  try {
+    if (navigator.share && navigator.canShare(shareData)) {
+      await navigator.share(shareData);
+    } else {
+      // Fallback: copy to clipboard
+      await navigator.clipboard.writeText(shareUrl);
+    }
+  } catch (err) {
+    // User cancelled or share failed - ignore
+    console.error('Share failed:', err);
+  }
+};
+
 export const GameLayout = ({
   gameTitle,
   time,
@@ -36,6 +78,9 @@ export const GameLayout = ({
   onBack,
   onLeaderboard,
   onHelp,
+  onCreateGame,
+  postId,
+  subredditName,
   logoSrc = '/lettered-logo.svg',
   className,
 }: GameLayoutProps) => {
@@ -94,7 +139,7 @@ export const GameLayout = ({
               </svg>
             </Button>
 
-            {/* Help Button */}
+            {/* Desktop: Help Button */}
             <Button
               variant="outline"
               size="icon"
@@ -105,20 +150,69 @@ export const GameLayout = ({
                   setShowHelpModal(true);
                 }
               }}
+              className="hidden md:flex"
+              title="Help"
             >
-              <svg
-                width="20"
-                height="20"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="2"
-              >
-                <circle cx="12" cy="12" r="10" />
-                <path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3" />
-                <path d="M12 17l0 0" />
-              </svg>
+              <HelpCircle className="w-5 h-5" />
             </Button>
+
+            {/* Desktop: Create Game Button (gradient) */}
+            <Button
+              size="icon"
+              onClick={onCreateGame}
+              className="hidden text-white bg-gradient-to-r from-purple-500 to-pink-500 border-0 md:flex hover:from-purple-600 hover:to-pink-600"
+              title="Create Game"
+            >
+              <Plus className="w-5 h-5" />
+            </Button>
+
+            {/* Desktop: Share Button (gold) */}
+            <Button
+              size="icon"
+              onClick={() => void handleShare(postId, subredditName)}
+              className="hidden bg-[#F7C846] text-black border-[#F7C846] md:flex hover:bg-[#E5B83D] hover:border-[#E5B83D]"
+              title="Share"
+            >
+              <Share2 className="w-5 h-5" />
+            </Button>
+
+            {/* Mobile: Hamburger Menu */}
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="outline" size="icon" className="md:hidden">
+                  <Menu className="w-5 h-5" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="w-48">
+                <DropdownMenuItem
+                  onClick={() => {
+                    if (onHelp) {
+                      onHelp();
+                    } else {
+                      setShowHelpModal(true);
+                    }
+                  }}
+                  className="cursor-pointer hover:bg-[#F7C846] hover:text-black focus:bg-[#F7C846] focus:text-black"
+                >
+                  <HelpCircle className="mr-2 w-4 h-4" />
+                  Help
+                </DropdownMenuItem>
+                <DropdownMenuItem
+                  onClick={() => void handleShare(postId, subredditName)}
+                  className="cursor-pointer hover:bg-[#F7C846] hover:text-black focus:bg-[#F7C846] focus:text-black"
+                >
+                  <Share2 className="mr-2 w-4 h-4" />
+                  Share
+                </DropdownMenuItem>
+                <DropdownMenuItem
+                  onClick={onCreateGame}
+                  className="cursor-pointer text-white bg-gradient-to-r from-purple-500 to-pink-500 focus:from-purple-600 focus:to-pink-600 focus:text-white"
+                >
+                  <Plus className="mr-2 w-4 h-4" />
+                  Create Game
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
           </div>
         </div>
       </div>
