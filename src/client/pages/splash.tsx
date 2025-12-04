@@ -196,11 +196,13 @@ export function Splash() {
             {splashData.creatorUsername && (
               <div className="flex gap-2 justify-center items-center mt-2">
                 <span className="text-sm text-white sm:text-base">By</span>
-                <img
-                  src={splashData.creatorIconUrl || DEFAULT_AVATAR_URL}
-                  alt={splashData.creatorUsername}
-                  className="w-6 h-6 bg-gray-600 rounded-full"
-                />
+                <div className="overflow-hidden w-6 h-6 bg-gray-600 rounded-full">
+                  <img
+                    src={splashData.creatorIconUrl || DEFAULT_AVATAR_URL}
+                    alt={splashData.creatorUsername}
+                    className="w-full h-auto origin-top translate-y-[6%]"
+                  />
+                </div>
                 <span className="text-sm text-white sm:text-base">
                   u/{splashData.creatorUsername}
                 </span>
