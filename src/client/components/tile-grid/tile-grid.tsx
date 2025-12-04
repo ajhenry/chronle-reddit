@@ -1,6 +1,22 @@
-import React, { createContext, useContext, useState, useCallback, useMemo, ReactNode } from 'react';
+import React, {
+  createContext,
+  useContext,
+  useState,
+  useCallback,
+  useMemo,
+  useRef,
+  ReactNode,
+} from 'react';
 import { cn } from '../../lib/utils';
 import { isDevelopment } from '../../lib/dev-utils';
+
+// Auto-scroll configuration
+const AUTO_SCROLL_CONFIG = {
+  edgeThreshold: 50, // Distance from viewport edge (in pixels) to trigger scrolling
+  minScrollSpeed: 0.2, // Minimum scroll speed at start of zone (pixels per frame)
+  maxScrollSpeed: 5, // Maximum scroll speed at edge of screen (pixels per frame)
+  exponent: 2, // Exponential curve factor for speed scaling
+};
 
 // Core types for the grid system
 export type GridPosition = {
@@ -138,6 +154,7 @@ type GridContextType = {
   setDraggedItemId: (itemId: string | null) => void;
   setGrabOffset: (offset: GridPosition | null) => void;
   setGridBounds: (bounds: DOMRect | null) => void;
+  setInitialPointerPosition: (position: { clientX: number; clientY: number }) => void;
   isPositionValid: (
     item: DraggableItem,
     newPosition: GridPosition,
@@ -191,6 +208,12 @@ function GridProvider({
   const [grabOffset, setGrabOffset] = useState<GridPosition | null>(null);
   const [gridBounds, setGridBounds] = useState<DOMRect | null>(null);
   const [currentHoveredCell, setCurrentHoveredCell] = useState<GridPosition | null>(null);
+
+  // Auto-scroll refs - using refs to avoid stale closure issues in animation loop
+  const autoScrollFrameRef = useRef<number | null>(null);
+  const currentPointerPositionRef = useRef<{ clientX: number; clientY: number } | null>(null);
+  const currentScrollVelocityRef = useRef<number>(0); // For smooth velocity interpolation
+  const isDraggingRef = useRef<boolean>(false); // Track dragging state for animation loop
 
   // Create and update tile grid
   const tileGrid = useMemo(() => {
@@ -280,19 +303,122 @@ function GridProvider({
     }
   }, []);
 
+  // Calculate auto-scroll speed based on pointer position
+  // Uses exponential scaling: slower at zone start (t=0), faster at screen edge (t=1)
+  const calculateAutoScrollSpeed = useCallback((clientY: number): number => {
+    const viewportHeight = window.innerHeight;
+    const { edgeThreshold, minScrollSpeed, maxScrollSpeed, exponent } = AUTO_SCROLL_CONFIG;
+
+    // Check if within top scroll zone
+    if (clientY < edgeThreshold) {
+      // t goes from 0 (at threshold boundary) to 1 (at screen edge)
+      const t = 1 - clientY / edgeThreshold;
+      // Exponential scaling: speed increases as cursor gets closer to edge
+      const speed = minScrollSpeed + (maxScrollSpeed - minScrollSpeed) * Math.pow(t, exponent);
+      return -speed; // Negative for scrolling up
+    }
+
+    // Check if within bottom scroll zone
+    const distanceFromBottom = viewportHeight - clientY;
+    if (distanceFromBottom < edgeThreshold) {
+      // t goes from 0 (at threshold boundary) to 1 (at screen edge)
+      const t = 1 - distanceFromBottom / edgeThreshold;
+      // Exponential scaling: speed increases as cursor gets closer to edge
+      const speed = minScrollSpeed + (maxScrollSpeed - minScrollSpeed) * Math.pow(t, exponent);
+      return speed; // Positive for scrolling down
+    }
+
+    // Not in any scroll zone
+    return 0;
+  }, []);
+
+  // Auto-scroll animation loop with smooth velocity interpolation
+  // Using refs instead of state to avoid stale closure issues
+  const performAutoScroll = useCallback(() => {
+    // Check ref instead of state to always get current value
+    if (!isDraggingRef.current) {
+      autoScrollFrameRef.current = null;
+      currentScrollVelocityRef.current = 0;
+      return;
+    }
+
+    // Get current pointer position from ref
+    const pointerPos = currentPointerPositionRef.current;
+    let targetSpeed = 0;
+
+    if (pointerPos) {
+      targetSpeed = calculateAutoScrollSpeed(pointerPos.clientY);
+    }
+
+    // Smooth velocity interpolation (lerp towards target)
+    // Using different smoothing factors for acceleration vs deceleration
+    const currentVelocity = currentScrollVelocityRef.current;
+    const isAccelerating = Math.abs(targetSpeed) > Math.abs(currentVelocity);
+    const smoothingFactor = isAccelerating ? 0.12 : 0.18; // Slower to speed up, faster to slow down
+
+    // Lerp: current + (target - current) * factor
+    const newVelocity = currentVelocity + (targetSpeed - currentVelocity) * smoothingFactor;
+
+    // Update the velocity ref
+    currentScrollVelocityRef.current = newVelocity;
+
+    // Only scroll if velocity is significant (avoid micro-scrolls)
+    if (Math.abs(newVelocity) > 0.1) {
+      window.scrollBy({
+        top: newVelocity,
+        behavior: 'instant', // Use instant for animation-frame-based scrolling
+      });
+    }
+
+    // Continue the animation loop as long as we're dragging
+    autoScrollFrameRef.current = requestAnimationFrame(performAutoScroll);
+  }, [calculateAutoScrollSpeed]);
+
+  // Start auto-scroll when dragging begins
+  const startAutoScroll = useCallback(() => {
+    isDraggingRef.current = true;
+    if (autoScrollFrameRef.current === null) {
+      autoScrollFrameRef.current = requestAnimationFrame(performAutoScroll);
+    }
+  }, [performAutoScroll]);
+
+  // Stop auto-scroll when dragging ends
+  const stopAutoScroll = useCallback(() => {
+    isDraggingRef.current = false;
+    if (autoScrollFrameRef.current !== null) {
+      cancelAnimationFrame(autoScrollFrameRef.current);
+      autoScrollFrameRef.current = null;
+    }
+    currentPointerPositionRef.current = null;
+    currentScrollVelocityRef.current = 0;
+  }, []);
+
+  // Set initial pointer position when drag starts (for immediate auto-scroll)
+  const setInitialPointerPosition = useCallback(
+    (position: { clientX: number; clientY: number }) => {
+      currentPointerPositionRef.current = position;
+    },
+    []
+  );
+
   // Global pointer tracking during drag operations
   const handleGlobalPointerMove = useCallback(
     (e: MouseEvent | TouchEvent) => {
-      if (!draggedItemId || !gridBounds || !grabOffset) return;
+      const coords = getGlobalEventCoordinates(e);
+
+      // ALWAYS store current pointer position for auto-scroll (before any early returns)
+      // This ensures auto-scroll works based on viewport position regardless of grid state
+      currentPointerPositionRef.current = coords;
 
       // Prevent default touch behavior (scrolling) during drag
       // This is critical for preventing scroll during fast movements
-      if (e.type.startsWith('touch')) {
+      if (isDraggingRef.current && e.type.startsWith('touch')) {
         e.preventDefault();
         e.stopPropagation();
       }
 
-      const coords = getGlobalEventCoordinates(e);
+      // Early return for grid-related logic if not ready
+      if (!draggedItemId || !gridBounds || !grabOffset) return;
 
       // Calculate pointer position relative to grid
       const pointerX = coords.clientX - gridBounds.left;
@@ -413,6 +539,17 @@ function GridProvider({
     ]
   );
 
+  // Auto-scroll effect - separate from event listeners to prevent restart on callback changes
+  // This effect only depends on draggedItemId, so it won't restart when other callbacks change
+  React.useEffect(() => {
+    if (draggedItemId) {
+      startAutoScroll();
+      return () => {
+        stopAutoScroll();
+      };
+    }
+  }, [draggedItemId, startAutoScroll, stopAutoScroll]);
+
   // Set up global event listeners during drag
   React.useEffect(() => {
     if (draggedItemId) {
@@ -489,6 +626,7 @@ function GridProvider({
       setDraggedItemId,
       setGrabOffset,
       setGridBounds,
+      setInitialPointerPosition,
       isPositionValid,
       getCellData,
     }),
@@ -511,6 +649,7 @@ function GridProvider({
       setDraggedItemId,
       setGrabOffset,
       setGridBounds,
+      setInitialPointerPosition,
       isPositionValid,
       getCellData,
     ]
@@ -622,7 +761,7 @@ type DraggableItemProps = {
 
 const DraggableItemComponent = React.memo(
   ({ item, onDragStart, onDragEnd, className = '', defaultClassName }: DraggableItemProps) => {
-    const { cellSize, spacing, disabled: gridDisabled } = useGrid();
+    const { cellSize, spacing, disabled: gridDisabled, setInitialPointerPosition } = useGrid();
     const isDisabled = (item.disabled ?? false) || gridDisabled;
     const [isDragging, setIsDragging] = useState(false);
     const [cursorType, setCursorType] = useState<'default' | 'move' | 'not-allowed'>('default');
@@ -724,9 +863,20 @@ const DraggableItemComponent = React.memo(
           y: clickedGridY,
         };
 
+        // Set initial pointer position for immediate auto-scroll support
+        setInitialPointerPosition(coords);
+
         onDragStart?.(item, grabOffset);
       },
-      [item, onDragStart, cellSize, spacing, getEventCoordinates, isDisabled]
+      [
+        item,
+        onDragStart,
+        cellSize,
+        spacing,
+        getEventCoordinates,
+        isDisabled,
+        setInitialPointerPosition,
+      ]
     );
 
     const handlePointerUp = useCallback(
