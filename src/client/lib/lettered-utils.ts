@@ -8,17 +8,17 @@ export const RESPONSIVE_CELL_SIZES: Record<
 > = {
   9: {
     xs: { width: 32, height: 32 },
+    sm: { width: 44, height: 44 },
+    md: { width: 44, height: 44 },
+    lg: { width: 52, height: 52 },
+    xl: { width: 52, height: 52 },
+  },
+  8: {
+    xs: { width: 40, height: 40 },
     sm: { width: 48, height: 48 },
     md: { width: 52, height: 52 },
     lg: { width: 64, height: 64 },
     xl: { width: 64, height: 64 },
-  },
-  8: {
-    xs: { width: 40, height: 40 },
-    sm: { width: 52, height: 52 },
-    md: { width: 64, height: 64 },
-    lg: { width: 80, height: 80 },
-    xl: { width: 80, height: 80 },
   },
 };
 
@@ -26,8 +26,8 @@ export const RESPONSIVE_CELL_SPACING: Record<Breakpoint, number> = {
   xs: 4,
   sm: 4,
   md: 6,
-  lg: 8,
-  xl: 8,
+  lg: 6,
+  xl: 6,
 };
 
 // Get responsive cell size based on current breakpoint and grid size
