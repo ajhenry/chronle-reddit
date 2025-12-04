@@ -17,6 +17,8 @@ import { LetteredGameStateManager } from '../lib/lettered-game-state';
 import { apiFetch } from '../lib/utils';
 import { LetteredDailyGameResponse, LetteredPostGameResponse } from '../../shared/types/api';
 import { useTheme } from 'src/components/theme-provider';
+import { Plus, Share2 } from 'lucide-react';
+import { InGameCustomButton } from 'src/components/InGameCustomButton';
 
 // API function to fetch a game by ID (works for both daily and custom games)
 const fetchGameById = async (gameId: string): Promise<LetteredDailyGameResponse> => {
@@ -42,6 +44,38 @@ const fetchPostGameStats = async (gameId: string): Promise<LetteredPostGameRespo
   const data = await response.json();
   console.log('fetchPostGameStats', data);
   return data;
+};
+
+// Helper to get Reddit post URL for sharing
+const getRedditPostUrl = (postId?: string | null, subredditName?: string | null) => {
+  if (!postId || !subredditName) return null;
+  // Remove t3_ prefix if present
+  const cleanPostId = postId.startsWith('t3_') ? postId.slice(3) : postId;
+  return `https://www.reddit.com/r/${subredditName}/comments/${cleanPostId}/`;
+};
+
+// Handle share action
+const handleShare = async (postId?: string | null, subredditName?: string | null) => {
+  const redditUrl = getRedditPostUrl(postId, subredditName);
+  const shareUrl = redditUrl || window.location.href;
+
+  const shareData = {
+    title: 'Lettered',
+    text: 'Check out this puzzle game on Reddit!',
+    url: shareUrl,
+  };
+
+  try {
+    if (navigator.share && navigator.canShare(shareData)) {
+      await navigator.share(shareData);
+    } else {
+      // Fallback: copy to clipboard
+      await navigator.clipboard.writeText(shareUrl);
+    }
+  } catch (err) {
+    // User cancelled or share failed - ignore
+    console.error('Share failed:', err);
+  }
 };
 
 // Conversion functions for Grid component
@@ -971,14 +1005,27 @@ export const LetteredPage = ({
                 </div>
               </div>
             </div>
-            <Button
-              onClick={() => setUIState((prev) => ({ ...prev, showGameOverModal: true }))}
-              variant="outline"
-              className="self-start"
-              type="button"
+            <div
+              className={cn(
+                'flex flex-col gap-2 w-full sm:w-auto sm:flex-row',
+                gameData.postType === 'daily' ? 'sm:flex-row' : 'sm:w-full'
+              )}
             >
-              View Stats
-            </Button>
+              <Button
+                onClick={() => setUIState((prev) => ({ ...prev, showGameOverModal: true }))}
+                variant="outline"
+                className={cn('self-start w-full', gameData.postType === 'daily' && 'sm:w-auto')}
+                type="button"
+              >
+                View Stats
+              </Button>
+              {/* In-Game Custom Game Button */}
+              <InGameCustomButton
+                className={cn('w-full', gameData.postType === 'daily' && 'sm:w-auto')}
+                postId={postId}
+                subredditName={subredditName}
+              />
+            </div>
           </div>
         </div>
       )}

@@ -6,6 +6,7 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from './ui/dropdown-menu';
 import { Menu, Plus, Share2, HelpCircle } from 'lucide-react';
@@ -183,7 +184,7 @@ export const GameLayout = ({
                   <Menu className="w-5 h-5" />
                 </Button>
               </DropdownMenuTrigger>
-              <DropdownMenuContent align="end" className="w-48">
+              <DropdownMenuContent align="end" className="w-52">
                 <DropdownMenuItem
                   onClick={() => {
                     if (onHelp) {
@@ -192,23 +193,25 @@ export const GameLayout = ({
                       setShowHelpModal(true);
                     }
                   }}
-                  className="cursor-pointer hover:bg-[#F7C846] hover:text-black focus:bg-[#F7C846] focus:text-black"
+                  className="cursor-pointer py-3 text-base hover:bg-[#F7C846] hover:text-black focus:bg-[#F7C846] focus:text-black"
                 >
-                  <HelpCircle className="mr-2 w-4 h-4" />
+                  <HelpCircle className="mr-3 w-5 h-5" />
                   Help
                 </DropdownMenuItem>
+                <DropdownMenuSeparator />
                 <DropdownMenuItem
                   onClick={() => void handleShare(postId, subredditName)}
-                  className="cursor-pointer hover:bg-[#F7C846] hover:text-black focus:bg-[#F7C846] focus:text-black"
+                  className="cursor-pointer py-3 text-base hover:bg-[#F7C846] hover:text-black focus:bg-[#F7C846] focus:text-black"
                 >
-                  <Share2 className="mr-2 w-4 h-4" />
+                  <Share2 className="mr-3 w-5 h-5" />
                   Share
                 </DropdownMenuItem>
+                <DropdownMenuSeparator />
                 <DropdownMenuItem
                   onClick={onCreateGame}
-                  className="cursor-pointer text-white bg-gradient-to-r from-purple-500 to-pink-500 focus:from-purple-600 focus:to-pink-600 focus:text-white"
+                  className="cursor-pointer py-3 text-base text-white bg-gradient-to-r from-purple-500 to-pink-500 focus:from-purple-600 focus:to-pink-600 focus:text-white"
                 >
-                  <Plus className="mr-2 w-4 h-4" />
+                  <Plus className="mr-3 w-5 h-5" />
                   Create Game
                 </DropdownMenuItem>
               </DropdownMenuContent>

@@ -12,9 +12,9 @@ import { isDevelopment } from '../../lib/dev-utils';
 
 // Auto-scroll configuration
 const AUTO_SCROLL_CONFIG = {
-  edgeThreshold: 50, // Distance from viewport edge (in pixels) to trigger scrolling
+  edgeThreshold: 60, // Distance from viewport edge (in pixels) to trigger scrolling
   minScrollSpeed: 0.2, // Minimum scroll speed at start of zone (pixels per frame)
-  maxScrollSpeed: 5, // Maximum scroll speed at edge of screen (pixels per frame)
+  maxScrollSpeed: 8, // Maximum scroll speed at edge of screen (pixels per frame)
   exponent: 2, // Exponential curve factor for speed scaling
 };
 
