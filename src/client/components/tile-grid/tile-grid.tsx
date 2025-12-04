@@ -687,13 +687,6 @@ const DraggableItemComponent = React.memo(
           return;
         }
 
-        // Immediately prevent default behavior for touch events to stop scrolling
-        // This must be done BEFORE any async operations or checks
-        if ('touches' in e) {
-          e.preventDefault();
-          e.stopPropagation();
-        }
-
         const coords = getEventCoordinates(e);
 
         // Calculate which cell within the bounding box was clicked
@@ -716,63 +709,13 @@ const DraggableItemComponent = React.memo(
 
         // Only allow dragging if clicking on an occupied cell
         if (!isOccupiedCell) {
-          // For empty spaces, temporarily hide this element to allow events to reach underlying pieces
-          // Use immediate synchronous handling to avoid delays that could cause scrolling
-          if (itemRef.current) {
-            const originalPointerEvents = itemRef.current.style.pointerEvents;
-            itemRef.current.style.pointerEvents = 'none';
-
-            // Immediately find the target element and forward the event
-            const targetElement = document.elementFromPoint(coords.clientX, coords.clientY);
-
-            // Restore pointer events immediately to prevent timing issues
-            itemRef.current.style.pointerEvents = originalPointerEvents;
-
-            if (targetElement && targetElement !== itemRef.current) {
-              // Create a proper TouchEvent to forward immediately
-              try {
-                if ('touches' in e) {
-                  const forwardedTouchEvent = new TouchEvent(e.type, {
-                    touches: e.touches as unknown as Touch[],
-                    changedTouches: e.changedTouches as unknown as Touch[],
-                    bubbles: true,
-                    cancelable: true,
-                  });
-                  targetElement.dispatchEvent(forwardedTouchEvent);
-                } else {
-                  // Fallback for mouse events
-                  const fallbackEvent = new MouseEvent(e.type, {
-                    clientX: coords.clientX,
-                    clientY: coords.clientY,
-                    button: e.button,
-                    buttons: e.buttons,
-                    bubbles: true,
-                    cancelable: true,
-                  });
-                  targetElement.dispatchEvent(fallbackEvent);
-                }
-              } catch (error) {
-                // Fallback: create a simple mouse event if event creation fails
-                console.warn('Event forwarding failed, using mouse fallback:', error);
-                const fallbackEvent = new MouseEvent(
-                  e.type === 'touchstart' ? 'mousedown' : e.type,
-                  {
-                    clientX: coords.clientX,
-                    clientY: coords.clientY,
-                    button: 'touches' in e ? 0 : e.button,
-                    buttons: 'touches' in e ? 1 : e.buttons,
-                    bubbles: true,
-                    cancelable: true,
-                  }
-                );
-                targetElement.dispatchEvent(fallbackEvent);
-              }
-            }
-          }
-          return; // Don't process this click in the current piece
+          // For empty spaces (dead areas), allow the event to bubble naturally
+          // This enables scrolling when touching dead areas of pieces
+          // We don't call preventDefault() here so the browser can handle scrolling
+          return;
         }
 
-        // Prevent default for all events that reach this point to ensure no scrolling
+        // Prevent default for touch/mouse events to stop scrolling when dragging from an occupied cell
         e.preventDefault();
 
         // Calculate grab offset - where on the piece the user clicked/touched
@@ -897,7 +840,7 @@ const DraggableItemComponent = React.memo(
         style={{
           ...itemStyle,
           cursor: cursorType,
-          touchAction: 'none', // Prevent default touch behaviors like scrolling
+          touchAction: 'manipulation', // Allow scrolling on dead areas, prevent double-tap zoom
           pointerEvents: 'auto', // Ensure draggable items are always interactive
           userSelect: 'none', // Prevent text selection
           WebkitUserSelect: 'none', // Prevent text selection on Safari
