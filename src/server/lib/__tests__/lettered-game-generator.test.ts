@@ -761,10 +761,11 @@ describe('Lettered Game Generator', () => {
         };
 
         const { pieces } = generateLetterPieces(grid);
-        const initialPositions = generateInitialPiecePositions(pieces, grid);
+        const { positions: initialPositions, totalRows } = generateInitialPiecePositions(pieces, grid);
 
         expect(initialPositions).toBeDefined();
         expect(Object.keys(initialPositions)).toHaveLength(pieces.length);
+        expect(totalRows).toBeGreaterThan(grid.length);
 
         // All positions should be below the main grid
         Object.values(initialPositions).forEach((position) => {
@@ -791,7 +792,7 @@ describe('Lettered Game Generator', () => {
         }
 
         const { pieces } = generateLetterPieces(grid);
-        const initialPositions = generateInitialPiecePositions(pieces, grid);
+        const { positions: initialPositions } = generateInitialPiecePositions(pieces, grid);
 
         expect(Object.keys(initialPositions)).toHaveLength(pieces.length);
 

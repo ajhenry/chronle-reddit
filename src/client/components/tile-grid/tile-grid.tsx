@@ -12,7 +12,7 @@ import { isDevelopment } from '../../lib/dev-utils';
 
 // Auto-scroll configuration
 const AUTO_SCROLL_CONFIG = {
-  edgeThreshold: 60, // Distance from viewport edge (in pixels) to trigger scrolling
+  edgeThresholdPercent: 0.05, // Distance from viewport edge as percentage of viewport height (5%)
   minScrollSpeed: 0.2, // Minimum scroll speed at start of zone (pixels per frame)
   maxScrollSpeed: 8, // Maximum scroll speed at edge of screen (pixels per frame)
   exponent: 2, // Exponential curve factor for speed scaling
@@ -214,6 +214,8 @@ function GridProvider({
   const currentPointerPositionRef = useRef<{ clientX: number; clientY: number } | null>(null);
   const currentScrollVelocityRef = useRef<number>(0); // For smooth velocity interpolation
   const isDraggingRef = useRef<boolean>(false); // Track dragging state for animation loop
+  const dragStartedInScrollZoneRef = useRef<boolean>(false); // Track if drag started in scroll zone
+  const hasExitedScrollZoneRef = useRef<boolean>(false); // Track if user has exited scroll zone since drag start
 
   // Create and update tile grid
   const tileGrid = useMemo(() => {
@@ -303,34 +305,59 @@ function GridProvider({
     }
   }, []);
 
+  // Helper function to check if a Y position is in a scroll zone
+  const isInScrollZone = useCallback((clientY: number): boolean => {
+    const viewportHeight = window.innerHeight;
+    const edgeThreshold = viewportHeight * AUTO_SCROLL_CONFIG.edgeThresholdPercent;
+    const distanceFromBottom = viewportHeight - clientY;
+    return clientY < edgeThreshold || distanceFromBottom < edgeThreshold;
+  }, []);
+
   // Calculate auto-scroll speed based on pointer position
   // Uses exponential scaling: slower at zone start (t=0), faster at screen edge (t=1)
-  const calculateAutoScrollSpeed = useCallback((clientY: number): number => {
-    const viewportHeight = window.innerHeight;
-    const { edgeThreshold, minScrollSpeed, maxScrollSpeed, exponent } = AUTO_SCROLL_CONFIG;
+  const calculateAutoScrollSpeed = useCallback(
+    (clientY: number): number => {
+      const viewportHeight = window.innerHeight;
+      const edgeThreshold = viewportHeight * AUTO_SCROLL_CONFIG.edgeThresholdPercent;
+      const { minScrollSpeed, maxScrollSpeed, exponent } = AUTO_SCROLL_CONFIG;
 
-    // Check if within top scroll zone
-    if (clientY < edgeThreshold) {
-      // t goes from 0 (at threshold boundary) to 1 (at screen edge)
-      const t = 1 - clientY / edgeThreshold;
-      // Exponential scaling: speed increases as cursor gets closer to edge
-      const speed = minScrollSpeed + (maxScrollSpeed - minScrollSpeed) * Math.pow(t, exponent);
-      return -speed; // Negative for scrolling up
-    }
+      // Check if pointer is currently in a scroll zone
+      const currentlyInScrollZone = isInScrollZone(clientY);
 
-    // Check if within bottom scroll zone
-    const distanceFromBottom = viewportHeight - clientY;
-    if (distanceFromBottom < edgeThreshold) {
-      // t goes from 0 (at threshold boundary) to 1 (at screen edge)
-      const t = 1 - distanceFromBottom / edgeThreshold;
-      // Exponential scaling: speed increases as cursor gets closer to edge
-      const speed = minScrollSpeed + (maxScrollSpeed - minScrollSpeed) * Math.pow(t, exponent);
-      return speed; // Positive for scrolling down
-    }
+      // If drag started in scroll zone, don't scroll until user exits and re-enters
+      if (dragStartedInScrollZoneRef.current && !hasExitedScrollZoneRef.current) {
+        // Check if user has exited the scroll zone
+        if (!currentlyInScrollZone) {
+          hasExitedScrollZoneRef.current = true;
+        }
+        // Don't scroll yet - user hasn't exited and re-entered
+        return 0;
+      }
 
-    // Not in any scroll zone
-    return 0;
-  }, []);
+      // Check if within top scroll zone
+      if (clientY < edgeThreshold) {
+        // t goes from 0 (at threshold boundary) to 1 (at screen edge)
+        const t = 1 - clientY / edgeThreshold;
+        // Exponential scaling: speed increases as cursor gets closer to edge
+        const speed = minScrollSpeed + (maxScrollSpeed - minScrollSpeed) * Math.pow(t, exponent);
+        return -speed; // Negative for scrolling up
+      }
+
+      // Check if within bottom scroll zone
+      const distanceFromBottom = viewportHeight - clientY;
+      if (distanceFromBottom < edgeThreshold) {
+        // t goes from 0 (at threshold boundary) to 1 (at screen edge)
+        const t = 1 - distanceFromBottom / edgeThreshold;
+        // Exponential scaling: speed increases as cursor gets closer to edge
+        const speed = minScrollSpeed + (maxScrollSpeed - minScrollSpeed) * Math.pow(t, exponent);
+        return speed; // Positive for scrolling down
+      }
+
+      // Not in any scroll zone
+      return 0;
+    },
+    [isInScrollZone]
+  );
 
   // Auto-scroll animation loop with smooth velocity interpolation
   // Using refs instead of state to avoid stale closure issues
@@ -391,14 +418,19 @@ function GridProvider({
     }
     currentPointerPositionRef.current = null;
     currentScrollVelocityRef.current = 0;
+    dragStartedInScrollZoneRef.current = false;
+    hasExitedScrollZoneRef.current = false;
   }, []);
 
   // Set initial pointer position when drag starts (for immediate auto-scroll)
   const setInitialPointerPosition = useCallback(
     (position: { clientX: number; clientY: number }) => {
       currentPointerPositionRef.current = position;
+      // Check if drag started in a scroll zone
+      dragStartedInScrollZoneRef.current = isInScrollZone(position.clientY);
+      hasExitedScrollZoneRef.current = false;
     },
-    []
+    [isInScrollZone]
   );
 
   // Global pointer tracking during drag operations

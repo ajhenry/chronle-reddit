@@ -8,17 +8,17 @@ export const RESPONSIVE_CELL_SIZES: Record<
 > = {
   9: {
     xs: { width: 32, height: 32 },
-    sm: { width: 44, height: 44 },
-    md: { width: 44, height: 44 },
-    lg: { width: 52, height: 52 },
-    xl: { width: 52, height: 52 },
+    sm: { width: 42, height: 42 },
+    md: { width: 42, height: 42 },
+    lg: { width: 50, height: 50 },
+    xl: { width: 50, height: 50 },
   },
   8: {
-    xs: { width: 40, height: 40 },
-    sm: { width: 48, height: 48 },
-    md: { width: 52, height: 52 },
-    lg: { width: 64, height: 64 },
-    xl: { width: 64, height: 64 },
+    xs: { width: 38, height: 38 },
+    sm: { width: 46, height: 46 },
+    md: { width: 50, height: 50 },
+    lg: { width: 62, height: 62 },
+    xl: { width: 62, height: 62 },
   },
 };
 

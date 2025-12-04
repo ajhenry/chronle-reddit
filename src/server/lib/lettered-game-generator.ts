@@ -458,32 +458,24 @@ const createBalancedLayout = (
   maxHeight: number,
   maxWidth: number
 ): GridCell[][] => {
-  // Determine optimal target dimensions for balanced layout
+  // Determine optimal target dimensions - no vertical padding, only horizontal centering
   const contentHeight = phraseContent.length;
   const contentWidth = phraseContent[0]?.length || 0;
 
-  // For balanced layout, aim for roughly square dimensions with padding
-  let targetHeight: number;
+  // Use exact content height (no vertical padding)
+  let targetHeight = contentHeight;
   let targetWidth: number;
 
-  if (contentHeight <= 3 && contentWidth <= 6) {
-    // Small content - use 6x8 for good balance
-    targetHeight = 6;
+  // Determine target width based on content width
+  if (contentWidth <= 6) {
     targetWidth = 8;
     // If the width is odd, we can add 1 to the width
     if (contentWidth % 2 === 1) {
       targetWidth++;
     }
-    if (contentHeight % 2 === 1) {
-      targetHeight--;
-    }
-  } else if (contentHeight <= 4 && contentWidth <= 7) {
-    // Medium content - use 6x8 or 6x9
-    targetHeight = 6;
+  } else if (contentWidth <= 7) {
     targetWidth = Math.min(9, Math.max(8, contentWidth + 2));
   } else {
-    // Larger content - ensure minimum padding
-    targetHeight = Math.max(6, contentHeight + 2);
     targetWidth = Math.max(8, contentWidth);
   }
 
@@ -511,8 +503,8 @@ const createBalancedLayout = (
     balancedGrid.push(gridRow);
   }
 
-  // Center the content in the target grid
-  const startRow = Math.max(0, Math.floor((targetHeight - contentHeight) / 2));
+  // No vertical centering (startRow = 0), only horizontal centering
+  const startRow = 0;
   const startCol = Math.max(0, Math.floor((targetWidth - contentWidth) / 2));
 
   console.log(
@@ -2351,15 +2343,19 @@ export {
 export const generateInitialPiecePositions = (
   pieces: LetterPiece[],
   grid: GridCell[][]
-): Record<string, GridPosition> => {
+): { positions: Record<string, GridPosition>; totalRows: number } => {
   const initialPositions: Record<string, GridPosition> = {};
-  const extendedStartRow = grid.length; // Start below the main grid
+  const trayGap = 1; // Visual gap between phrase area and piece tray
+  const extendedStartRow = grid.length + trayGap; // Start below the main grid with gap
   const maxCols = grid[0]?.length || 8;
   const maxRows = 35; // Maximum rows for piece placement
   const pieceSpacing = 1; // One cell gap between pieces
 
   // Track occupied positions to prevent overlaps
   const occupiedPositions = new Set<string>();
+
+  // Track the furthest row occupied by any piece
+  let maxOccupiedRow = extendedStartRow;
 
   // Sort pieces by size (largest first) for better packing
   const sortedPieces = [...pieces].sort((a, b) => {
@@ -2411,6 +2407,9 @@ export const generateInitialPiecePositions = (
             const occupyRow = pieceTop + shapePos.row;
             const occupyCol = pieceLeft + shapePos.col;
 
+            // Track the furthest row occupied
+            maxOccupiedRow = Math.max(maxOccupiedRow, occupyRow);
+
             // Mark the piece position and surrounding buffer
             for (
               let bufferRow = occupyRow - pieceSpacing;
@@ -2436,7 +2435,7 @@ export const generateInitialPiecePositions = (
 
           placed = true;
           console.log(
-            `✅ Placed piece ${piece.id} at (${pieceTop}, ${pieceLeft}) with size ${width}x${height}`
+            `Placed piece ${piece.id} at (${pieceTop}, ${pieceLeft}) with size ${width}x${height}`
           );
         }
       }
@@ -2490,11 +2489,13 @@ export const generateInitialPiecePositions = (
               const occupyRow = pieceTop + shapePos.row;
               const occupyCol = pieceLeft + shapePos.col;
               occupiedPositions.add(`${occupyCol},${occupyRow}`);
+              // Track the furthest row occupied
+              maxOccupiedRow = Math.max(maxOccupiedRow, occupyRow);
             }
 
             placed = true;
             console.log(
-              `✅ Placed piece ${piece.id} at (${pieceTop}, ${pieceLeft}) without spacing buffer`
+              `Placed piece ${piece.id} at (${pieceTop}, ${pieceLeft}) without spacing buffer`
             );
           }
         }
@@ -2546,10 +2547,13 @@ export const generateInitialPiecePositions = (
 
           if (!hasOverlap) {
             initialPositions[piece.id] = { row: pieceTop, col: pieceLeft };
+            // Track the furthest row occupied
+            for (const shapePos of piece.shape) {
+              const occupyRow = pieceTop + shapePos.row;
+              maxOccupiedRow = Math.max(maxOccupiedRow, occupyRow);
+            }
             placed = true;
-            console.log(
-              `✅ Placed piece ${piece.id} at (${pieceTop}, ${pieceLeft}) in expanded area`
-            );
+            console.log(`Placed piece ${piece.id} at (${pieceTop}, ${pieceLeft}) in expanded area`);
           }
         }
       }
@@ -2563,8 +2567,15 @@ export const generateInitialPiecePositions = (
     }
   }
 
-  console.log(`🎯 Successfully placed all ${pieces.length} pieces without overlaps`);
-  return initialPositions;
+  // Calculate total rows: furthest piece bottom + 1 row buffer
+  const totalRows = maxOccupiedRow + 2; // +1 for 0-indexing, +1 for buffer
+
+  console.log(`Successfully placed all ${pieces.length} pieces without overlaps`);
+  console.log(
+    `Piece tray trimmed to ${totalRows} total rows (grid: ${grid.length}, pieces extend to row ${maxOccupiedRow})`
+  );
+
+  return { positions: initialPositions, totalRows };
 };
 
 // Test if a generated game solution correctly reconstructs the original phrase
@@ -2704,9 +2715,10 @@ export const generateMockGame = (
 
     // Step 6: Generate initial piece positions
     console.log('Step 6: Generating initial piece positions...');
-    const initialPiecePositions = generateInitialPiecePositions(pieces, trimmedGrid);
+    const { positions: initialPiecePositions, totalRows: pieceTrayRows } =
+      generateInitialPiecePositions(pieces, trimmedGrid);
     console.log(
-      `Generated initial positions for ${Object.keys(initialPiecePositions).length} pieces`
+      `Generated initial positions for ${Object.keys(initialPiecePositions).length} pieces (total rows: ${pieceTrayRows})`
     );
 
     // Step 7: Use tracked solution from piece generation
@@ -2799,7 +2811,7 @@ const generateFallbackGame = (category: string, phrase: string): LetteredGameDat
   }
 
   const { pieces, solution: trackedSolution } = generateLetterPieces(grid);
-  const initialPiecePositions = generateInitialPiecePositions(pieces, grid);
+  const { positions: initialPiecePositions } = generateInitialPiecePositions(pieces, grid);
   const solution = trackedSolution;
 
   // Create secure grid
