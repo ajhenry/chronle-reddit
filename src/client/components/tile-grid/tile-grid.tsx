@@ -1711,7 +1711,7 @@ const TapHintPill = React.memo(({ isVisible }: { isVisible: boolean }) => {
         isVisible ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-4 pointer-events-none'
       )}
       style={{
-        bottom: '1.5rem',
+        bottom: '4rem',
       }}
     >
       Tap a piece to drag it
