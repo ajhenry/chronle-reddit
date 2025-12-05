@@ -9,8 +9,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from './ui/dropdown-menu';
-import { Menu, Plus, Share2, HelpCircle, Hand, MousePointer, GraduationCap } from 'lucide-react';
-import { useNavigate } from 'react-router-dom';
+import { Menu, Plus, Share2, HelpCircle, Hand, MousePointer } from 'lucide-react';
 import type { DragMode } from '../hooks/useDragMode';
 
 interface GameLayoutProps {
@@ -91,12 +90,7 @@ export const GameLayout = ({
   dragMode = 'tap-to-drag',
   onDragModeChange,
 }: GameLayoutProps) => {
-  const navigate = useNavigate();
   const [showHelpModal, setShowHelpModal] = useState(false);
-
-  const handleTutorial = () => {
-    void navigate('/tutorial');
-  };
 
   return (
     <div className={cn('p-4 min-h-screen bg-background', className)}>
@@ -231,14 +225,6 @@ export const GameLayout = ({
                 >
                   <HelpCircle className="mr-3 w-5 h-5" />
                   Help
-                </DropdownMenuItem>
-                <DropdownMenuSeparator />
-                <DropdownMenuItem
-                  onClick={handleTutorial}
-                  className="cursor-pointer py-3 text-base hover:bg-[#F7C846] hover:text-black focus:bg-[#F7C846] focus:text-black"
-                >
-                  <GraduationCap className="mr-3 w-5 h-5" />
-                  Tutorial
                 </DropdownMenuItem>
                 <DropdownMenuSeparator />
                 {/* Drag Mode Toggle */}

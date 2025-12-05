@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Routes, Route, useNavigate, useLocation } from 'react-router-dom';
+import { Routes, Route, useNavigate } from 'react-router-dom';
 import { DevPage } from './pages/dev';
 import { LetteredPage } from './pages/lettered';
 import { TermsPage } from './pages/terms';
@@ -15,10 +15,8 @@ import type { User } from '../shared/types/api';
 
 export const App = () => {
   const navigate = useNavigate();
-  const location = useLocation();
   const [userInfo, setUserInfo] = useState<User | null>(null);
   const [showAdminUI, setShowAdminUI] = useState(true);
-  const [userLoaded, setUserLoaded] = useState(false);
 
   // Toggle admin UI visibility with backtick key
   useEffect(() => {
@@ -57,57 +55,27 @@ export const App = () => {
     void fetchGameStatus();
   }, []);
 
+  // Fetch user info
+  const fetchUserInfo = async () => {
+    try {
+      console.log('Fetching user info...');
+      const response = await apiFetch('/api/user');
+      if (response.ok) {
+        const data = await response.json();
+        setUserInfo(data.user);
+        console.log('User info fetched:', data.user);
+      } else {
+        console.log('Failed to fetch user info:', response.statusText);
+      }
+    } catch (error) {
+      console.error('Error fetching user info:', error);
+    }
+  };
+
   // Fetch user info when app loads
   useEffect(() => {
-    const fetchUserInfo = async () => {
-      try {
-        console.log('Fetching user info...');
-        const response = await apiFetch('/api/user');
-        if (response.ok) {
-          const data = await response.json();
-          setUserInfo(data.user);
-          console.log('User info fetched:', data.user, userInfo);
-        } else {
-          console.log('Failed to fetch user info:', response.statusText);
-        }
-      } catch (error) {
-        console.error('Error fetching user info:', error);
-      } finally {
-        setUserLoaded(true);
-      }
-    };
-
     void fetchUserInfo();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
-
-  // Auto-redirect to tutorial if user hasn't completed it
-  // Only redirect from the main game page, not from other pages
-  useEffect(() => {
-    if (!userLoaded) return;
-
-    // Pages that should not trigger tutorial redirect
-    const exemptPaths = [
-      '/tutorial',
-      '/terms',
-      '/privacy',
-      '/custom',
-      '/leaderboard',
-      '/dev',
-      '/admin',
-    ];
-    const isExemptPath = exemptPaths.some((path) => location.pathname.startsWith(path));
-
-    if (isExemptPath) return;
-
-    // Check if user needs to see the tutorial
-    const tutorialCompleted = userInfo?.preferences?.tutorialCompleted ?? false;
-
-    if (!tutorialCompleted) {
-      console.log('Redirecting to tutorial - user has not completed it');
-      void navigate('/tutorial', { replace: true });
-    }
-  }, [userLoaded, userInfo, location.pathname, navigate]);
 
   const handleBackToMenu = () => {
     void navigate('/');
@@ -121,13 +89,20 @@ export const App = () => {
     void navigate('/');
   };
 
+  const handleTutorialComplete = () => {
+    console.log('[TutorialComplete] Called, navigating to /');
+    void navigate('/');
+    // Also refetch in background to sync any other changes
+    void fetchUserInfo();
+  };
+
   return (
     <>
       {showAdminUI && <AdminBanner user={userInfo} />}
       <ScrollToTop />
 
       <Routes>
-        <Route path="/tutorial" element={<TutorialPage />} />
+        <Route path="/tutorial" element={<TutorialPage onComplete={handleTutorialComplete} />} />
         <Route path="/custom" element={<CustomGamePage />} />
         <Route
           path="/leaderboard"

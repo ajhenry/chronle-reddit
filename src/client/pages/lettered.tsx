@@ -1120,6 +1120,7 @@ export const LetteredPage = ({
           disabled={gameComplete}
           dragMode={dragMode}
           shouldAutoComplete={checkPuzzleComplete}
+          hideHintPill={uiState.showGameOverModal || showInstructions}
         />
       </div>
       {/* Confetti Animation */}

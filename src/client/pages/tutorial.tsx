@@ -1,5 +1,4 @@
 import React, { useState, useCallback, useRef } from 'react';
-import { useNavigate } from 'react-router-dom';
 import Confetti from 'react-confetti';
 import { Button } from '../components/ui/button';
 import { Grid, DraggableItem } from '../components/tile-grid/tile-grid';
@@ -291,8 +290,11 @@ const isGameComplete = (
   return true;
 };
 
-export const TutorialPage = () => {
-  const navigate = useNavigate();
+interface TutorialPageProps {
+  onComplete?: () => void | Promise<void>;
+}
+
+export const TutorialPage = ({ onComplete }: TutorialPageProps) => {
   const { theme } = useTheme();
   const { breakpoint } = useViewport();
   const { dragMode } = useDragMode();
@@ -409,10 +411,15 @@ export const TutorialPage = () => {
       console.error('Failed to save tutorial completion:', error);
     } finally {
       setIsSaving(false);
-      // Navigate to home regardless of save success
-      void navigate('/');
+      // Callback to refetch user data and navigate
+      console.log('[Tutorial] handleComplete finally block, onComplete:', !!onComplete);
+      if (onComplete) {
+        console.log('[Tutorial] Calling onComplete');
+        await onComplete();
+        console.log('[Tutorial] onComplete finished');
+      }
     }
-  }, [navigate]);
+  }, [onComplete]);
 
   // Skip tutorial
   const handleSkip = useCallback(async () => {
@@ -474,7 +481,9 @@ export const TutorialPage = () => {
 
       {/* Instruction Text */}
       <div className="flex justify-center items-center px-6 h-20">
-        {isDragging ? (
+        {gameComplete ? (
+          <p className="text-base text-center text-white/80">Congrats, you solved the puzzle!</p>
+        ) : isDragging ? (
           <div className="space-y-1 text-center">
             <p className="text-base text-white/80">
               Drag the piece into place and tap anywhere that isn&apos;t another piece to place it
@@ -524,21 +533,24 @@ export const TutorialPage = () => {
       </div>
 
       {/* Bottom Section */}
-      <div className="p-4 mt-auto">
+      <div
+        className={cn(
+          'p-4',
+          gameComplete
+            ? 'fixed right-0 bottom-0 left-0 backdrop-blur-sm z-[1001] bg-black/95'
+            : 'mt-auto'
+        )}
+        style={{
+          paddingBottom: gameComplete ? 'calc(1rem + env(safe-area-inset-bottom, 0px))' : '1rem',
+        }}
+      >
         <div className="mx-auto max-w-2xl">
-          {/* Completion Message */}
-          {gameComplete && (
-            <div className="p-4 mb-4 text-center rounded-lg border-2 border-green-500 bg-green-500/10">
-              <h2 className="text-xl font-bold text-white">Puzzle Complete!</h2>
-              <p className="text-sm text-white/70">
-                You&apos;ve learned how to play Lettered. Ready to try a real puzzle?
-              </p>
-            </div>
-          )}
-
           {/* Skip/Continue Button */}
           <Button
-            onClick={gameComplete ? handleComplete : handleSkip}
+            onClick={() => {
+              console.log('[Tutorial] Button clicked, gameComplete:', gameComplete);
+              void (gameComplete ? handleComplete() : handleSkip());
+            }}
             disabled={isSaving}
             className={cn(
               'w-full text-lg font-bold',
