@@ -2,8 +2,11 @@ import { Router } from 'express';
 import { reddit } from '../lib/reddit-provider';
 import { getUserByRedditHandle, getUserById } from '../database/user';
 import { getRedisClient } from '../lib/redis-provider';
-import { RedisKeys, deserialize } from '../../shared/types/redis';
+import { RedisKeys, deserialize, serialize } from '../../shared/types/redis';
 import { findLetteredSessionById, getLatestLetteredSubmission } from '../database/lettered';
+import { generateMockGame } from '../lib/lettered-game-generator';
+import { getNextLetteredPhrase } from '../lib/phrase-tracker';
+import type { LetteredGameData } from '../../shared/types/api';
 
 const router = Router();
 
@@ -665,6 +668,346 @@ router.delete('/api/admin/lettered/:gameId/stats', async (req, res): Promise<voi
     res.status(500).json({
       status: 'error',
       message: 'Internal server error',
+    });
+  }
+});
+
+// Admin endpoint to update a user's display name
+router.post('/api/admin/user/update-name', async (req, res): Promise<void> => {
+  try {
+    // First check if user is admin
+    const redditUsername = await reddit.getCurrentUsername();
+
+    if (!redditUsername || redditUsername === 'anonymous') {
+      res.status(404).json({
+        status: 'error',
+        message: 'Not found',
+      });
+      return;
+    }
+
+    const adminUser = await getUserByRedditHandle(redditUsername);
+
+    if (!adminUser || !adminUser.admin) {
+      console.log('User is not admin', { adminUser });
+      res.status(404).json({
+        status: 'error',
+        message: 'Not found',
+      });
+      return;
+    }
+
+    const { userId, newName } = req.body as { userId?: string; newName?: string };
+
+    if (!userId || !newName) {
+      res.status(400).json({
+        status: 'error',
+        message: 'userId and newName are required',
+      });
+      return;
+    }
+
+    // Validate new name (basic validation)
+    const trimmedName = newName.trim();
+    if (trimmedName.length < 1 || trimmedName.length > 50) {
+      res.status(400).json({
+        status: 'error',
+        message: 'Name must be between 1 and 50 characters',
+      });
+      return;
+    }
+
+    const redis = await getRedisClient();
+
+    // Get the existing user
+    const existingUserData = await redis.get(RedisKeys.user.byId(userId));
+    if (!existingUserData) {
+      res.status(404).json({
+        status: 'error',
+        message: 'User not found',
+      });
+      return;
+    }
+
+    const existingUser = deserialize<{
+      id: string;
+      reddit_id: string;
+      handle: string;
+      image_url: string | null;
+      admin: boolean;
+      created_at: string;
+      updated_at: string;
+    }>(existingUserData);
+
+    if (!existingUser) {
+      res.status(404).json({
+        status: 'error',
+        message: 'Failed to parse user data',
+      });
+      return;
+    }
+
+    const oldName = existingUser.handle;
+
+    // Update user record
+    const updatedUser = {
+      ...existingUser,
+      handle: trimmedName,
+      updated_at: new Date().toISOString(),
+    };
+    await redis.set(RedisKeys.user.byId(userId), serialize(updatedUser));
+
+    // Update handle index (remove old, add new)
+    await redis.del(RedisKeys.user.byHandle(oldName));
+    await redis.set(RedisKeys.user.byHandle(trimmedName), userId);
+
+    // Update leaderboard metadata across all periods
+    const periods = ['daily', 'weekly', 'monthly', 'alltime'] as const;
+    const types = ['overall', 'lettered'] as const;
+    let metadataUpdated = 0;
+
+    for (const type of types) {
+      for (const period of periods) {
+        const leaderboardKey = RedisKeys.leaderboard(type, period);
+        const metadataKey = `${leaderboardKey}:meta:${userId}`;
+
+        const existingMetadata = await redis.get(metadataKey);
+        if (existingMetadata) {
+          const metadata = deserialize<{ redditHandle: string }>(existingMetadata);
+          if (metadata) {
+            const updatedMetadata = {
+              ...metadata,
+              redditHandle: trimmedName,
+            };
+            await redis.set(metadataKey, serialize(updatedMetadata));
+            metadataUpdated++;
+          }
+        }
+      }
+    }
+
+    console.log('Updated user name:', {
+      userId,
+      oldName,
+      newName: trimmedName,
+      metadataUpdated,
+    });
+
+    res.json({
+      status: 'success',
+      message: 'User name updated successfully',
+      data: {
+        userId,
+        oldName,
+        newName: trimmedName,
+        metadataUpdated,
+      },
+    });
+  } catch (error) {
+    console.error('Error updating user name:', error);
+    res.status(500).json({
+      status: 'error',
+      message: error instanceof Error ? error.message : 'Internal server error',
+    });
+  }
+});
+
+// Admin endpoint to search for a user by handle
+router.get('/api/admin/user/search', async (req, res): Promise<void> => {
+  try {
+    // First check if user is admin
+    const redditUsername = await reddit.getCurrentUsername();
+
+    if (!redditUsername || redditUsername === 'anonymous') {
+      res.status(404).json({
+        status: 'error',
+        message: 'Not found',
+      });
+      return;
+    }
+
+    const adminUser = await getUserByRedditHandle(redditUsername);
+
+    if (!adminUser || !adminUser.admin) {
+      res.status(404).json({
+        status: 'error',
+        message: 'Not found',
+      });
+      return;
+    }
+
+    const handle = req.query.handle as string;
+
+    if (!handle) {
+      res.status(400).json({
+        status: 'error',
+        message: 'handle query parameter is required',
+      });
+      return;
+    }
+
+    const redis = await getRedisClient();
+
+    // Try to find user by exact handle match
+    const userId = await redis.get(RedisKeys.user.byHandle(handle));
+    if (!userId) {
+      res.status(404).json({
+        status: 'error',
+        message: 'User not found',
+      });
+      return;
+    }
+
+    const userData = await redis.get(RedisKeys.user.byId(userId));
+    if (!userData) {
+      res.status(404).json({
+        status: 'error',
+        message: 'User data not found',
+      });
+      return;
+    }
+
+    const user = deserialize<{
+      id: string;
+      reddit_id: string;
+      handle: string;
+      image_url: string | null;
+      admin: boolean;
+      created_at: string;
+      updated_at: string;
+    }>(userData);
+
+    if (!user) {
+      res.status(404).json({
+        status: 'error',
+        message: 'Failed to parse user data',
+      });
+      return;
+    }
+
+    res.json({
+      status: 'success',
+      user: {
+        id: user.id,
+        redditId: user.reddit_id,
+        handle: user.handle,
+        imageUrl: user.image_url,
+        admin: user.admin,
+        createdAt: user.created_at,
+      },
+    });
+  } catch (error) {
+    console.error('Error searching for user:', error);
+    res.status(500).json({
+      status: 'error',
+      message: 'Internal server error',
+    });
+  }
+});
+
+// Admin endpoint to regenerate today's lettered game
+router.post('/api/admin/lettered/regenerate', async (_req, res): Promise<void> => {
+  try {
+    // First check if user is admin
+    const redditUsername = await reddit.getCurrentUsername();
+
+    if (!redditUsername || redditUsername === 'anonymous') {
+      res.status(404).json({
+        status: 'error',
+        message: 'Not found',
+      });
+      return;
+    }
+
+    const user = await getUserByRedditHandle(redditUsername);
+
+    if (!user || !user.admin) {
+      console.log('User is not admin', { user });
+      res.status(404).json({
+        status: 'error',
+        message: 'Not found',
+      });
+      return;
+    }
+
+    const redis = await getRedisClient();
+
+    // Calculate today's date in EST (same logic as getOrCreateTodaysLetteredGame)
+    const today = new Date();
+    const estDate = new Date(today.toLocaleString('en-US', { timeZone: 'America/New_York' }));
+    const gameId = estDate.toISOString().split('T')[0]!; // YYYY-MM-DD format
+
+    console.log('Regenerating lettered game for:', gameId);
+
+    // Get the current game to preserve the phrase (or get a new one)
+    const existingGameData = await redis.get(RedisKeys.letteredGame.byId(gameId));
+    let phrase: string;
+    let category: string;
+
+    if (existingGameData) {
+      const currentGame = deserialize<LetteredGameData>(existingGameData);
+      if (currentGame) {
+        phrase = currentGame.phrase;
+        category = currentGame.category;
+        console.log('Using existing phrase:', phrase);
+      } else {
+        // Get a new phrase
+        const phraseData = await getNextLetteredPhrase();
+        phrase = phraseData.phrase;
+        category = phraseData.category;
+        console.log('Using new phrase:', phrase);
+      }
+    } else {
+      // Get a new phrase
+      const phraseData = await getNextLetteredPhrase();
+      phrase = phraseData.phrase;
+      category = phraseData.category;
+      console.log('No existing game, using new phrase:', phrase);
+    }
+
+    // Generate a new game with a random seed
+    const seed = Math.floor(Math.random() * 1000000);
+    console.log('Generating new game with seed:', seed);
+
+    const newGameData = generateMockGame(category, phrase, seed);
+
+    // Set the game ID and timestamps
+    const now = new Date().toISOString();
+    const dailyGame: LetteredGameData = {
+      ...newGameData,
+      id: gameId,
+      postType: 'daily',
+      createdAt: now,
+      updatedAt: now,
+    };
+
+    // Save to Redis (overwrites existing game)
+    await redis.set(RedisKeys.letteredGame.byId(gameId), serialize(dailyGame));
+
+    console.log('Successfully regenerated lettered game:', {
+      gameId,
+      phrase,
+      category,
+      seed,
+      piecesCount: dailyGame.pieces.length,
+    });
+
+    res.json({
+      status: 'success',
+      message: 'Game regenerated successfully',
+      data: {
+        gameId,
+        phrase,
+        category,
+        seed,
+        piecesCount: dailyGame.pieces.length,
+      },
+    });
+  } catch (error) {
+    console.error('Error regenerating game:', error);
+    res.status(500).json({
+      status: 'error',
+      message: error instanceof Error ? error.message : 'Internal server error',
     });
   }
 });

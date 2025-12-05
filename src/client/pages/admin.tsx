@@ -5,7 +5,7 @@ import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
 import { AlertDialog } from '../components/ui/alert-dialog';
 import { apiFetch } from '../lib/utils';
-import { ArrowLeft, Trash2, Loader2, Search } from 'lucide-react';
+import { ArrowLeft, Trash2, Loader2, Search, RefreshCw, UserPen } from 'lucide-react';
 import { toast } from 'sonner';
 import type { User } from '../../shared/types/api';
 
@@ -66,6 +66,41 @@ interface SessionLookupResponse {
   } | null;
 }
 
+interface RegenerateGameResponse {
+  status: string;
+  message: string;
+  data: {
+    gameId: string;
+    phrase: string;
+    category: string;
+    seed: number;
+    piecesCount: number;
+  };
+}
+
+interface UserSearchResponse {
+  status: string;
+  user: {
+    id: string;
+    redditId: string;
+    handle: string;
+    imageUrl: string | null;
+    admin: boolean;
+    createdAt: string;
+  };
+}
+
+interface UpdateUserNameResponse {
+  status: string;
+  message: string;
+  data: {
+    userId: string;
+    oldName: string;
+    newName: string;
+    metadataUpdated: number;
+  };
+}
+
 export const AdminPage = () => {
   const navigate = useNavigate();
   const [user, setUser] = useState<User | null>(null);
@@ -78,6 +113,10 @@ export const AdminPage = () => {
   const [showClearRedisConfirmDialog, setShowClearRedisConfirmDialog] = useState(false);
   const [showClearLetteredSessionsDialog, setShowClearLetteredSessionsDialog] = useState(false);
 
+  // Regenerate game state
+  const [regeneratingGame, setRegeneratingGame] = useState(false);
+  const [showRegenerateGameDialog, setShowRegenerateGameDialog] = useState(false);
+
   // Session lookup state
   const [sessionIdInput, setSessionIdInput] = useState('');
   const [sessionLookupLoading, setSessionLookupLoading] = useState(false);
@@ -85,6 +124,14 @@ export const AdminPage = () => {
     null
   );
   const [sessionLookupError, setSessionLookupError] = useState<string | null>(null);
+
+  // User name update state
+  const [userSearchHandle, setUserSearchHandle] = useState('');
+  const [userSearchLoading, setUserSearchLoading] = useState(false);
+  const [userSearchResult, setUserSearchResult] = useState<UserSearchResponse['user'] | null>(null);
+  const [userSearchError, setUserSearchError] = useState<string | null>(null);
+  const [newUserName, setNewUserName] = useState('');
+  const [updatingUserName, setUpdatingUserName] = useState(false);
 
   useEffect(() => {
     const checkAdminAccess = async () => {
@@ -188,6 +235,112 @@ export const AdminPage = () => {
       toast.error('Failed to clear lettered sessions');
     } finally {
       setClearingLetteredSessions(false);
+    }
+  };
+
+  const handleRegenerateGameClick = () => {
+    setShowRegenerateGameDialog(true);
+  };
+
+  const handleRegenerateGameConfirm = async () => {
+    setRegeneratingGame(true);
+    try {
+      const response = await apiFetch('/api/admin/lettered/regenerate', {
+        method: 'POST',
+      });
+
+      if (response.ok) {
+        const data: RegenerateGameResponse = await response.json();
+        toast.success(
+          `Game regenerated: "${data.data.phrase}" (${data.data.piecesCount} pieces, seed: ${data.data.seed})`
+        );
+      } else {
+        const errorData = await response.json().catch(() => ({}));
+        toast.error(errorData.message || 'Failed to regenerate game');
+      }
+    } catch (error) {
+      console.error('Error regenerating game:', error);
+      toast.error('Failed to regenerate game');
+    } finally {
+      setRegeneratingGame(false);
+    }
+  };
+
+  const handleUserSearch = async () => {
+    if (!userSearchHandle.trim()) {
+      toast.error('Please enter a username to search');
+      return;
+    }
+
+    setUserSearchLoading(true);
+    setUserSearchError(null);
+    setUserSearchResult(null);
+    setNewUserName('');
+
+    try {
+      const response = await apiFetch(
+        `/api/admin/user/search?handle=${encodeURIComponent(userSearchHandle.trim())}`
+      );
+
+      if (response.ok) {
+        const data: UserSearchResponse = await response.json();
+        setUserSearchResult(data.user);
+        setNewUserName(data.user.handle);
+      } else {
+        const errorData = await response.json().catch(() => ({}));
+        setUserSearchError(errorData.message || 'User not found');
+      }
+    } catch (error) {
+      console.error('Error searching for user:', error);
+      setUserSearchError('Failed to search for user');
+    } finally {
+      setUserSearchLoading(false);
+    }
+  };
+
+  const handleUpdateUserName = async () => {
+    if (!userSearchResult || !newUserName.trim()) {
+      toast.error('Please enter a new name');
+      return;
+    }
+
+    if (newUserName.trim() === userSearchResult.handle) {
+      toast.error('New name is the same as current name');
+      return;
+    }
+
+    setUpdatingUserName(true);
+    try {
+      const response = await apiFetch('/api/admin/user/update-name', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          userId: userSearchResult.id,
+          newName: newUserName.trim(),
+        }),
+      });
+
+      if (response.ok) {
+        const data: UpdateUserNameResponse = await response.json();
+        toast.success(
+          `Updated name from "${data.data.oldName}" to "${data.data.newName}" (${data.data.metadataUpdated} leaderboard entries updated)`
+        );
+        // Update the local state to reflect the change
+        setUserSearchResult({
+          ...userSearchResult,
+          handle: data.data.newName,
+        });
+      } else {
+        const errorData = await response.json().catch(() => ({}));
+        toast.error(errorData.message || 'Failed to update user name');
+      }
+    } catch (error) {
+      console.error('Error updating user name:', error);
+      toast.error('Failed to update user name');
+    } finally {
+      setUpdatingUserName(false);
     }
   };
 
@@ -399,6 +552,98 @@ export const AdminPage = () => {
           </CardContent>
         </Card>
 
+        {/* User Name Update */}
+        <Card className="mb-8">
+          <CardHeader>
+            <CardTitle>Update User Display Name</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="flex flex-col gap-4 sm:flex-row">
+              <Input
+                type="text"
+                placeholder="Enter username to search"
+                value={userSearchHandle}
+                onChange={(e) => setUserSearchHandle(e.target.value)}
+                className="flex-1"
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') {
+                    void handleUserSearch();
+                  }
+                }}
+              />
+              <Button
+                onClick={() => void handleUserSearch()}
+                disabled={userSearchLoading}
+                className="flex gap-2 items-center sm:w-auto"
+              >
+                {userSearchLoading ? (
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                ) : (
+                  <Search className="w-4 h-4" />
+                )}
+                {userSearchLoading ? 'Searching...' : 'Find User'}
+              </Button>
+            </div>
+
+            {userSearchError && (
+              <div className="p-4 rounded-lg border border-destructive bg-destructive/10">
+                <p className="text-sm text-destructive">{userSearchError}</p>
+              </div>
+            )}
+
+            {userSearchResult && (
+              <div className="p-4 space-y-4 rounded-lg border bg-muted/50">
+                <div>
+                  <h4 className="mb-2 font-semibold">User Found</h4>
+                  <div className="grid grid-cols-2 gap-2 text-sm">
+                    <div className="text-muted-foreground">User ID:</div>
+                    <div className="font-mono text-xs break-all">{userSearchResult.id}</div>
+                    <div className="text-muted-foreground">Current Handle:</div>
+                    <div className="font-semibold">{userSearchResult.handle}</div>
+                    <div className="text-muted-foreground">Reddit ID:</div>
+                    <div className="font-mono text-xs">{userSearchResult.redditId}</div>
+                    <div className="text-muted-foreground">Admin:</div>
+                    <div>{userSearchResult.admin ? 'Yes' : 'No'}</div>
+                  </div>
+                </div>
+
+                <div className="pt-4 border-t">
+                  <h4 className="mb-2 font-semibold">Change Display Name</h4>
+                  <div className="flex flex-col gap-4 sm:flex-row">
+                    <Input
+                      type="text"
+                      placeholder="Enter new display name"
+                      value={newUserName}
+                      onChange={(e) => setNewUserName(e.target.value)}
+                      className="flex-1"
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') {
+                          void handleUpdateUserName();
+                        }
+                      }}
+                    />
+                    <Button
+                      onClick={() => void handleUpdateUserName()}
+                      disabled={updatingUserName || newUserName.trim() === userSearchResult.handle}
+                      className="flex gap-2 items-center sm:w-auto"
+                    >
+                      {updatingUserName ? (
+                        <Loader2 className="w-4 h-4 animate-spin" />
+                      ) : (
+                        <UserPen className="w-4 h-4" />
+                      )}
+                      {updatingUserName ? 'Updating...' : 'Update Name'}
+                    </Button>
+                  </div>
+                  <p className="mt-2 text-xs text-muted-foreground">
+                    This will update the user's display name across all leaderboards.
+                  </p>
+                </div>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+
         {/* Admin Actions */}
         <Card>
           <CardHeader>
@@ -436,6 +681,29 @@ export const AdminPage = () => {
             <CardTitle className="text-red-600">Debug Actions - Danger Zone</CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
+            <div className="flex flex-col gap-4 p-4 rounded-lg border border-amber-200 bg-amber-50 dark:bg-amber-950/20 sm:flex-row sm:justify-between sm:items-center">
+              <div className="flex-1">
+                <h3 className="font-semibold text-amber-600">Regenerate Today's Game</h3>
+                <p className="text-sm text-muted-foreground">
+                  Regenerates today's lettered game with a new random seed. Uses the same phrase but
+                  creates a new puzzle layout. Existing sessions will become invalid.
+                </p>
+              </div>
+              <Button
+                variant="outline"
+                onClick={handleRegenerateGameClick}
+                disabled={regeneratingGame}
+                className="flex gap-2 items-center w-full border-amber-500 text-amber-600 hover:bg-amber-100 dark:hover:bg-amber-950/40 sm:w-auto shrink-0"
+              >
+                {regeneratingGame ? (
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                ) : (
+                  <RefreshCw className="w-4 h-4" />
+                )}
+                {regeneratingGame ? 'Regenerating...' : 'Regenerate Game'}
+              </Button>
+            </div>
+
             <div className="flex flex-col gap-4 p-4 rounded-lg border border-red-200 bg-red-50 dark:bg-red-950/20 sm:flex-row sm:justify-between sm:items-center">
               <div className="flex-1">
                 <h3 className="font-semibold text-red-600">Clear Lettered Sessions</h3>
@@ -527,6 +795,17 @@ export const AdminPage = () => {
           cancelText="Cancel"
           onConfirm={handleClearLetteredSessionsConfirm}
           variant="destructive"
+        />
+
+        <AlertDialog
+          open={showRegenerateGameDialog}
+          onOpenChange={setShowRegenerateGameDialog}
+          title="Regenerate Today's Game?"
+          description="This will create a new puzzle layout for today's game using a different random seed. The same phrase will be used but the piece shapes and positions will change. Any existing player sessions will become invalid and they'll need to start over."
+          confirmText="Regenerate Game"
+          cancelText="Cancel"
+          onConfirm={handleRegenerateGameConfirm}
+          variant="default"
         />
       </div>
     </div>
