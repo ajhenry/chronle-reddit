@@ -17,8 +17,8 @@ import { LetteredGameStateManager } from '../lib/lettered-game-state';
 import { apiFetch } from '../lib/utils';
 import { LetteredDailyGameResponse, LetteredPostGameResponse } from '../../shared/types/api';
 import { useTheme } from 'src/components/theme-provider';
-import { Plus, Share2 } from 'lucide-react';
 import { InGameCustomButton } from 'src/components/InGameCustomButton';
+import { useDragMode } from '../hooks/useDragMode';
 
 // API function to fetch a game by ID (works for both daily and custom games)
 const fetchGameById = async (gameId: string): Promise<LetteredDailyGameResponse> => {
@@ -44,38 +44,6 @@ const fetchPostGameStats = async (gameId: string): Promise<LetteredPostGameRespo
   const data = await response.json();
   console.log('fetchPostGameStats', data);
   return data;
-};
-
-// Helper to get Reddit post URL for sharing
-const getRedditPostUrl = (postId?: string | null, subredditName?: string | null) => {
-  if (!postId || !subredditName) return null;
-  // Remove t3_ prefix if present
-  const cleanPostId = postId.startsWith('t3_') ? postId.slice(3) : postId;
-  return `https://www.reddit.com/r/${subredditName}/comments/${cleanPostId}/`;
-};
-
-// Handle share action
-const handleShare = async (postId?: string | null, subredditName?: string | null) => {
-  const redditUrl = getRedditPostUrl(postId, subredditName);
-  const shareUrl = redditUrl || window.location.href;
-
-  const shareData = {
-    title: 'Lettered',
-    text: 'Check out this puzzle game on Reddit!',
-    url: shareUrl,
-  };
-
-  try {
-    if (navigator.share && navigator.canShare(shareData)) {
-      await navigator.share(shareData);
-    } else {
-      // Fallback: copy to clipboard
-      await navigator.clipboard.writeText(shareUrl);
-    }
-  } catch (err) {
-    // User cancelled or share failed - ignore
-    console.error('Share failed:', err);
-  }
 };
 
 // Conversion functions for Grid component
@@ -284,6 +252,9 @@ export const LetteredPage = ({
   const { breakpoint } = useViewport();
   const responsiveCellSize = getResponsiveCellSize(breakpoint, gameData?.rows, gameData?.cols);
   const responsiveCellSpacing = getResponsiveCellSpacing(breakpoint);
+
+  // Drag mode preference
+  const { dragMode, setDragMode } = useDragMode();
 
   // Check for post context and get gameId
   useEffect(() => {
@@ -787,8 +758,7 @@ export const LetteredPage = ({
   };
 
   const pieceTileClass = (piece: LetterPiece) => {
-    const baseClass =
-      'text-primary-foreground transition-all touch-none duration-500 overflow-hidden';
+    const baseClass = 'text-primary-foreground transition-all duration-500 overflow-hidden';
     return cn(
       baseClass,
       !(gameStateManagerRef.current?.isGameComplete() || gameComplete)
@@ -891,6 +861,8 @@ export const LetteredPage = ({
       postId={postId}
       subredditName={subredditName}
       logoSrc="/lettered-logo.svg"
+      dragMode={dragMode}
+      onDragModeChange={setDragMode}
     >
       {/* Admin Debug Controls */}
       {isAdmin && (
@@ -1063,6 +1035,7 @@ export const LetteredPage = ({
           getBoardTileClassName={boardTileClass}
           getTileDraggingClassName={pieceTileDraggingClass}
           disabled={gameComplete}
+          dragMode={dragMode}
         />
       </div>
       {/* Confetti Animation */}

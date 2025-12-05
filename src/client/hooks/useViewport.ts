@@ -45,3 +45,8 @@ function getBreakpoint(width: number): Breakpoint {
   if (width >= BREAKPOINTS.sm) return 'sm';
   return 'xs';
 }
+
+export function useIsMobile(): boolean {
+  const { breakpoint } = useViewport();
+  return breakpoint === 'xs' || breakpoint === 'sm' || breakpoint === 'md';
+}
