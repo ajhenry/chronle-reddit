@@ -5,6 +5,7 @@ import React, {
   useCallback,
   useMemo,
   useRef,
+  useEffect,
   ReactNode,
 } from 'react';
 import { cn } from '../../lib/utils';
@@ -170,6 +171,8 @@ type GridContextType = {
   activateTapDrag: (itemId: string) => void;
   deactivateTapDrag: () => void;
   placeTapDragItem: () => void;
+  // Auto-complete callback
+  shouldAutoComplete: ((previewLayout: (string | null)[][]) => boolean) | null;
 };
 
 const GridContext = createContext<GridContextType | null>(null);
@@ -191,6 +194,8 @@ type GridProviderProps = {
   onLayoutChange?: (layout: (string | null)[][]) => void;
   disabled?: boolean;
   dragMode?: DragMode;
+  shouldAutoComplete?: (previewLayout: (string | null)[][]) => boolean;
+  onDragStateChange?: (isActive: boolean) => void;
 };
 
 function GridProvider({
@@ -201,6 +206,8 @@ function GridProvider({
   onLayoutChange,
   disabled = false,
   dragMode = 'tap-to-drag',
+  shouldAutoComplete,
+  onDragStateChange,
 }: GridProviderProps) {
   const spacing = gridSize.spacing ?? 0;
   const gridId = useMemo(() => generateGridId(), []);
@@ -224,6 +231,15 @@ function GridProvider({
   const [tapDragActiveItemId, setTapDragActiveItemId] = useState<string | null>(null);
   const [tapDragOriginalPosition, setTapDragOriginalPosition] = useState<GridPosition | null>(null);
 
+  // Notify parent when drag state changes
+  useEffect(() => {
+    onDragStateChange?.(!!tapDragActiveItemId);
+  }, [tapDragActiveItemId, onDragStateChange]);
+
+  // Store shouldAutoComplete in a ref to avoid stale closures
+  const shouldAutoCompleteRef = useRef(shouldAutoComplete);
+  shouldAutoCompleteRef.current = shouldAutoComplete;
+
   // Auto-scroll refs - using refs to avoid stale closure issues in animation loop
   const autoScrollFrameRef = useRef<number | null>(null);
   const currentPointerPositionRef = useRef<{ clientX: number; clientY: number } | null>(null);
@@ -237,6 +253,40 @@ function GridProvider({
     const emptyGrid = createEmptyTileGrid(gridSize);
     return updateTileOccupancy(emptyGrid, items);
   }, [gridSize, items]);
+
+  // Helper function to build a preview layout for auto-complete checking
+  const buildPreviewLayout = useCallback(
+    (previewItemId: string, previewPosition: GridPosition): (string | null)[][] => {
+      const layout: (string | null)[][] = [];
+
+      // Initialize empty layout
+      for (let y = 0; y < gridSize.height; y++) {
+        const row: (string | null)[] = [];
+        for (let x = 0; x < gridSize.width; x++) {
+          row[x] = null;
+        }
+        layout[y] = row;
+      }
+
+      // Fill in all items with their current positions (or preview position for the dragged item)
+      for (const item of items) {
+        const position = item.id === previewItemId ? previewPosition : item.position;
+        const occupiedPositions = item.shape.cells.map((cell) => ({
+          x: position.x + cell.x,
+          y: position.y + cell.y,
+        }));
+
+        for (const pos of occupiedPositions) {
+          if (pos.y >= 0 && pos.y < gridSize.height && pos.x >= 0 && pos.x < gridSize.width) {
+            layout[pos.y]![pos.x] = item.id;
+          }
+        }
+      }
+
+      return layout;
+    },
+    [items, gridSize]
+  );
 
   // Call onLayoutChange whenever tileGrid changes
   // Skip layout change notifications while in tap-drag mode (moves are counted on placement only)
@@ -349,12 +399,26 @@ function GridProvider({
     const isValid = isPositionValid(item, item.position, item.id);
 
     if (isValid) {
+      // Check if the piece actually moved from its original position
+      const didMove =
+        !tapDragOriginalPosition ||
+        item.position.x !== tapDragOriginalPosition.x ||
+        item.position.y !== tapDragOriginalPosition.y;
+
       // Position is valid, finalize the placement
       setTapDragActiveItemId(null);
       setTapDragOriginalPosition(null);
       setDraggedItemId(null);
       setGrabOffset(null);
       setDragPreview(null);
+
+      // If the piece moved, explicitly call onLayoutChange
+      // This is needed because when selecting another piece immediately after,
+      // React batches the state updates and the effect condition fails
+      if (didMove && onLayoutChange) {
+        const layout = tileGrid.map((row) => row.map((cell) => cell.occupyingItemId || null));
+        onLayoutChange(layout);
+      }
     } else {
       // Position is invalid, reset to original position
       if (tapDragOriginalPosition) {
@@ -366,7 +430,15 @@ function GridProvider({
       }
       // Stay in tap drag mode so user can try again
     }
-  }, [tapDragActiveItemId, tapDragOriginalPosition, items, isPositionValid, deactivateTapDrag]);
+  }, [
+    tapDragActiveItemId,
+    tapDragOriginalPosition,
+    items,
+    isPositionValid,
+    deactivateTapDrag,
+    onLayoutChange,
+    tileGrid,
+  ]);
 
   // Utility function to get coordinates from global mouse or touch events
   const getGlobalEventCoordinates = useCallback((e: MouseEvent | TouchEvent) => {
@@ -636,6 +708,28 @@ function GridProvider({
 
         if (isValid) {
           moveItem(currentDraggedItemId, dropPosition);
+
+          // Check for auto-complete in tap-to-drag mode:
+          // If piece is dropped at a position that would complete the puzzle, auto-finalize
+          if (tapDragActiveItemId && shouldAutoCompleteRef.current) {
+            const previewLayout = buildPreviewLayout(draggedItem.id, dropPosition);
+            if (shouldAutoCompleteRef.current(previewLayout)) {
+              console.log('[AutoComplete] Puzzle complete after drop, auto-finalizing placement');
+              // Clear tap-drag state to finalize the placement
+              setTapDragActiveItemId(null);
+              setTapDragOriginalPosition(null);
+              // Clean up drag state
+              setDraggedItemId(null);
+              setGrabOffset(null);
+              setDragPreview(null);
+              setCurrentHoveredCell(null);
+              // Trigger layout change callback
+              if (onLayoutChange) {
+                onLayoutChange(previewLayout);
+              }
+              return; // Early return since we've handled everything
+            }
+          }
         }
       }
 
@@ -656,6 +750,9 @@ function GridProvider({
       isPositionValid,
       moveItem,
       getGlobalEventCoordinates,
+      tapDragActiveItemId,
+      buildPreviewLayout,
+      onLayoutChange,
     ]
   );
 
@@ -761,6 +858,7 @@ function GridProvider({
       activateTapDrag,
       deactivateTapDrag,
       placeTapDragItem,
+      shouldAutoComplete: shouldAutoComplete || null,
     }),
     [
       gridId,
@@ -790,6 +888,7 @@ function GridProvider({
       activateTapDrag,
       deactivateTapDrag,
       placeTapDragItem,
+      shouldAutoComplete,
     ]
   );
 
@@ -908,7 +1007,6 @@ const DraggableItemComponent = React.memo(
       dragMode,
       tapDragActiveItemId,
       activateTapDrag,
-      deactivateTapDrag,
       placeTapDragItem,
     } = useGrid();
     const isDisabled = (item.disabled ?? false) || gridDisabled;
@@ -1157,10 +1255,10 @@ const DraggableItemComponent = React.memo(
           return;
         }
 
-        // If this piece is already active, place it (confirm placement)
+        // If this piece is already active, do nothing (keep it in drag mode)
+        // User must click elsewhere (empty space) or the Place button to confirm placement
         if (isTapDragActive) {
-          console.log(`[Click] Placing piece for item=${item.id}`);
-          placeTapDragItem();
+          console.log(`[Click] Ignoring - piece is already active, click elsewhere to place`);
           return;
         }
 
@@ -1184,7 +1282,6 @@ const DraggableItemComponent = React.memo(
         cellSize,
         spacing,
         activateTapDrag,
-        deactivateTapDrag,
         placeTapDragItem,
       ]
     );
@@ -1551,9 +1648,9 @@ const TapDragBanner = React.memo(
           )}
         >
           <div className="flex flex-col">
-            <span className="text-base font-bold text-foreground">Drag Mode</span>
+            <span className="text-sm font-bold text-foreground">Drag Mode</span>
             <span className="text-sm text-muted-foreground">
-              Counts as a move when you place it or select another piece
+              Moves don&apos;t count until you place the piece
             </span>
           </div>
           <button
@@ -1627,6 +1724,13 @@ type GridProps = {
   // Default classes that can be completely overridden
   defaultBoardTileClassName?: string;
   defaultItemClassName?: string;
+  // Optional callback to check if placing a piece would complete the puzzle
+  // If provided and returns true during drag, the piece will be auto-placed
+  shouldAutoComplete?: (previewLayout: (string | null)[][]) => boolean;
+  // Optional callback when drag state changes (piece selected/deselected in tap-to-drag mode)
+  onDragStateChange?: (isActive: boolean) => void;
+  // Hide the "Tap a piece to drag it" hint pill
+  hideHintPill?: boolean;
 };
 
 function Grid({
@@ -1646,6 +1750,9 @@ function Grid({
   getTileDraggingClassName,
   defaultBoardTileClassName,
   defaultItemClassName,
+  shouldAutoComplete,
+  onDragStateChange,
+  hideHintPill = false,
 }: GridProps) {
   return (
     <GridProvider
@@ -1655,6 +1762,8 @@ function Grid({
       onLayoutChange={onLayoutChange}
       disabled={disabled}
       dragMode={dragMode}
+      shouldAutoComplete={shouldAutoComplete}
+      onDragStateChange={onDragStateChange}
     >
       <GridContent
         className={className}
@@ -1663,6 +1772,7 @@ function Grid({
         getTileDraggingClassName={getTileDraggingClassName}
         defaultBoardTileClassName={defaultBoardTileClassName}
         defaultItemClassName={defaultItemClassName}
+        hideHintPill={hideHintPill}
       >
         {children}
       </GridContent>
@@ -1679,6 +1789,7 @@ function GridContent({
   getTileDraggingClassName,
   defaultBoardTileClassName,
   defaultItemClassName,
+  hideHintPill = false,
 }: {
   className: string;
   children: ReactNode;
@@ -1687,6 +1798,7 @@ function GridContent({
   getTileDraggingClassName?: (piece: DraggableItem, valid: boolean) => string | undefined;
   defaultBoardTileClassName?: string;
   defaultItemClassName?: string;
+  hideHintPill?: boolean;
 }) {
   const {
     items,
@@ -1885,7 +1997,9 @@ function GridContent({
 
       {/* Tap hint pill - shows when in tap-to-drag mode and no piece is active */}
       <TapHintPill
-        isVisible={dragMode === 'tap-to-drag' && !tapDragActiveItemId && !draggedItemId}
+        isVisible={
+          !hideHintPill && dragMode === 'tap-to-drag' && !tapDragActiveItemId && !draggedItemId
+        }
       />
 
       <div className={cn('inline-block', className)}>
@@ -1906,6 +2020,25 @@ function GridContent({
             console.log(
               `[GridContainer TouchMove] touches=${e.touches.length}, tapDragActiveItemId=${tapDragActiveItemId}`
             );
+          }}
+          onClick={(e) => {
+            // If there's an active tap-drag piece, clicking on empty space (not a piece) should place it
+            if (!tapDragActiveItemId) return;
+
+            // Check if the click was on a draggable item (piece)
+            // We traverse up the DOM to see if any parent has the draggable-item data attribute
+            let target = e.target as HTMLElement | null;
+            while (target && target !== gridRef.current) {
+              if (target.dataset?.testid?.startsWith('draggable-item-')) {
+                // Click was on a piece - let the piece's click handler deal with it
+                return;
+              }
+              target = target.parentElement;
+            }
+
+            // Click was on empty space (grid background/cell), place the piece
+            console.log(`[GridContainer Click] Placing piece - clicked on empty space`);
+            placeTapDragItem();
           }}
         >
           {/* Opacity overlay for drag mode - always rendered for smooth transitions */}

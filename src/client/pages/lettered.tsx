@@ -543,6 +543,89 @@ export const LetteredPage = ({
     }
   }, [uiState.showGameOverModal, gameComplete, gameId, gameData?.postType, loadPostGameStats]);
 
+  // Check if a given layout would complete the puzzle (for auto-complete during drag)
+  const checkPuzzleComplete = useCallback(
+    (layout: (string | null)[][]): boolean => {
+      if (!gameData || !gameData.solution || gameComplete) {
+        return false;
+      }
+
+      // Parse the layout to extract piece positions
+      const piecesInLayout = new Map<string, { row: number; col: number }>();
+      const processedPieces = new Set<string>();
+
+      layout.forEach((row, rowIndex) => {
+        row.forEach((itemId, colIndex) => {
+          if (itemId && !processedPieces.has(itemId) && !itemId.startsWith('anchor-')) {
+            const piece = gameData.pieces.find((p) => p.id === itemId);
+            if (!piece) return;
+
+            processedPieces.add(itemId);
+
+            // Calculate anchor position from the first cell found
+            const occupiedPos = { row: rowIndex, col: colIndex };
+
+            // Find the correct anchor position
+            for (const shapePos of piece.shape) {
+              const testAnchor = {
+                row: occupiedPos.row - shapePos.row,
+                col: occupiedPos.col - shapePos.col,
+              };
+
+              // Verify this anchor works for all cells of the piece
+              let allCellsValid = true;
+              for (const testShapePos of piece.shape) {
+                const expectedRow = testAnchor.row + testShapePos.row;
+                const expectedCol = testAnchor.col + testShapePos.col;
+                const layoutRow = layout[expectedRow];
+                if (!layoutRow || layoutRow[expectedCol] !== itemId) {
+                  allCellsValid = false;
+                  break;
+                }
+              }
+
+              if (allCellsValid) {
+                piecesInLayout.set(itemId, testAnchor);
+                break;
+              }
+            }
+          }
+        });
+      });
+
+      // Check if all pieces are in their solution positions
+      const mainGridHeight = gameData.grid.length;
+      const mainGridWidth = gameData.grid[0]?.length || 0;
+
+      // Filter out pieces in the tray area (below main grid)
+      const mainBoardPieces = Array.from(piecesInLayout.entries()).filter(([, position]) => {
+        return position.row < mainGridHeight && position.col < mainGridWidth;
+      });
+
+      // All pieces must be on the main board
+      if (mainBoardPieces.length !== gameData.pieces.length) {
+        return false;
+      }
+
+      // Each piece must be in its solution position
+      for (const [pieceId, placedPosition] of mainBoardPieces) {
+        const solutionPosition = gameData.solution[pieceId];
+        if (!solutionPosition) {
+          return false;
+        }
+        if (
+          placedPosition.row !== solutionPosition.row ||
+          placedPosition.col !== solutionPosition.col
+        ) {
+          return false;
+        }
+      }
+
+      return true;
+    },
+    [gameData, gameComplete]
+  );
+
   // Handle layout changes from the grid
   const handleGridLayoutChange = useCallback(
     async (layout: (string | null)[][]) => {
@@ -1036,6 +1119,7 @@ export const LetteredPage = ({
           getTileDraggingClassName={pieceTileDraggingClass}
           disabled={gameComplete}
           dragMode={dragMode}
+          shouldAutoComplete={checkPuzzleComplete}
         />
       </div>
       {/* Confetti Animation */}

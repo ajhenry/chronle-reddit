@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Routes, Route, useNavigate } from 'react-router-dom';
+import { Routes, Route, useNavigate, useLocation } from 'react-router-dom';
 import { DevPage } from './pages/dev';
 import { LetteredPage } from './pages/lettered';
 import { TermsPage } from './pages/terms';
@@ -7,6 +7,7 @@ import { PrivacyPage } from './pages/privacy';
 import { AdminPage } from './pages/admin';
 import { CustomGamePage } from './pages/custom';
 import { LeaderboardPage } from './pages/leaderboard';
+import { TutorialPage } from './pages/tutorial';
 import { ScrollToTop } from './components/ScrollToTop';
 import { AdminBanner } from './components/AdminBanner';
 import { apiFetch } from './lib/utils';
@@ -14,8 +15,10 @@ import type { User } from '../shared/types/api';
 
 export const App = () => {
   const navigate = useNavigate();
+  const location = useLocation();
   const [userInfo, setUserInfo] = useState<User | null>(null);
   const [showAdminUI, setShowAdminUI] = useState(true);
+  const [userLoaded, setUserLoaded] = useState(false);
 
   // Toggle admin UI visibility with backtick key
   useEffect(() => {
@@ -69,12 +72,42 @@ export const App = () => {
         }
       } catch (error) {
         console.error('Error fetching user info:', error);
+      } finally {
+        setUserLoaded(true);
       }
     };
 
     void fetchUserInfo();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // Auto-redirect to tutorial if user hasn't completed it
+  // Only redirect from the main game page, not from other pages
+  useEffect(() => {
+    if (!userLoaded) return;
+
+    // Pages that should not trigger tutorial redirect
+    const exemptPaths = [
+      '/tutorial',
+      '/terms',
+      '/privacy',
+      '/custom',
+      '/leaderboard',
+      '/dev',
+      '/admin',
+    ];
+    const isExemptPath = exemptPaths.some((path) => location.pathname.startsWith(path));
+
+    if (isExemptPath) return;
+
+    // Check if user needs to see the tutorial
+    const tutorialCompleted = userInfo?.preferences?.tutorialCompleted ?? false;
+
+    if (!tutorialCompleted) {
+      console.log('Redirecting to tutorial - user has not completed it');
+      void navigate('/tutorial', { replace: true });
+    }
+  }, [userLoaded, userInfo, location.pathname, navigate]);
 
   const handleBackToMenu = () => {
     void navigate('/');
@@ -94,6 +127,7 @@ export const App = () => {
       <ScrollToTop />
 
       <Routes>
+        <Route path="/tutorial" element={<TutorialPage />} />
         <Route path="/custom" element={<CustomGamePage />} />
         <Route
           path="/leaderboard"

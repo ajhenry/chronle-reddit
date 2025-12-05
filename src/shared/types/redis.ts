@@ -111,6 +111,7 @@ export const RedisKeys = {
   user: {
     byId: (userId: string) => `users:id:${userId}`,
     byHandle: (handle: string) => `users:handle:${handle}`,
+    preferences: (userId: string) => `users:preferences:${userId}`,
   },
   letteredGame: {
     byId: (gameId: string) => `lettered_games:id:${gameId}`,
@@ -124,4 +125,3 @@ export const RedisKeys = {
   leaderboard: (type: 'overall' | 'lettered', period: TimePeriod, date?: Date) =>
     formatLeaderboardKey(type, period, date),
 };
-
