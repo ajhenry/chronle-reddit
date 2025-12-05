@@ -59,6 +59,7 @@
     "framer-motion": "^12.23.12",
     "gridstack": "^12.3.3",
     "lucide-react": "^0.542.0",
+    "obscenity": "^0.4.5",
     "pluralize": "^8.0.0",
     "react": "19.1.0",
     "react-confetti": "^6.4.0",

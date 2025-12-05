@@ -1,10 +1,21 @@
-import { FormEvent, useState } from 'react';
+import { FormEvent, useState, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { navigateTo } from '@devvit/web/client';
 import { ArrowLeft, Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
+import { RegExpMatcher, DataSet, englishDataset, englishRecommendedTransformers } from 'obscenity';
 import { apiFetch } from '../lib/utils';
 import { Button } from '../components/ui/button';
+
+// Initialize obscenity filter with custom whitelist
+const customDataset = new DataSet<{ originalWord: string }>()
+  .addAll(englishDataset)
+  .removePhrasesIf((phrase) => phrase.metadata?.originalWord === 'ass');
+
+const obscenityMatcher = new RegExpMatcher({
+  ...customDataset.build(),
+  ...englishRecommendedTransformers,
+});
 
 // LETTERED logo component with yellow tile styling
 function LetteredLogo() {
@@ -24,6 +35,13 @@ function LetteredLogo() {
   );
 }
 
+const MAX_TITLE_LENGTH = 200;
+
+// Helper function to check for obscenity
+const containsObscenity = (text: string): boolean => {
+  return obscenityMatcher.hasMatch(text);
+};
+
 export const CustomGamePage = () => {
   const navigate = useNavigate();
   const [isLoading, setIsLoading] = useState(false);
@@ -31,6 +49,31 @@ export const CustomGamePage = () => {
     phrase: '',
     category: '',
   });
+
+  // Real-time validation errors
+  const validationErrors = useMemo(() => {
+    const errors: { title?: string; phrase?: string } = {};
+
+    // Title validation
+    if (formData.category.trim()) {
+      if (formData.category.length > MAX_TITLE_LENGTH) {
+        errors.title = `Title must be ${MAX_TITLE_LENGTH} characters or less`;
+      } else if (containsObscenity(formData.category)) {
+        errors.title = 'Title contains inappropriate language';
+      }
+    }
+
+    // Phrase validation
+    if (formData.phrase.trim()) {
+      if (containsObscenity(formData.phrase)) {
+        errors.phrase = 'Phrase contains inappropriate language';
+      }
+    }
+
+    return errors;
+  }, [formData.category, formData.phrase]);
+
+  const hasValidationErrors = Object.keys(validationErrors).length > 0;
 
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
@@ -42,6 +85,17 @@ export const CustomGamePage = () => {
 
     if (!formData.category.trim()) {
       toast.error('Please enter a title');
+      return;
+    }
+
+    // Check for validation errors before submitting
+    if (validationErrors.title) {
+      toast.error(validationErrors.title);
+      return;
+    }
+
+    if (validationErrors.phrase) {
+      toast.error(validationErrors.phrase);
       return;
     }
 
@@ -177,11 +231,21 @@ export const CustomGamePage = () => {
                 value={formData.category}
                 onChange={(e) => setFormData((prev) => ({ ...prev, category: e.target.value }))}
                 disabled={isLoading}
-                className="w-full px-4 py-3 text-white placeholder-white/40 bg-zinc-900 rounded-lg border border-zinc-700 focus:outline-none focus:ring-2 focus:ring-[#F7C846] focus:border-transparent disabled:opacity-50"
+                maxLength={MAX_TITLE_LENGTH + 50}
+                className={`w-full px-4 py-3 text-white placeholder-white/40 bg-zinc-900 rounded-lg border focus:outline-none focus:ring-2 focus:border-transparent disabled:opacity-50 ${
+                  validationErrors.title
+                    ? 'border-red-500 focus:ring-red-500'
+                    : 'border-zinc-700 focus:ring-[#F7C846]'
+                }`}
               />
-              <p className="text-xs text-white/50">
-                This will be displayed as the puzzle theme to help players guess
-              </p>
+              {validationErrors.title ? (
+                <p className="text-xs text-red-500">{validationErrors.title}</p>
+              ) : (
+                <p className="text-xs text-white/50">
+                  This will be displayed as the puzzle theme to help players guess (
+                  {formData.category.length}/{MAX_TITLE_LENGTH})
+                </p>
+              )}
             </div>
 
             <div className="space-y-2">
@@ -196,9 +260,17 @@ export const CustomGamePage = () => {
                 disabled={isLoading}
                 rows={3}
                 maxLength={70}
-                className="w-full px-4 py-3 text-white placeholder-white/40 bg-zinc-900 rounded-lg border border-zinc-700 focus:outline-none focus:ring-2 focus:ring-[#F7C846] focus:border-transparent disabled:opacity-50 resize-none"
+                className={`w-full px-4 py-3 text-white placeholder-white/40 bg-zinc-900 rounded-lg border focus:outline-none focus:ring-2 focus:border-transparent disabled:opacity-50 resize-none ${
+                  validationErrors.phrase
+                    ? 'border-red-500 focus:ring-red-500'
+                    : 'border-zinc-700 focus:ring-[#F7C846]'
+                }`}
               />
-              <p className="text-xs text-white/50">{formData.phrase.length}/70 characters</p>
+              {validationErrors.phrase ? (
+                <p className="text-xs text-red-500">{validationErrors.phrase}</p>
+              ) : (
+                <p className="text-xs text-white/50">{formData.phrase.length}/70 characters</p>
+              )}
             </div>
 
             {/* Requirements */}
@@ -219,7 +291,12 @@ export const CustomGamePage = () => {
 
             <Button
               type="submit"
-              disabled={isLoading || !formData.phrase.trim() || !formData.category.trim()}
+              disabled={
+                isLoading ||
+                !formData.phrase.trim() ||
+                !formData.category.trim() ||
+                hasValidationErrors
+              }
               className="w-full text-lg tracking-wide"
               size="lg"
             >
