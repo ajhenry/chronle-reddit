@@ -908,6 +908,8 @@ const DraggableItemComponent = React.memo(
       dragMode,
       tapDragActiveItemId,
       activateTapDrag,
+      deactivateTapDrag,
+      placeTapDragItem,
     } = useGrid();
     const isDisabled = (item.disabled ?? false) || gridDisabled;
     const [isDragging, setIsDragging] = useState(false);
@@ -981,12 +983,12 @@ const DraggableItemComponent = React.memo(
           return;
         }
 
-        // In tap-to-drag mode, disallow clicking on another piece while one is already active
-        // But DON'T call preventDefault() - allow scrolling on non-active pieces
+        // In tap-to-drag mode, allow clicks on other pieces to pass through to handleClick
+        // Don't call preventDefault() - allow scrolling on non-active pieces
         if (dragMode === 'tap-to-drag' && tapDragActiveItemId && !isTapDragActive) {
-          // Another piece is in tap-drag mode, ignore this click but allow scroll
+          // Another piece is in tap-drag mode, let handleClick handle switching pieces
           console.log(
-            `[PointerDown] EARLY RETURN: another piece is active, NOT calling preventDefault() to allow scroll`
+            `[PointerDown] Another piece is active - letting handleClick handle piece switching`
           );
           return;
         }
@@ -1128,15 +1130,9 @@ const DraggableItemComponent = React.memo(
           `[Click] touchAction on this item would be: ${isTapDragActive ? 'none' : 'auto'}`
         );
 
-        // Only handle clicks in tap-to-drag mode for non-active pieces
-        if (dragMode !== 'tap-to-drag' || isTapDragActive || isDisabled) {
-          console.log(`[Click] Ignoring - not applicable for tap activation`);
-          return;
-        }
-
-        // Another piece is already active
-        if (tapDragActiveItemId) {
-          console.log(`[Click] Ignoring - another piece is active`);
+        // Only handle clicks in tap-to-drag mode
+        if (dragMode !== 'tap-to-drag' || isDisabled) {
+          console.log(`[Click] Ignoring - not tap-to-drag mode or disabled`);
           return;
         }
 
@@ -1161,6 +1157,21 @@ const DraggableItemComponent = React.memo(
           return;
         }
 
+        // If this piece is already active, place it (confirm placement)
+        if (isTapDragActive) {
+          console.log(`[Click] Placing piece for item=${item.id}`);
+          placeTapDragItem();
+          return;
+        }
+
+        // If another piece is active, place it first then activate this one
+        if (tapDragActiveItemId) {
+          console.log(`[Click] Placing current piece and activating item=${item.id}`);
+          placeTapDragItem();
+          activateTapDrag(item.id);
+          return;
+        }
+
         console.log(`[Click] Activating drag mode for item=${item.id}`);
         activateTapDrag(item.id);
       },
@@ -1173,6 +1184,8 @@ const DraggableItemComponent = React.memo(
         cellSize,
         spacing,
         activateTapDrag,
+        deactivateTapDrag,
+        placeTapDragItem,
       ]
     );
 
@@ -1519,37 +1532,52 @@ const TapDragBanner = React.memo(
     return (
       <div
         className={cn(
-          'fixed right-0 bottom-0 left-0 z-[9999]',
-          'flex justify-between items-center px-4',
-          'border-t-2 bg-primary border-primary-foreground',
-          'overflow-hidden transition-all duration-200 ease-out'
+          'fixed right-0 bottom-0 left-0 z-[9998]',
+          'flex flex-col',
+          'backdrop-blur-sm bg-muted/95',
+          'overflow-hidden transition-all duration-300 ease-out'
         )}
         style={{
-          height: isVisible ? '60px' : '0',
+          height: isVisible ? '110px' : '0',
           pointerEvents: isVisible ? 'auto' : 'none',
         }}
       >
+        {/* Main banner content */}
         <div
           className={cn(
-            'flex flex-col',
-            'transition-opacity duration-150 delay-75',
+            'flex flex-1 justify-between items-center px-4 py-3',
+            'transition-opacity duration-200 delay-100',
             isVisible ? 'opacity-100' : 'opacity-0'
           )}
         >
-          <span className="text-base font-bold text-primary-foreground">Drag Mode</span>
-          <span className="text-sm text-primary-foreground/80">Tap to place it</span>
+          <div className="flex flex-col">
+            <span className="text-base font-bold text-foreground">Drag Mode</span>
+            <span className="text-sm text-muted-foreground">
+              Counts as a move when you place it or select another piece
+            </span>
+          </div>
+          <button
+            onClick={onPlace}
+            className={cn(
+              'px-4 py-2 font-bold rounded-md bg-foreground text-background',
+              'transition-all duration-150',
+              'hover:bg-foreground/90 active:scale-95',
+              isVisible ? 'opacity-100' : 'opacity-0'
+            )}
+          >
+            Place
+          </button>
         </div>
-        <button
-          onClick={onPlace}
+        {/* Drag here to scroll hint */}
+        <div
           className={cn(
-            'px-4 py-2 font-bold rounded-md bg-primary-foreground text-primary',
-            'transition-all duration-150',
-            'hover:bg-primary-foreground/90 active:scale-95',
+            'flex justify-center pb-3',
+            'transition-opacity duration-200 delay-150',
             isVisible ? 'opacity-100' : 'opacity-0'
           )}
         >
-          Place
-        </button>
+          <span className="text-sm font-medium text-muted-foreground">Drag here to scroll</span>
+        </div>
       </div>
     );
   }
@@ -1562,7 +1590,7 @@ const TapHintPill = React.memo(({ isVisible }: { isVisible: boolean }) => {
   return (
     <div
       className={cn(
-        'fixed left-1/2 -translate-x-1/2 z-[9997]',
+        'fixed left-1/2 -translate-x-1/2 z-[9999]',
         'px-4 py-2 rounded-md',
         'border backdrop-blur-sm bg-muted/90 border-border',
         'text-sm font-medium text-muted-foreground',
@@ -1570,7 +1598,7 @@ const TapHintPill = React.memo(({ isVisible }: { isVisible: boolean }) => {
         isVisible ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-4 pointer-events-none'
       )}
       style={{
-        bottom: '3rem',
+        bottom: '1.5rem',
       }}
     >
       Tap a piece to drag it
@@ -1667,6 +1695,7 @@ function GridContent({
     spacing,
     dragPreview,
     draggedItemId,
+    dragMode,
     setDragPreview,
     setDraggedItemId,
     setGrabOffset,
@@ -1854,8 +1883,10 @@ function GridContent({
       {/* Tap-to-Drag banner - shows when in tap-drag mode */}
       <TapDragBanner isVisible={!!tapDragActiveItemId} onPlace={placeTapDragItem} />
 
-      {/* Tap hint pill - shows when no piece is active */}
-      <TapHintPill isVisible={!tapDragActiveItemId && !draggedItemId} />
+      {/* Tap hint pill - shows when in tap-to-drag mode and no piece is active */}
+      <TapHintPill
+        isVisible={dragMode === 'tap-to-drag' && !tapDragActiveItemId && !draggedItemId}
+      />
 
       <div className={cn('inline-block', className)}>
         <div
