@@ -15,12 +15,10 @@ import {
   addScoreToGlobalLeaderboard,
   getPlayerScoreForGame,
   getPlayerRankInGame,
-  CustomGameScore,
 } from '../database/redis';
-import { calculateDecayedScore, DEFAULT_INITIAL_SCORE } from '../../shared/score-decay';
-import { LetteredGameSessionResponse } from '../../shared/types/api';
+import { CustomGameScore } from '../../shared/types/api';
 
-const router = Router();
+const router: Router = Router();
 
 // Schema for custom lettered game creation
 const customLetteredSchema = z.object({
@@ -33,9 +31,8 @@ const gameIdParamSchema = z.object({
   gameId: z.string().min(1, 'Game ID is required'),
 });
 
-// Schema for score submission
-const scoreSubmissionSchema = z.object({
-  score: z.number().int().min(0),
+// Schema for completion submission
+const completionSubmissionSchema = z.object({
   timeElapsed: z.number().int().min(0),
   moves: z.number().int().min(0),
 });
@@ -88,10 +85,7 @@ router.post('/api/custom/lettered', async (req, res): Promise<void> => {
     const { phrase, category } = validationResult.data;
 
     // Clean and validate phrase (only letters and spaces)
-    const cleanPhrase = phrase
-      .replace(/[^a-zA-Z\s]/g, '')
-      .toUpperCase()
-      .trim();
+    const cleanPhrase = phrase.replace(/[^a-zA-Z\s]/g, '').trim();
     if (!cleanPhrase) {
       res.status(400).json({
         error: 'Phrase must contain at least one letter',
@@ -117,10 +111,29 @@ router.post('/api/custom/lettered', async (req, res): Promise<void> => {
       return;
     }
 
+    // Get current user for the post title and creator info
+    let username = 'Anonymous';
+    let userIconUrl: string =
+      'https://www.redditstatic.com/avatars/defaults/v2/avatar_default_1.png';
+    try {
+      const user = await reddit.getCurrentUser();
+      username = user?.username || 'Anonymous';
+      userIconUrl = (await user?.getSnoovatarUrl()) ?? userIconUrl;
+      console.log('Creating custom game for user:', username, 'icon:', userIconUrl);
+    } catch (error) {
+      console.error('Error getting current user:', error);
+    }
+
     // Generate game data using the lettered-game-generator
     console.log(`Generating custom lettered game for phrase: "${cleanPhrase}"`);
     const seed = Math.floor(Math.random() * 1000000);
-    const gameData = generateMockGame(category, cleanPhrase, seed);
+    const generatedGame = generateMockGame(category, cleanPhrase, seed);
+    const gameData = {
+      ...generatedGame,
+      postType: 'custom' as const,
+      creatorUsername: username,
+      creatorIconUrl: userIconUrl,
+    };
 
     // Create unique game ID for Redis storage
     const gameId = `custom-lettered:${Date.now()}:${Math.random().toString(36).substr(2, 9)}`;
@@ -145,28 +158,20 @@ router.post('/api/custom/lettered', async (req, res): Promise<void> => {
       return;
     }
 
-    // Get current user for the post title
-    let username = 'Anonymous';
-    try {
-      const user = await reddit.getCurrentUser();
-      username = user?.username || 'Anonymous';
-      console.log('🔍 Creating custom game for user:', username);
-    } catch (error) {
-      console.error('Error getting current user:', error);
-    }
-
     // Create Reddit post with the custom game
     try {
       const post = await reddit.submitCustomPost({
         subredditName: subredditName,
-        title: `LETTERED - ${category.toUpperCase()} by ${username}`,
+        title: `Lettered - ${category}`,
         splash: {
-          appDisplayName: 'Podium Game',
+          appDisplayName: 'Lettered',
         },
         // Store gameId in the post data - the webview should read this
         webviewMetadata: {
-          customGameId: gameId,
+          gameId: gameId, // Standardized field name (used by both daily and custom)
+          customGameId: gameId, // Keep for backwards compatibility
           gameType: 'lettered',
+          postType: 'custom',
           autoLaunch: true, // Flag to indicate this should launch directly
           theme: category, // Store the theme/category for display
         },
@@ -226,10 +231,7 @@ router.post('/api/dev/lettered', async (req, res): Promise<void> => {
     const { phrase, seed } = validationResult.data;
 
     // Clean and validate phrase (only letters and spaces)
-    const cleanPhrase = phrase
-      .replace(/[^a-zA-Z\s]/g, '')
-      .toUpperCase()
-      .trim();
+    const cleanPhrase = phrase.replace(/[^a-zA-Z\s]/g, '').trim();
     if (!cleanPhrase) {
       res.status(400).json({
         error: 'Phrase must contain at least one letter',
@@ -257,7 +259,8 @@ router.post('/api/dev/lettered', async (req, res): Promise<void> => {
 
     // Generate game data using the lettered-game-generator
     console.log(`Generating dev lettered game for phrase: "${cleanPhrase}" with seed: ${seed}`);
-    const gameData = generateMockGame('Dev Test', cleanPhrase, seed);
+    const generatedGame = generateMockGame('Dev Test', cleanPhrase, seed);
+    const gameData = { ...generatedGame, postType: 'custom' as const };
 
     res.json({
       status: 'success',
@@ -325,7 +328,7 @@ router.get('/api/custom/lettered/:gameId', async (req, res): Promise<void> => {
 });
 
 // Submit score for custom game
-router.post('/api/custom/lettered/:gameId/score', async (req, res): Promise<void> => {
+router.post('/api/custom/lettered/:gameId/complete', async (req, res): Promise<void> => {
   try {
     // Validate gameId parameter
     const paramValidation = gameIdParamSchema.safeParse(req.params);
@@ -338,46 +341,34 @@ router.post('/api/custom/lettered/:gameId/score', async (req, res): Promise<void
     }
 
     // Validate request body
-    const bodyValidation = scoreSubmissionSchema.safeParse(req.body);
+    const bodyValidation = completionSubmissionSchema.safeParse(req.body);
     if (!bodyValidation.success) {
       res.status(400).json({
-        error: 'Invalid score data',
+        error: 'Invalid completion data',
         details: bodyValidation.error.issues,
       });
       return;
     }
 
     const { gameId } = paramValidation.data;
-    const { timeElapsed } = bodyValidation.data;
-    const { moves } = bodyValidation.data;
-    const { score } = bodyValidation.data;
-
-    // We need to calculate the decayed score ourselves because we don't trust the client
-    // We will take the move count though and use that to calculate the decayed score
-    // TODO: MAKE THIS WORK AGAIN
-    // const score = calculateDecayedScore({
-    //   initialScore: DEFAULT_INITIAL_SCORE,
-    //   elapsedSeconds: timeElapsed,
-    //   gameType: 'lettered',
-    //   placedPieces: 0, // TODO: Maybe we should fix this?
-    // });
+    const { timeElapsed, moves } = bodyValidation.data;
 
     // Get username from Reddit context
     let username = 'anonymous';
     try {
       username = (await reddit.getCurrentUsername()) || 'anonymous';
       console.log(
-        `Custom game score submission - Username retrieved: ${username} for game ${gameId} with score ${score}`
+        `Custom game completion - Username retrieved: ${username} for game ${gameId} with time ${timeElapsed}ms and ${moves} moves`
       );
     } catch (error) {
       console.error('Error getting username from context:', error);
     }
 
-    // Check if they already have a score for this game
+    // Check if they already completed this game
     const existingScore = await getPlayerScoreForGame(username, gameId);
     if (existingScore) {
       res.status(400).json({
-        error: 'You already have a score for this game',
+        error: 'You already completed this game',
       });
       return;
     }
@@ -391,33 +382,37 @@ router.post('/api/custom/lettered/:gameId/score', async (req, res): Promise<void
       return;
     }
 
-    // Create score entry
-    const scoreEntry: CustomGameScore = {
+    // Create completion entry
+    // Score = time in seconds + moves (lower is better)
+    const score = Math.floor(timeElapsed / 1000) + moves;
+    const completionEntry: CustomGameScore = {
       username,
       gameId,
       phrase: gameData.phrase,
-      score,
       completedAt: new Date().toISOString(),
       timeElapsed,
       moves,
+      score,
     };
 
-    // Store score in Redis using helper functions
-    await addScoreToGameLeaderboard(gameId, scoreEntry);
-    await addScoreToPlayerHistory(username, scoreEntry);
-    await addScoreToGlobalLeaderboard(scoreEntry);
+    // Store completion in Redis using helper functions
+    await addScoreToGameLeaderboard(gameId, completionEntry);
+    await addScoreToPlayerHistory(username, completionEntry);
+    await addScoreToGlobalLeaderboard(completionEntry);
 
-    console.log(`Stored custom game score: ${username} scored ${score} on game ${gameId}`);
+    console.log(
+      `Stored custom game completion: ${username} completed game ${gameId} in ${timeElapsed}ms with ${moves} moves`
+    );
 
     res.json({
       status: 'success',
-      scoreSubmitted: scoreEntry,
-      message: 'Score submitted successfully',
+      completion: completionEntry,
+      message: 'Completion recorded successfully',
     });
   } catch (error) {
-    console.error('Error submitting custom game score:', error);
+    console.error('Error submitting custom game completion:', error);
     res.status(500).json({
-      error: 'Failed to submit score',
+      error: 'Failed to record completion',
     });
   }
 });

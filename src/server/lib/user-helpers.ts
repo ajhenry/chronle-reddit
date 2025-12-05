@@ -1,5 +1,4 @@
-import { supabase } from '../../shared/supabase-server';
-import { getOrCreateUser, getUserByRedditHandle } from '../database/user';
+import { getOrCreateUser } from '../database/user';
 import { getRedditProvider } from './reddit-provider';
 
 /**

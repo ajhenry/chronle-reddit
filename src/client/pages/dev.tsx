@@ -256,7 +256,6 @@ export const DevPage = ({ onBack }: DevPageProps) => {
         pieces: data.gameData.pieces.length,
         initialPiecePositions: Object.keys(data.gameData.initialPiecePositions).length,
         solution: Object.keys(data.gameData.solution).length,
-        solutionHash: data.gameData.solutionHash,
         seed: data.gameData.seed,
       });
 
@@ -463,7 +462,7 @@ export const DevPage = ({ onBack }: DevPageProps) => {
           </CardHeader>
           <CardContent className="pt-0">
             <div className="space-y-2 text-sm text-muted-foreground">
-              <p>• This is the development page for Podium</p>
+              <p>• This is the development page for Lettered</p>
               <p>• Add any development tools or debugging utilities here</p>
               <p>• This page should only be accessible during development</p>
             </div>

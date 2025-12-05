@@ -5,21 +5,11 @@ import userRoutes from './handlers/user';
 import postRoutes from './handlers/post';
 import gameRoutes from './handlers/game';
 import letteredRoutes from './handlers/lettered';
-import seasonRoutes from './handlers/season';
 import adminRoutes from './handlers/admin';
 import leaderboardRoutes from './handlers/leaderboard';
-import topxRoutes from './handlers/topx';
 import customRoutes from './handlers/custom';
 import contextRoutes from './handlers/context';
-
-export const splashConfig = {
-  appDisplayName: 'podium', // required
-  heading: 'Welcome to Podium',
-  description: '',
-  appIconUri: 'podium-logo.png',
-  buttonLabel: 'Start Playing',
-  entryUri: 'index.html',
-};
+import splashRoutes from './handlers/splash';
 
 // Environment detection
 // LOCAL_MODE=true: Use Express server + stubbed Reddit API for local development
@@ -27,15 +17,7 @@ export const splashConfig = {
 const isLocal = process.env.LOCAL_MODE === 'true';
 const isRedditDev = process.env.REDDIT_MODE === 'true';
 
-Devvit.addSettings([
-  {
-    name: 'supabase-service-key',
-    label: 'Supabase Service Key',
-    type: 'string',
-    isSecret: true,
-    scope: 'app',
-  },
-]);
+Devvit.addSettings([]);
 
 const app = express();
 
@@ -72,12 +54,11 @@ app.use(userRoutes);
 app.use(postRoutes);
 app.use(gameRoutes);
 app.use(letteredRoutes);
-app.use(seasonRoutes);
 app.use(adminRoutes);
 app.use(leaderboardRoutes);
-app.use(topxRoutes);
 app.use(customRoutes);
 app.use(contextRoutes);
+app.use(splashRoutes);
 // Health check endpoint for development modes
 if (isLocal || isRedditDev) {
   app.get('/health', (_req, res) => {
@@ -92,30 +73,26 @@ if (isLocal || isRedditDev) {
 
 app.post('/internal/cron/daily-post', async (_req, res) => {
   try {
-    console.log('🕐 Daily Podium post scheduler triggered');
+    console.log('Daily Lettered post scheduler triggered');
 
-    // Get Reddit context (only available in production)
+    // Skip post creation in local development mode
     if (isLocal) {
-      console.log('⚠️ Skipping post creation in local development mode');
+      console.log('Skipping post creation in local development mode');
       return res.status(200).json({
         status: 'skipped',
         message: 'Post creation skipped in local mode',
       });
     }
 
-    // Import reddit and context here, inside the handler
-    const { reddit, context } = await import('@devvit/web/server');
+    // Use createPost which handles game creation and metadata
+    const { createPost } = await import('./core/post');
+    const { context } = await import('@devvit/web/server');
 
-    // Create a custom interactive web post
-    const post = await reddit.submitCustomPost({
-      subredditName: context.subredditName || 'podiumgame',
-      title: `Podium Game for ${new Date().toLocaleDateString('en-US', { timeZone: 'America/New_York', month: 'long', day: 'numeric', year: 'numeric' })}`,
-      splash: splashConfig,
-    });
+    const post = await createPost();
 
-    console.log('✅ Daily Podium post created successfully:', post.id);
+    console.log('Daily Lettered post created successfully:', post.id);
     console.log(
-      '🔗 Post URL:',
+      'Post URL:',
       `https://reddit.com/r/${context.subredditName}/comments/${post.id}`
     );
 
@@ -126,11 +103,11 @@ app.post('/internal/cron/daily-post', async (_req, res) => {
       timestamp: new Date().toISOString(),
     });
   } catch (error) {
-    console.error('❌ Error in daily Podium post scheduler:', error);
-    console.error('❌ Error details:', (error as Error).stack);
+    console.error('Error in daily Lettered post scheduler:', error);
+    console.error('Error details:', (error as Error).stack);
     res.status(500).json({
       status: 'error',
-      message: 'Failed to create daily Podium post',
+      message: 'Failed to create daily Lettered post',
       error: (error as Error).message,
       timestamp: new Date().toISOString(),
     });

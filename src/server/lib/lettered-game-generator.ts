@@ -1,5 +1,4 @@
 import type { GridCell, GridPosition, LetterPiece, LetteredGameData } from '../../shared/types/api';
-import { createHash } from 'crypto';
 
 // Intermediate GridCell type for piece generation with skipped tracking
 type GenerationGridCell = GridCell & {
@@ -459,32 +458,24 @@ const createBalancedLayout = (
   maxHeight: number,
   maxWidth: number
 ): GridCell[][] => {
-  // Determine optimal target dimensions for balanced layout
+  // Determine optimal target dimensions - no vertical padding, only horizontal centering
   const contentHeight = phraseContent.length;
   const contentWidth = phraseContent[0]?.length || 0;
 
-  // For balanced layout, aim for roughly square dimensions with padding
-  let targetHeight: number;
+  // Use exact content height (no vertical padding)
+  let targetHeight = contentHeight;
   let targetWidth: number;
 
-  if (contentHeight <= 3 && contentWidth <= 6) {
-    // Small content - use 6x8 for good balance
-    targetHeight = 6;
+  // Determine target width based on content width
+  if (contentWidth <= 6) {
     targetWidth = 8;
     // If the width is odd, we can add 1 to the width
     if (contentWidth % 2 === 1) {
       targetWidth++;
     }
-    if (contentHeight % 2 === 1) {
-      targetHeight--;
-    }
-  } else if (contentHeight <= 4 && contentWidth <= 7) {
-    // Medium content - use 6x8 or 6x9
-    targetHeight = 6;
+  } else if (contentWidth <= 7) {
     targetWidth = Math.min(9, Math.max(8, contentWidth + 2));
   } else {
-    // Larger content - ensure minimum padding
-    targetHeight = Math.max(6, contentHeight + 2);
     targetWidth = Math.max(8, contentWidth);
   }
 
@@ -512,8 +503,8 @@ const createBalancedLayout = (
     balancedGrid.push(gridRow);
   }
 
-  // Center the content in the target grid
-  const startRow = Math.max(0, Math.floor((targetHeight - contentHeight) / 2));
+  // No vertical centering (startRow = 0), only horizontal centering
+  const startRow = 0;
   const startCol = Math.max(0, Math.floor((targetWidth - contentWidth) / 2));
 
   console.log(
@@ -540,7 +531,10 @@ const createBalancedLayout = (
 };
 
 // Generate letter pieces using the new algorithm from lettered.md
-export const generateLetterPieces = (grid: GridCell[][], seed?: number): LetterPiece[] => {
+export const generateLetterPieces = (
+  grid: GridCell[][],
+  seed?: number
+): { pieces: LetterPiece[]; solution: Record<string, GridPosition> } => {
   // Create intermediate grid with skipped tracking for piece generation
   const generationGrid: GenerationGridCell[][] = grid.map((row) =>
     row.map((cell) => ({ ...cell, isSkipped: false }))
@@ -566,18 +560,18 @@ export const generateLetterPieces = (grid: GridCell[][], seed?: number): LetterP
   }
 
   if (availableLetters.length === 0) {
-    return [];
+    return { pieces: [], solution: {} };
   }
 
   // Use the new algorithm from lettered.md
   const skippedLetters: Array<{ letter: string; position: GridPosition }> = [];
-  const pieces = generatePiecesWithNewAlgorithm(
+  const { pieces, solution } = generatePiecesWithNewAlgorithm(
     availableLetters,
     generationGrid,
     seed,
     skippedLetters
   );
-  return pieces;
+  return { pieces, solution };
 };
 
 // Enhanced seeded random number generator with better entropy
@@ -618,7 +612,7 @@ const generatePiecesWithNewAlgorithm = (
   grid: GenerationGridCell[][],
   seed?: number,
   skippedLetters?: Array<{ letter: string; position: GridPosition }>
-): LetterPiece[] => {
+): { pieces: LetterPiece[]; solution: Record<string, GridPosition> } => {
   console.log(`🔢 New Scanner Algorithm: Total available letters: ${availableLetters.length}`);
   console.log(
     `📝 Available letters: ${availableLetters.map((l) => `${l.letter}(${l.position.row},${l.position.col})`).join(', ')}`
@@ -632,6 +626,7 @@ const generatePiecesWithNewAlgorithm = (
 
   const usedLetters = new Set<string>();
   const pieces: LetterPiece[] = [];
+  const solution: Record<string, GridPosition> = {};
 
   // Continue until all letters are used
   while (usedLetters.size < availableLetters.length) {
@@ -663,17 +658,18 @@ const generatePiecesWithNewAlgorithm = (
     );
 
     // Step 3-7: Build piece by randomly selecting adjacent letters
-    const piece = buildPieceWithRandomDirections(
+    const result = buildPieceWithRandomDirections(
       startingLetter,
       availableLetters,
       usedLetters,
       random,
       colorAssigner
     );
-    if (piece && piece.letters.length >= 1) {
-      pieces.push(piece);
+    if (result && result.piece.letters.length >= 1) {
+      pieces.push(result.piece);
+      solution[result.piece.id] = result.gridPosition;
       console.log(
-        `✅ Generated piece ${pieces.length}: "${piece.letters.join('')}" (${piece.letters.length} letters)`
+        `✅ Generated piece ${pieces.length}: "${result.piece.letters.join('')}" (${result.piece.letters.length} letters) at position (${result.gridPosition.row},${result.gridPosition.col})`
       );
     } else {
       // Mark starting letter as used so scanner won't retry it
@@ -713,6 +709,7 @@ const generatePiecesWithNewAlgorithm = (
     console.log(`🔄 Attempting to generate pieces from ${skippedLetters.length} skipped letters`);
     handleSkippedLetters(
       pieces,
+      solution,
       skippedLetters,
       availableLetters,
       usedLetters,
@@ -722,7 +719,7 @@ const generatePiecesWithNewAlgorithm = (
   }
 
   // Step 11b: Handle any remaining stranded pieces
-  handleStrandedPieces(pieces, grid, usedLetters, random, colorAssigner);
+  handleStrandedPieces(pieces, solution, grid, usedLetters, random, colorAssigner);
 
   console.log(
     `🏁 New algorithm complete: ${pieces.length} pieces generated, ${usedLetters.size}/${availableLetters.length} letters used, ${skippedLetters?.length || 0} skipped letters collected`
@@ -740,7 +737,7 @@ const generatePiecesWithNewAlgorithm = (
     console.log(`🔀 Shuffled ${pieces.length} pieces for better randomization`);
   }
 
-  return pieces;
+  return { pieces, solution };
 };
 
 // Find next available letter using scanner from top-left (Step 2)
@@ -779,7 +776,7 @@ const buildPieceWithRandomDirections = (
   usedLetters: Set<string>,
   random: () => number,
   colorAssigner: ColorAssigner
-): LetterPiece | null => {
+): { piece: LetterPiece; gridPosition: GridPosition } | null => {
   const pieceLetters: string[] = [];
   const piecePositions: GridPosition[] = [];
   let currentPos = startingLetter.position;
@@ -866,11 +863,14 @@ const buildPieceWithRandomDirections = (
     color: colorAssigner.getNextColor(),
   };
 
+  // Track the grid position (anchor point) where this piece was generated
+  const gridPosition: GridPosition = { row: minRow, col: minCol };
+
   console.log(
-    `✅ Created piece: "${pieceLetters.join('')}" with shape ${shape.map((s) => `(${s.row},${s.col})`).join(' ')}`
+    `✅ Created piece: "${pieceLetters.join('')}" with shape ${shape.map((s) => `(${s.row},${s.col})`).join(' ')} at grid position (${gridPosition.row},${gridPosition.col})`
   );
 
-  return finalPiece;
+  return { piece: finalPiece, gridPosition };
 };
 
 // Find adjacent letters in 4 directions (up, down, left, right)
@@ -917,6 +917,7 @@ const findAdjacentLetters = (
 // Handle skipped letters by attempting to generate smaller pieces from them
 const handleSkippedLetters = (
   pieces: LetterPiece[],
+  solution: Record<string, GridPosition>,
   skippedLetters: Array<{ letter: string; position: GridPosition }>,
   availableLetters: Array<{ letter: string; position: GridPosition }>,
   usedLetters: Set<string>,
@@ -937,7 +938,7 @@ const handleSkippedLetters = (
     }
 
     // Try to generate a piece from this skipped letter
-    const piece = buildPieceWithRandomDirections(
+    const result = buildPieceWithRandomDirections(
       skippedLetter,
       availableLetters,
       usedLetters,
@@ -945,10 +946,11 @@ const handleSkippedLetters = (
       colorAssigner
     );
 
-    if (piece && piece.letters.length >= 2) {
-      pieces.push(piece);
+    if (result && result.piece.letters.length >= 2) {
+      pieces.push(result.piece);
+      solution[result.piece.id] = result.gridPosition;
       console.log(
-        `✅ Generated piece from skipped letter: "${piece.letters.join('')}" (${piece.letters.length} letters)`
+        `✅ Generated piece from skipped letter: "${result.piece.letters.join('')}" (${result.piece.letters.length} letters) at position (${result.gridPosition.row},${result.gridPosition.col})`
       );
     } else {
       console.log(
@@ -963,6 +965,7 @@ const handleSkippedLetters = (
 // Handle stranded pieces by connecting them to nearest piece (Step 11)
 const handleStrandedPieces = (
   pieces: LetterPiece[],
+  solution: Record<string, GridPosition>,
   grid: GenerationGridCell[][],
   usedLetters: Set<string>,
   random: () => number,
@@ -1228,6 +1231,18 @@ const handleStrandedPieces = (
           col: pos.col - minCol,
         }));
 
+        // Update the solution position to reflect the new anchor point after normalization
+        const oldSolutionPos = solution[adjacentPiece.id];
+        if (oldSolutionPos) {
+          solution[adjacentPiece.id] = {
+            row: pieceOffsetRow + minRow,
+            col: pieceOffsetCol + minCol,
+          };
+          console.log(
+            `🔄 Updated solution position from (${oldSolutionPos.row},${oldSolutionPos.col}) to (${solution[adjacentPiece.id]!.row},${solution[adjacentPiece.id]!.col})`
+          );
+        }
+
         // Update the used letters set
         usedLetters.add(`${strandedLetter.position.row},${strandedLetter.position.col}`);
 
@@ -1254,6 +1269,7 @@ const handleStrandedPieces = (
         color: colorAssigner.getNextColor(),
       };
       pieces.push(singlePiece);
+      solution[singlePiece.id] = strandedLetter.position;
       usedLetters.add(`${strandedLetter.position.row},${strandedLetter.position.col}`);
       positionToPiece.set(
         `${strandedLetter.position.row},${strandedLetter.position.col}`,
@@ -1261,7 +1277,7 @@ const handleStrandedPieces = (
       );
 
       console.log(
-        `📍 Added new single piece: ${strandedLetter.position.row},${strandedLetter.position.col} -> ${singlePiece.letters.join('')}`
+        `📍 Added new single piece: ${strandedLetter.position.row},${strandedLetter.position.col} -> ${singlePiece.letters.join('')} to solution`
       );
     }
   }
@@ -2220,7 +2236,25 @@ const validateConnectivity = (grid: GridCell[][]): boolean => {
 };
 
 // Generate solution positions for each piece
+// This function now prefers tracked solutions from generation but falls back to the old method
 export const generateSolutionPositions = (
+  pieces: LetterPiece[],
+  grid: GridCell[][],
+  trackedSolution?: Record<string, GridPosition>
+): Record<string, GridPosition> => {
+  // If we have a tracked solution from generation, use it
+  if (trackedSolution) {
+    console.log(`✅ Using tracked solution positions from generation`);
+    return trackedSolution;
+  }
+
+  // Fallback to old method if no tracked solution provided (for backwards compatibility)
+  console.log(`⚠️ No tracked solution provided, falling back to position search`);
+  return generateSolutionPositionsFallback(pieces, grid);
+};
+
+// Fallback method: search for positions after generation (deprecated but kept for compatibility)
+const generateSolutionPositionsFallback = (
   pieces: LetterPiece[],
   grid: GridCell[][]
 ): Record<string, GridPosition> => {
@@ -2309,15 +2343,19 @@ export {
 export const generateInitialPiecePositions = (
   pieces: LetterPiece[],
   grid: GridCell[][]
-): Record<string, GridPosition> => {
+): { positions: Record<string, GridPosition>; totalRows: number } => {
   const initialPositions: Record<string, GridPosition> = {};
-  const extendedStartRow = grid.length; // Start below the main grid
+  const trayGap = 1; // Visual gap between phrase area and piece tray
+  const extendedStartRow = grid.length + trayGap; // Start below the main grid with gap
   const maxCols = grid[0]?.length || 8;
   const maxRows = 35; // Maximum rows for piece placement
   const pieceSpacing = 1; // One cell gap between pieces
 
   // Track occupied positions to prevent overlaps
   const occupiedPositions = new Set<string>();
+
+  // Track the furthest row occupied by any piece
+  let maxOccupiedRow = extendedStartRow;
 
   // Sort pieces by size (largest first) for better packing
   const sortedPieces = [...pieces].sort((a, b) => {
@@ -2369,6 +2407,9 @@ export const generateInitialPiecePositions = (
             const occupyRow = pieceTop + shapePos.row;
             const occupyCol = pieceLeft + shapePos.col;
 
+            // Track the furthest row occupied
+            maxOccupiedRow = Math.max(maxOccupiedRow, occupyRow);
+
             // Mark the piece position and surrounding buffer
             for (
               let bufferRow = occupyRow - pieceSpacing;
@@ -2394,7 +2435,7 @@ export const generateInitialPiecePositions = (
 
           placed = true;
           console.log(
-            `✅ Placed piece ${piece.id} at (${pieceTop}, ${pieceLeft}) with size ${width}x${height}`
+            `Placed piece ${piece.id} at (${pieceTop}, ${pieceLeft}) with size ${width}x${height}`
           );
         }
       }
@@ -2448,11 +2489,13 @@ export const generateInitialPiecePositions = (
               const occupyRow = pieceTop + shapePos.row;
               const occupyCol = pieceLeft + shapePos.col;
               occupiedPositions.add(`${occupyCol},${occupyRow}`);
+              // Track the furthest row occupied
+              maxOccupiedRow = Math.max(maxOccupiedRow, occupyRow);
             }
 
             placed = true;
             console.log(
-              `✅ Placed piece ${piece.id} at (${pieceTop}, ${pieceLeft}) without spacing buffer`
+              `Placed piece ${piece.id} at (${pieceTop}, ${pieceLeft}) without spacing buffer`
             );
           }
         }
@@ -2504,10 +2547,13 @@ export const generateInitialPiecePositions = (
 
           if (!hasOverlap) {
             initialPositions[piece.id] = { row: pieceTop, col: pieceLeft };
+            // Track the furthest row occupied
+            for (const shapePos of piece.shape) {
+              const occupyRow = pieceTop + shapePos.row;
+              maxOccupiedRow = Math.max(maxOccupiedRow, occupyRow);
+            }
             placed = true;
-            console.log(
-              `✅ Placed piece ${piece.id} at (${pieceTop}, ${pieceLeft}) in expanded area`
-            );
+            console.log(`Placed piece ${piece.id} at (${pieceTop}, ${pieceLeft}) in expanded area`);
           }
         }
       }
@@ -2521,8 +2567,15 @@ export const generateInitialPiecePositions = (
     }
   }
 
-  console.log(`🎯 Successfully placed all ${pieces.length} pieces without overlaps`);
-  return initialPositions;
+  // Calculate total rows: furthest piece bottom + 1 row buffer
+  const totalRows = maxOccupiedRow + 2; // +1 for 0-indexing, +1 for buffer
+
+  console.log(`Successfully placed all ${pieces.length} pieces without overlaps`);
+  console.log(
+    `Piece tray trimmed to ${totalRows} total rows (grid: ${grid.length}, pieces extend to row ${maxOccupiedRow})`
+  );
+
+  return { positions: initialPositions, totalRows };
 };
 
 // Test if a generated game solution correctly reconstructs the original phrase
@@ -2650,9 +2703,9 @@ export const generateMockGame = (
     const trimmedGrid = trimBoard(boardWithAnchors);
     printBoard(trimmedGrid, 'Step 4: After Trimming & Centering');
 
-    // Step 5: Generate pieces
+    // Step 5: Generate pieces (with tracked solution positions)
     console.log('Step 5: Generating letter pieces...');
-    const pieces = generateLetterPieces(trimmedGrid, seed);
+    const { pieces, solution: trackedSolution } = generateLetterPieces(trimmedGrid, seed);
     console.log(`Generated ${pieces.length} pieces:`);
     pieces.forEach((piece, i) => {
       console.log(
@@ -2662,21 +2715,21 @@ export const generateMockGame = (
 
     // Step 6: Generate initial piece positions
     console.log('Step 6: Generating initial piece positions...');
-    const initialPiecePositions = generateInitialPiecePositions(pieces, trimmedGrid);
+    const { positions: initialPiecePositions, totalRows: pieceTrayRows } =
+      generateInitialPiecePositions(pieces, trimmedGrid);
     console.log(
-      `Generated initial positions for ${Object.keys(initialPiecePositions).length} pieces`
+      `Generated initial positions for ${Object.keys(initialPiecePositions).length} pieces (total rows: ${pieceTrayRows})`
     );
 
-    // Step 7: Generate solution
-    console.log('Step 7: Generating solution positions...');
-    const solution = generateSolutionPositions(pieces, trimmedGrid);
-    console.log(`Generated solutions for ${Object.keys(solution).length} pieces`);
+    // Step 7: Use tracked solution from piece generation
+    console.log('Step 7: Using tracked solution positions...');
+    const solution = trackedSolution;
+    console.log(`Using tracked solutions for ${Object.keys(solution).length} pieces`);
 
     console.log('\n✅ Game generation complete!\n');
 
-    // Create secure grid and solution hash
+    // Create secure grid
     const secureGrid = createSecureGrid(trimmedGrid);
-    const solutionHash = generateSolutionHash(trimmedGrid);
 
     return {
       id: 'mock-game-1',
@@ -2688,7 +2741,6 @@ export const generateMockGame = (
       pieces,
       initialPiecePositions,
       solution,
-      solutionHash,
       seed: seed ?? null,
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
@@ -2709,25 +2761,6 @@ export const createSecureGrid = (grid: GridCell[][]): GridCell[][] => {
       letter: cell.isPreFilled ? cell.letter : null, // Keep pre-filled letters, remove others for security
     }))
   );
-};
-
-// Generate SHA256 hash of the filled-in grid with letters
-export const generateSolutionHash = (grid: GridCell[][]): string => {
-  // Create a JSON representation of the 2D grid with letters filled in
-  const filledGridJson = JSON.stringify(
-    grid.map((row) =>
-      row.map((cell) => ({
-        letter: cell.letter,
-        isLetter: cell.isLetter,
-        isPreFilled: cell.isPreFilled,
-        isSpace: cell.isSpace,
-        isUnused: cell.isUnused,
-      }))
-    )
-  );
-
-  // Generate SHA256 hash
-  return createHash('sha256').update(filledGridJson).digest('hex');
 };
 
 // Fallback game with a simpler layout
@@ -2777,13 +2810,12 @@ const generateFallbackGame = (category: string, phrase: string): LetteredGameDat
     }
   }
 
-  const pieces = generateLetterPieces(grid);
-  const initialPiecePositions = generateInitialPiecePositions(pieces, grid);
-  const solution = generateSolutionPositions(pieces, grid);
+  const { pieces, solution: trackedSolution } = generateLetterPieces(grid);
+  const { positions: initialPiecePositions } = generateInitialPiecePositions(pieces, grid);
+  const solution = trackedSolution;
 
-  // Create secure grid and solution hash
+  // Create secure grid
   const secureGrid = createSecureGrid(grid);
-  const solutionHash = generateSolutionHash(grid);
 
   return {
     id: 'fallback-game-1',
@@ -2795,7 +2827,6 @@ const generateFallbackGame = (category: string, phrase: string): LetteredGameDat
     pieces,
     initialPiecePositions,
     solution,
-    solutionHash,
     seed: null, // fallback games don't use seeds
     createdAt: new Date().toISOString(),
     updatedAt: new Date().toISOString(),

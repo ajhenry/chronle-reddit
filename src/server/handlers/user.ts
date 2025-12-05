@@ -6,7 +6,7 @@ import { createOrUpdateUser, getOrCreateUser } from '../database/user';
 
 const router = Router();
 
-// User sync endpoint - creates/updates user in Supabase
+// User sync endpoint - creates/updates user in Redis
 router.post('/api/sync-user', async (_req, res): Promise<void> => {
   try {
     logRouteInfo('/api/sync-user', { action: 'sync_user_start' });

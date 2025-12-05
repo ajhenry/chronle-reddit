@@ -6,68 +6,25 @@ interface HomeLoadingAnimationProps {
 }
 
 export const HomeLoadingAnimation: React.FC<HomeLoadingAnimationProps> = ({ className = '' }) => {
-  const [activeIcon, setActiveIcon] = useState<'topx' | 'lettered'>('topx');
-
-  useEffect(() => {
-    const interval = setInterval(() => {
-      setActiveIcon((prev) => (prev === 'topx' ? 'lettered' : 'topx'));
-    }, 400);
-
-    return () => clearInterval(interval);
-  }, []);
-
   return (
     <div
       className={`flex flex-col justify-center items-center space-y-8 h-screen ${className} bg-background`}
     >
-      {/* Icons container */}
-      <div className="relative" style={{ width: '150px', height: '80px' }}>
-        {/* Top X Icon */}
-        <motion.div
-          className="absolute"
-          initial={{ x: -100, opacity: 0 }}
-          animate={
-            activeIcon === 'topx'
-              ? {
-                  x: [0, 200],
-                  opacity: [1, 1, 1, 1],
-                }
-              : { x: -100, opacity: 0 }
-          }
-          transition={{
-            duration: 0.8,
-            ease: 'easeInOut',
-            times: [0, 0.4, 0.4, 1],
-          }}
-          style={{ top: '0px', left: '0px' }}
-        >
-          <img src="/topx-logo.svg" alt="Top X Logo" className="w-16 h-16" />
-        </motion.div>
+      {/* Lettered Icon */}
+      <motion.div
+        initial={{ opacity: 0, scale: 0.8 }}
+        animate={{ opacity: 1, scale: 1 }}
+        transition={{
+          duration: 0.5,
+          repeat: Infinity,
+          repeatType: 'reverse',
+          ease: 'easeInOut',
+        }}
+      >
+        <img src="/lettered-logo.svg" alt="Lettered Logo" className="w-16 h-16" />
+      </motion.div>
 
-        {/* Lettered Icon */}
-        <motion.div
-          className="absolute"
-          initial={{ x: -100, opacity: 0 }}
-          animate={
-            activeIcon === 'lettered'
-              ? {
-                  x: [0, 200],
-                  opacity: [1, 1, 1, 1],
-                }
-              : { x: -100, opacity: 0 }
-          }
-          transition={{
-            duration: 0.8,
-            ease: 'easeInOut',
-            times: [0, 0.4, 0.4, 1],
-          }}
-          style={{ top: '0px', left: '0px' }}
-        >
-          <img src="/lettered-logo.svg" alt="Lettered Logo" className="w-16 h-16" />
-        </motion.div>
-      </div>
-
-      {/* PODIUM text */}
+      {/* LETTERED text */}
       <motion.div
         className="text-center"
         initial={{ opacity: 0, y: 20 }}
@@ -83,7 +40,7 @@ export const HomeLoadingAnimation: React.FC<HomeLoadingAnimationProps> = ({ clas
             lineHeight: '0.8',
           }}
         >
-          PODIUM
+          LETTERED
         </h1>
       </motion.div>
 

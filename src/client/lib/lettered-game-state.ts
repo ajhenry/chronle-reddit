@@ -1,69 +1,38 @@
 import { LetteredGameData, GridPosition, LetterPiece, GridCell } from '../../shared/types/api';
-import {
-  calculateDecayAmount,
-  getDecayRate,
-  DEFAULT_INITIAL_SCORE,
-} from '../../shared/score-decay';
-
-// SHA256 hash function for client-side validation
-const sha256 = async (message: string): Promise<string> => {
-  const msgBuffer = new TextEncoder().encode(message);
-  const hashBuffer = await crypto.subtle.digest('SHA-256', msgBuffer);
-  const hashArray = Array.from(new Uint8Array(hashBuffer));
-  return hashArray.map((b) => b.toString(16).padStart(2, '0')).join('');
-};
 
 export type GameStateUpdateCallback = (updates: Partial<GameState>) => void;
-export type ScoreSyncCallback = (serverScore: number) => void;
+export type FirstTimeCompletionCallback = () => void;
+
+export interface LayoutUpdateResult {
+  hasChanges: boolean;
+  placedPieces: Record<string, GridPosition>;
+  boardLayout: GridCell[][];
+}
 
 export interface GameState {
-  score: number;
-  initialScore: number;
-  gameComplete: boolean;
-  gameWon: boolean;
-  boardLayout: GridCell[][]; // Current state of the board
-  placedPieces: Map<string, GridPosition>; // piece ID -> position
-  lastValidPositions: Map<string, GridPosition>; // For undo functionality
-  scoreDecayInterval: number; // Milliseconds between decay
-  lastScoreUpdate: number; // Timestamp of last score update
   gameStartTime: number;
+  moves: number;
+  gameComplete: boolean;
+  boardLayout: GridCell[][];
+  placedPieces: Map<string, GridPosition>;
+  lastValidPositions: Map<string, GridPosition>;
   gameData: LetteredGameData | null;
-  timerDisabled: boolean; // Whether the score decay timer is disabled
-  isRestoring: boolean; // Whether session restoration is in progress
-  moves: number; // Number of moves made
+  isRestoring: boolean;
 }
 
 export class LetteredGameStateManager {
   private state: GameState;
-  private scoreDecayTimer: ReturnType<typeof setTimeout> | null = null;
   private updateCallbacks: GameStateUpdateCallback[] = [];
-  private scoreSyncCallback: ScoreSyncCallback | null = null;
-  private lastScoreSync: number = 0;
-  private readonly SCORE_SYNC_INTERVAL = 30000; // Sync every 30 seconds
+  private firstTimeCompletionCallbacks: FirstTimeCompletionCallback[] = [];
 
-  constructor(
-    gameData: LetteredGameData | null = null,
-    initialScore?: number,
-    gameStartTime?: number,
-    currentScore?: number,
-    moves?: number
-  ) {
-    this.state = this.createInitialState(
-      gameData,
-      initialScore,
-      gameStartTime,
-      currentScore,
-      moves
-    );
-    // Don't start score decay immediately - wait for explicit call
+  constructor(gameData: LetteredGameData | null = null, gameStartTime?: number, moves?: number) {
+    this.state = this.createInitialState(gameData, gameStartTime, moves);
     this.notifyUpdates(this.state);
   }
 
   private createInitialState(
     gameData: LetteredGameData | null,
-    initialScore?: number,
     gameStartTime?: number,
-    currentScore?: number,
     moves?: number
   ): GameState {
     // Initialize placed pieces with initial tray positions for all pieces
@@ -74,26 +43,17 @@ export class LetteredGameStateManager {
       });
     }
 
-    const defaultScore = DEFAULT_INITIAL_SCORE;
-    const originalInitialScore = initialScore ?? defaultScore;
-    const score = currentScore ?? originalInitialScore; // Use currentScore if provided, otherwise use initialScore
     const startTime = gameStartTime ?? Date.now();
 
     return {
-      score,
-      initialScore: originalInitialScore, // Always use the original initial score for decay calculations
+      gameStartTime: startTime,
+      moves: moves ?? 0,
       gameComplete: false,
-      gameWon: false,
       boardLayout: gameData?.grid || [],
       placedPieces,
-      lastValidPositions: new Map(placedPieces), // Also initialize lastValidPositions
-      scoreDecayInterval: 1000,
-      lastScoreUpdate: startTime,
-      gameStartTime: startTime,
+      lastValidPositions: new Map(placedPieces),
       gameData,
-      timerDisabled: false,
       isRestoring: false,
-      moves: moves ?? 0, // Initialize moves counter from parameter or default to 0
     };
   }
 
@@ -108,9 +68,20 @@ export class LetteredGameStateManager {
     };
   }
 
-  // Set callback for score synchronization with server
-  setScoreSyncCallback(callback: ScoreSyncCallback | null): void {
-    this.scoreSyncCallback = callback;
+  // Subscribe to first-time completion events (only fires on fresh wins, not restored games)
+  onFirstTimeCompletion(callback: FirstTimeCompletionCallback): () => void {
+    this.firstTimeCompletionCallbacks.push(callback);
+    return () => {
+      const index = this.firstTimeCompletionCallbacks.indexOf(callback);
+      if (index > -1) {
+        this.firstTimeCompletionCallbacks.splice(index, 1);
+      }
+    };
+  }
+
+  // Notify first-time completion subscribers
+  private notifyFirstTimeCompletion(): void {
+    this.firstTimeCompletionCallbacks.forEach((callback) => callback());
   }
 
   // Notify all subscribers of state changes
@@ -124,83 +95,18 @@ export class LetteredGameStateManager {
   }
 
   // Initialize game with new data
-  initializeGame(
-    gameData: LetteredGameData,
-    initialScore?: number,
-    gameStartTime?: number,
-    currentScore?: number,
-    moves?: number
-  ): void {
-    this.stopScoreDecay();
-    this.state = this.createInitialState(
-      gameData,
-      initialScore,
-      gameStartTime,
-      currentScore,
-      moves
-    );
-    // Don't start score decay immediately - wait for explicit call
+  initializeGame(gameData: LetteredGameData, gameStartTime?: number, moves?: number): void {
+    this.state = this.createInitialState(gameData, gameStartTime, moves);
     this.notifyUpdates(this.state);
   }
 
-  // Start score decay timer
-  startScoreDecay(): void {
-    if (this.scoreDecayTimer) {
-      clearInterval(this.scoreDecayTimer);
+  // Get elapsed time in milliseconds
+  getElapsedTime(): number {
+    if (this.state.gameComplete) {
+      // When game is complete, we should have the exact end time, but for now return current calculation
+      return Date.now() - this.state.gameStartTime;
     }
-
-    // Don't start timer if disabled
-    if (this.state.timerDisabled) {
-      return;
-    }
-
-    this.scoreDecayTimer = setInterval(() => {
-      if (!this.state.gameComplete) {
-        const now = Date.now();
-        const timeDiff = now - this.state.lastScoreUpdate;
-        const elapsedSeconds = timeDiff / 1000;
-        const placedPieces = this.state.placedPieces.size;
-        const decayAmount = calculateDecayAmount('lettered', elapsedSeconds, placedPieces);
-
-        if (decayAmount > 0) {
-          this.state.score = Math.max(0, this.state.score - decayAmount);
-          this.state.lastScoreUpdate = now;
-
-          this.notifyUpdates({ score: this.state.score });
-        }
-
-        // Periodically sync score with server
-        if (this.scoreSyncCallback && now - this.lastScoreSync > this.SCORE_SYNC_INTERVAL) {
-          this.lastScoreSync = now;
-          // Trigger score sync callback (will be handled by the component)
-          this.scoreSyncCallback(this.state.score);
-        }
-      }
-    }, this.state.scoreDecayInterval);
-  }
-
-  // Stop score decay timer
-  stopScoreDecay(): void {
-    if (this.scoreDecayTimer) {
-      clearInterval(this.scoreDecayTimer);
-      this.scoreDecayTimer = null;
-    }
-  }
-
-  // Get current decay rate (for debugging/UI purposes)
-  getDecayRate(): number {
-    const placedPieces = this.state.placedPieces.size;
-    return getDecayRate('lettered', placedPieces);
-  }
-
-  // Enable/disable timer
-  setTimerEnabled(enabled: boolean): void {
-    this.state.timerDisabled = !enabled;
-    if (enabled) {
-      this.startScoreDecay();
-    } else {
-      this.stopScoreDecay();
-    }
+    return Date.now() - this.state.gameStartTime;
   }
 
   // Set restoration state
@@ -214,26 +120,24 @@ export class LetteredGameStateManager {
         placedPieces: new Map(this.state.placedPieces),
         boardLayout: this.state.boardLayout,
         gameComplete: this.state.gameComplete,
-        gameWon: this.state.gameWon,
-        score: this.state.score,
         moves: this.state.moves,
       });
 
-      // Also check game completion now that restoration is done
-      void this.checkGameCompletion();
+      // Check game completion for restored games (isFirstTime=false to prevent confetti)
+      void this.checkGameCompletion(false);
     } else {
       this.notifyUpdates({ isRestoring });
     }
   }
 
+  setGameComplete(gameComplete: boolean): void {
+    this.state.gameComplete = gameComplete;
+    this.notifyUpdates({ gameComplete });
+  }
+
   // Check if in restoration mode
   isRestoring(): boolean {
     return this.state.isRestoring;
-  }
-
-  // Check if timer is enabled
-  isTimerEnabled(): boolean {
-    return !this.state.timerDisabled;
   }
 
   // Place a piece on the board
@@ -254,6 +158,7 @@ export class LetteredGameStateManager {
 
     // Check if position is valid
     const validationResult = this.isValidPiecePlacement(piece, position);
+    console.log('validationResult', { validationResult });
     if (!validationResult.valid) {
       return false;
     }
@@ -280,7 +185,6 @@ export class LetteredGameStateManager {
         placedPieces: new Map(this.state.placedPieces),
         boardLayout: this.state.boardLayout,
         gameComplete: this.state.gameComplete,
-        gameWon: this.state.gameWon,
         moves: this.state.moves,
       });
     }
@@ -310,6 +214,171 @@ export class LetteredGameStateManager {
     return true;
   }
 
+  // Update game state from a 2D layout array (from Grid component)
+  async updateFromLayout(layout: (string | null)[][]): Promise<LayoutUpdateResult> {
+    const noChangeResult: LayoutUpdateResult = {
+      hasChanges: false,
+      placedPieces: this.getPlacedPiecesAsRecord(),
+      boardLayout: this.getBoardLayout(),
+    };
+
+    // Prevent updates when game is complete or no game data
+    if (this.state.gameComplete || !this.state.gameData) {
+      return noChangeResult;
+    }
+
+    // Parse layout to extract piece anchor positions
+    const newPlacedPieces = this.parseLayoutToPositions(layout);
+
+    // Compare with current state to detect changes
+    const currentPlacedPieces = this.state.placedPieces;
+    let hasAnyPieceMoved = false;
+
+    // Check for moved pieces
+    for (const [pieceId, newPosition] of newPlacedPieces) {
+      const currentPosition = currentPlacedPieces.get(pieceId);
+      if (
+        !currentPosition ||
+        currentPosition.row !== newPosition.row ||
+        currentPosition.col !== newPosition.col
+      ) {
+        hasAnyPieceMoved = true;
+        break;
+      }
+    }
+
+    // Check for removed pieces
+    if (!hasAnyPieceMoved) {
+      for (const [pieceId] of currentPlacedPieces) {
+        if (!newPlacedPieces.has(pieceId)) {
+          hasAnyPieceMoved = true;
+          break;
+        }
+      }
+    }
+
+    // Check for added pieces
+    if (!hasAnyPieceMoved) {
+      for (const [pieceId] of newPlacedPieces) {
+        if (!currentPlacedPieces.has(pieceId)) {
+          hasAnyPieceMoved = true;
+          break;
+        }
+      }
+    }
+
+    // If no changes detected, return early
+    if (!hasAnyPieceMoved) {
+      return noChangeResult;
+    }
+
+    // Batch update all piece positions
+    for (const [pieceId, newPosition] of newPlacedPieces) {
+      const currentPosition = currentPlacedPieces.get(pieceId);
+      if (
+        !currentPosition ||
+        currentPosition.row !== newPosition.row ||
+        currentPosition.col !== newPosition.col
+      ) {
+        // Update placed pieces directly (skip individual validation since Grid already handles it)
+        this.state.lastValidPositions.set(pieceId, newPosition);
+        this.state.placedPieces.set(pieceId, newPosition);
+      }
+    }
+
+    // Update board layout after all pieces are placed
+    this.updateBoardLayout();
+
+    // Increment moves counter once for the batch update
+    this.state.moves += 1;
+
+    // Check game completion once at the end
+    await this.checkGameCompletion();
+
+    // Notify updates
+    this.notifyUpdates({
+      placedPieces: new Map(this.state.placedPieces),
+      boardLayout: this.state.boardLayout,
+      gameComplete: this.state.gameComplete,
+      moves: this.state.moves,
+    });
+
+    return {
+      hasChanges: true,
+      placedPieces: this.getPlacedPiecesAsRecord(),
+      boardLayout: this.getBoardLayout(),
+    };
+  }
+
+  // Parse a 2D layout array to extract piece anchor positions
+  private parseLayoutToPositions(layout: (string | null)[][]): Map<string, GridPosition> {
+    const newPlacedPieces = new Map<string, GridPosition>();
+
+    if (!this.state.gameData) {
+      return newPlacedPieces;
+    }
+
+    const processedPieces = new Set<string>();
+
+    layout.forEach((row, rowIndex) => {
+      row.forEach((itemId, colIndex) => {
+        if (itemId && !processedPieces.has(itemId)) {
+          const piece = this.state.gameData!.pieces.find((p: LetterPiece) => p.id === itemId);
+          if (!piece) return;
+
+          processedPieces.add(itemId);
+
+          // Use this occupied position to calculate anchor point
+          const occupiedPos = { row: rowIndex, col: colIndex };
+
+          // Find which shape position corresponds to this occupied position
+          // We need to find: anchor + shapePos = occupiedPos
+          // So: anchor = occupiedPos - shapePos
+          let anchorPoint = occupiedPos; // fallback
+
+          for (const shapePos of piece.shape) {
+            const testAnchor = {
+              row: occupiedPos.row - shapePos.row,
+              col: occupiedPos.col - shapePos.col,
+            };
+
+            // Verify this anchor point works for the piece
+            let allCellsValid = true;
+            for (const testShapePos of piece.shape) {
+              const expectedRow = testAnchor.row + testShapePos.row;
+              const expectedCol = testAnchor.col + testShapePos.col;
+
+              // Check if this expected position is occupied by the same piece
+              const layoutRow = layout[expectedRow];
+              if (!layoutRow || layoutRow[expectedCol] !== itemId) {
+                allCellsValid = false;
+                break;
+              }
+            }
+
+            if (allCellsValid) {
+              anchorPoint = testAnchor;
+              break;
+            }
+          }
+
+          newPlacedPieces.set(itemId, anchorPoint);
+        }
+      });
+    });
+
+    return newPlacedPieces;
+  }
+
+  // Get placed pieces as a Record (for JSON serialization)
+  getPlacedPiecesAsRecord(): Record<string, GridPosition> {
+    const record: Record<string, GridPosition> = {};
+    for (const [pieceId, position] of this.state.placedPieces.entries()) {
+      record[pieceId] = position;
+    }
+    return record;
+  }
+
   // Check if a piece placement is valid
   private isValidPiecePlacement(
     piece: LetterPiece,
@@ -326,7 +395,6 @@ export class LetteredGameStateManager {
     for (const shapePos of piece.shape) {
       const gridRow = position.row + shapePos.row;
       const gridCol = position.col + shapePos.col;
-
       // Check if position conflicts with other placed pieces (both in main grid and tray)
       for (const [placedPieceId, placedPosition] of this.state.placedPieces.entries()) {
         if (placedPieceId === piece.id) continue; // Skip self
@@ -337,7 +405,6 @@ export class LetteredGameStateManager {
         for (const placedShapePos of placedPiece.shape) {
           const placedGridRow = placedPosition.row + placedShapePos.row;
           const placedGridCol = placedPosition.col + placedShapePos.col;
-
           if (placedGridRow === gridRow && placedGridCol === gridCol) {
             return { valid: false, reason: 'Piece overlaps with another placed piece' };
           }
@@ -424,7 +491,8 @@ export class LetteredGameStateManager {
   }
 
   // Check if the game is complete
-  private async checkGameCompletion(): Promise<void> {
+  // isFirstTime: true for fresh gameplay completions, false for restored game checks
+  private async checkGameCompletion(isFirstTime: boolean = true): Promise<void> {
     if (!this.state.gameData || this.state.gameComplete) {
       return;
     }
@@ -443,111 +511,52 @@ export class LetteredGameStateManager {
 
     if (isSolutionCorrect) {
       this.state.gameComplete = true;
-      this.state.gameWon = true;
-      this.stopScoreDecay();
-
-      this.notifyUpdates({
-        gameComplete: true,
-        gameWon: true,
-      });
+      // Fire first-time completion callback only for fresh wins, not restored games
+      if (isFirstTime) {
+        this.notifyFirstTimeCompletion();
+      }
     }
   }
 
-  // Validate by comparing board layout to solution hash
+  // Validate by comparing placed pieces with solution positions
   private async validateBoardAgainstPhrase(): Promise<boolean> {
-    if (!this.state.gameData) {
+    if (!this.state.gameData || !this.state.gameData.solution) {
       return false;
     }
 
-    const currentHash = await this.createSolutionHash();
-    const expectedHash = this.state.gameData.solutionHash;
-    const isValid = currentHash === expectedHash;
+    const solution = this.state.gameData.solution;
+    const mainGridHeight = this.state.gameData.grid.length;
+    const mainGridWidth = this.state.gameData.grid[0]?.length || 0;
 
-    return isValid;
-  }
+    // Filter out pieces placed in the tray area (below main grid)
+    const mainBoardPieces = Array.from(this.state.placedPieces.entries()).filter(([, position]) => {
+      return position.row < mainGridHeight && position.col < mainGridWidth;
+    });
 
-  // Create SHA256 hash of current solution for validation
-  private async createSolutionHash(): Promise<string> {
-    if (!this.state.gameData) {
-      return '';
+    // Check if all pieces are placed on the main board
+    const totalPieces = this.state.gameData.pieces.length;
+    const placedOnBoardCount = mainBoardPieces.length;
+
+    if (placedOnBoardCount !== totalPieces) {
+      return false;
     }
 
-    // Reconstruct the complete grid by combining secure grid with placed pieces
-    const completeGrid = this.state.gameData.grid.map((row, rowIndex) =>
-      row.map((cell, colIndex) => {
-        // Start with the secure cell data
-        const completeCell = {
-          letter: cell.letter,
-          isLetter: cell.isLetter,
-          isPreFilled: cell.isPreFilled,
-          isSpace: cell.isSpace,
-          isUnused: cell.isUnused,
-        };
+    // Check if each piece is in the correct position
+    for (const [pieceId, placedPosition] of mainBoardPieces) {
+      const solutionPosition = solution[pieceId];
+      if (!solutionPosition) {
+        return false;
+      }
 
-        // If this cell doesn't have a pre-filled letter, try to find it from placed pieces
-        if (!cell.isPreFilled && !cell.letter) {
-          // Check if any piece covers this position
-          for (const [pieceId, position] of this.state.placedPieces.entries()) {
-            const piece = this.state.gameData!.pieces.find((p) => p.id === pieceId);
-            if (!piece?.letters?.length) continue;
-
-            // Check if this piece covers the current cell
-            const shape = piece.shape;
-            if (!shape?.length) continue;
-
-            for (let i = 0; i < shape.length; i++) {
-              const shapePos = shape[i];
-              if (!shapePos) continue;
-
-              const pieceRow = position.row + shapePos.row;
-              const pieceCol = position.col + shapePos.col;
-
-              if (pieceRow === rowIndex && pieceCol === colIndex) {
-                completeCell.letter = piece.letters[i] || null;
-                break;
-              }
-            }
-
-            if (completeCell.letter) break; // Found the letter, no need to check more pieces
-          }
-        }
-
-        return completeCell;
-      })
-    );
-
-    // Create the same data structure as the server
-    const gridJson = JSON.stringify(completeGrid);
-    const hash = await sha256(gridJson);
-
-    return hash;
-  }
-
-  // Get current score
-  getScore(): number {
-    return this.state.score;
-  }
-
-  // Set current score (for server synchronization) - smoothly adjust to server value
-  setScore(serverScore: number): void {
-    const currentLocalScore = this.getScore();
-
-    // If the difference is significant (> 50 points), adjust the initial score to calibrate
-    // This prevents jarring jumps while keeping the decay rate consistent
-    const difference = serverScore - currentLocalScore;
-    if (Math.abs(difference) > 50) {
-      // Adjust initialScore to account for the difference
-      // This calibrates the decay calculation to match the server
-      this.state.initialScore += difference;
-      console.log(
-        `[DEBUG] Calibrated score by ${difference} points (server: ${serverScore}, local: ${currentLocalScore})`
-      );
-    } else {
-      // For small differences, just set the score directly for accuracy
-      this.state.score = serverScore;
+      if (
+        placedPosition.row !== solutionPosition.row ||
+        placedPosition.col !== solutionPosition.col
+      ) {
+        return false;
+      }
     }
 
-    this.notifyUpdates({ score: this.state.score });
+    return true;
   }
 
   // Get placed pieces
@@ -599,11 +608,6 @@ export class LetteredGameStateManager {
     return this.state.gameComplete;
   }
 
-  // Check if game is won
-  isGameWon(): boolean {
-    return this.state.gameWon;
-  }
-
   // Get current moves count
   getMoves(): number {
     return this.state.moves;
@@ -611,7 +615,7 @@ export class LetteredGameStateManager {
 
   // Clean up resources
   destroy(): void {
-    this.stopScoreDecay();
     this.updateCallbacks = [];
+    this.firstTimeCompletionCallbacks = [];
   }
 }

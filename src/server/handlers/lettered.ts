@@ -1,6 +1,5 @@
 import { Router } from 'express';
 import { z } from 'zod';
-import { createHash } from 'crypto';
 import {
   LetteredDailyGameResponse,
   LetteredGameSessionResponse,
@@ -9,19 +8,26 @@ import {
   GridCell,
   LetteredPostGameResponse,
 } from '../../shared/types/api';
-import { calculateDecayedScore } from '../../shared/score-decay';
 import { ensureUserExistsAndGetId } from '../lib/user-helpers';
 import { getCurrentUTCTime, toUTCTimestamp } from '../lib/time';
 import { updateLetteredLeaderboards } from '../lib/leaderboard-helpers';
 import {
   getTodaysLetteredGame,
-  getOrCreateUserLetteredSessionForToday,
+  getOrCreateLetteredSession,
   updateLetteredSession,
-  getLatestLetteredSubmissionForToday,
+  getLatestLetteredSubmission,
   createLetteredSubmission,
-  getTotalLetteredSubmissionsForToday,
+  getTotalLetteredSubmissions,
+  deleteLetteredSession,
+  addToGameLeaderboard,
+  getGameLeaderboard,
+  getPlayerRankInGameLeaderboard,
+  getGameLeaderboardTotalPlayers,
+  calculateLeaderboardScore,
+  hasUserCompletedGame,
 } from '../database/lettered';
-import { getOrCreateTodaysGame } from '../database/game';
+import { getRedisClient } from '../lib/redis-provider';
+import { RedisKeys, deserialize } from '../../shared/types/redis';
 
 // Zod schema for validating the payload
 const gridPositionSchema = z.object({
@@ -47,69 +53,12 @@ const letteredSessionPayloadSchema = z.object({
   timestamp: z.number().positive(),
 });
 
-// Create SHA256 hash of the board state for validation (matches client implementation)
-const createBoardHash = (
-  grid: GridCell[][],
-  placedPieces: Record<string, GridPosition>,
-  pieces: LetterPiece[]
-): string => {
-  // Reconstruct the complete grid by combining secure grid with placed pieces
-  const completeGrid = grid.map((row, rowIndex) =>
-    row.map((cell, colIndex) => {
-      // Start with the secure cell data
-      const completeCell = {
-        letter: cell.letter,
-        isLetter: cell.isLetter,
-        isPreFilled: cell.isPreFilled,
-        isSpace: cell.isSpace,
-        isUnused: cell.isUnused,
-      };
-
-      // If this cell doesn't have a pre-filled letter, try to find it from placed pieces
-      if (!cell.isPreFilled && !cell.letter) {
-        // Check if any piece covers this position
-        for (const [pieceId, position] of Object.entries(placedPieces)) {
-          const piece = pieces.find((p) => p.id === pieceId);
-          if (!piece?.letters?.length) continue;
-
-          // Check if this piece covers the current cell
-          const shape = piece.shape;
-          if (!shape?.length) continue;
-
-          for (let i = 0; i < shape.length; i++) {
-            const shapePos = shape[i];
-            if (!shapePos) continue;
-
-            const pieceRow = position.row + shapePos.row;
-            const pieceCol = position.col + shapePos.col;
-
-            if (pieceRow === rowIndex && pieceCol === colIndex) {
-              completeCell.letter = piece.letters[i] || null;
-              break;
-            }
-          }
-
-          if (completeCell.letter) break; // Found the letter, no need to check more pieces
-        }
-      }
-
-      return completeCell;
-    })
-  );
-
-  // Create hash of the complete grid
-  const gridJson = JSON.stringify(completeGrid);
-  const hash = createHash('sha256').update(gridJson).digest('hex');
-
-  return hash;
-};
-
-// Check if player has won by validating the board state against the solution hash
+// Check if player has won by comparing placed pieces with the solution
 const checkPlayerHasWon = (
   placedPieces: Record<string, GridPosition>,
   gameGrid: GridCell[][],
   pieces: LetterPiece[],
-  solutionHash: string
+  solution: Record<string, GridPosition>
 ): boolean => {
   const mainGridHeight = gameGrid.length;
   const mainGridWidth = gameGrid[0]?.length || 0;
@@ -124,96 +73,113 @@ const checkPlayerHasWon = (
   const placedOnBoardCount = mainBoardPieces.length;
 
   if (placedOnBoardCount !== totalPieces) {
+    console.log('Board validation: Not all pieces placed', {
+      totalPieces,
+      placedOnBoardCount,
+    });
     return false;
   }
 
-  // Create hash using only pieces placed on the main board
-  const mainBoardPiecesObj = Object.fromEntries(mainBoardPieces);
-  const currentHash = createBoardHash(gameGrid, mainBoardPiecesObj, pieces);
-  const isValid = currentHash === solutionHash;
+  // Check if each piece is in the correct position
+  for (const [pieceId, placedPosition] of mainBoardPieces) {
+    const solutionPosition = solution[pieceId];
+    if (!solutionPosition) {
+      console.log('Board validation: No solution position for piece', { pieceId });
+      return false;
+    }
 
-  console.log('Board validation:', {
-    currentHash: currentHash.substring(0, 16) + '...',
-    solutionHash: solutionHash.substring(0, 16) + '...',
+    if (
+      placedPosition.row !== solutionPosition.row ||
+      placedPosition.col !== solutionPosition.col
+    ) {
+      console.log('Board validation: Piece in wrong position', {
+        pieceId,
+        placed: placedPosition,
+        solution: solutionPosition,
+      });
+      return false;
+    }
+  }
+
+  console.log('Board validation: All pieces correctly placed!', {
     totalPieces,
     placedOnBoardCount,
-    isValid,
   });
 
-  return isValid;
+  return true;
 };
 
 const router = Router();
 
-// GET /api/lettered/game - Returns the current day's lettered game and the user's game session
-router.get('/api/lettered/game', async (_req, res): Promise<void> => {
+// GET /api/lettered/:gameId/game - Returns a specific lettered game by ID and the user's game session
+router.get('/api/lettered/:gameId/game', async (req, res): Promise<void> => {
   try {
+    const { gameId } = req.params;
     const userId = await ensureUserExistsAndGetId();
 
-    // Get or create today's daily lettered game using the helper
-    const letteredGame = await getTodaysLetteredGame();
-    const dailyGame = await getOrCreateTodaysGame();
+    // Get the lettered game by ID (works for daily date strings and custom game IDs)
+    const redis = await getRedisClient();
+    const gameDataRaw = await redis.get(RedisKeys.letteredGame.byId(gameId));
+    
+    if (!gameDataRaw) {
+      res.status(404).json({
+        status: 'error',
+        message: 'Game not found',
+      });
+      return;
+    }
 
-    // First try to get existing session
-    const existingSession = await getOrCreateUserLetteredSessionForToday(userId);
+    const letteredGame = deserialize<{
+      id: string;
+      postType: 'daily' | 'custom';
+      category: string;
+      phrase: string;
+      grid: GridCell[][];
+      rows: number;
+      cols: number;
+      pieces: LetterPiece[];
+      initialPiecePositions: Record<string, GridPosition>;
+      solution: Record<string, GridPosition>;
+      seed: number | null;
+      createdAt: string;
+      updatedAt: string;
+    }>(gameDataRaw);
+
+    if (!letteredGame) {
+      res.status(500).json({
+        status: 'error',
+        message: 'Failed to parse game data',
+      });
+      return;
+    }
+
+    // Get or create user's session for this game
+    const existingSession = await getOrCreateLetteredSession(userId, gameId);
 
     console.log('existingSession', existingSession);
 
     // User has an existing session, get the latest board state submission
-    const latestSubmission = await getLatestLetteredSubmissionForToday(userId);
+    const latestSubmission = await getLatestLetteredSubmission(userId, gameId);
 
-    // Calculate current score based on the startedAt time (using UTC consistently)
+    // Calculate elapsed time
     const gameStartTime = toUTCTimestamp(existingSession.startedAt);
     const now = getCurrentUTCTime();
-    const elapsedSeconds = Math.max(0, (now - gameStartTime) / 1000);
-
-    // Calculate current score based on pieces placed on main board only
-    const mainGridHeight = letteredGame.grid.length;
-    const mainGridWidth = letteredGame.grid[0]?.length || 0;
-    const latestBoardState = latestSubmission?.boardState.placedPieces || {};
-
-    const mainBoardPlacedCount = Object.values(latestBoardState).filter((position) => {
-      return position.row < mainGridHeight && position.col < mainGridWidth;
-    }).length;
-
-    const currentScore = calculateDecayedScore({
-      initialScore: existingSession.initialScore,
-      elapsedSeconds,
-      gameType: 'lettered',
-      placedPieces: mainBoardPlacedCount,
-    });
-
-    if (latestSubmission) {
-      const boardState = latestSubmission.boardState;
-
-      // Extract placed pieces from the board state
-      const placedPieces = Object.entries(boardState.placedPieces).reduce(
-        (map, [pieceId, position]) => {
-          map[pieceId] = {
-            pieceId,
-            position,
-          };
-          return map;
-        },
-        {} as Record<string, { pieceId: string; position: GridPosition }>
-      );
-    }
+    const timeElapsedMs = Math.max(0, now - gameStartTime);
 
     const sessionData: LetteredGameSessionResponse = {
       type: 'lettered_game_session',
       sessionId: existingSession.id,
-      currentScore: existingSession.isCompleted ? existingSession.finalScore : currentScore,
-      initialScore: existingSession.initialScore,
+      timeElapsed: existingSession.isCompleted ? existingSession.timeElapsed : timeElapsedMs,
       isCompleted: existingSession.isCompleted,
       moves: existingSession.moves,
       pieces: latestSubmission?.boardState.placedPieces || {},
     };
 
     const response: LetteredDailyGameResponse = {
-      type: 'lettered_daily_game',
-      dailyGameId: letteredGame.id,
+      type: 'lettered_game',
       game: {
         id: letteredGame.id,
+        postType: letteredGame.postType,
         category: letteredGame.category,
         phrase: letteredGame.phrase,
         grid: letteredGame.grid as GridCell[][],
@@ -221,12 +187,71 @@ router.get('/api/lettered/game', async (_req, res): Promise<void> => {
         cols: letteredGame.cols,
         pieces: letteredGame.pieces as LetterPiece[],
         initialPiecePositions: letteredGame.initialPiecePositions || {},
-        solutionHash: letteredGame.solutionHash,
-        solution: letteredGame.solution || [],
+        solution: letteredGame.solution,
+        seed: letteredGame.seed,
         createdAt: letteredGame.createdAt,
         updatedAt: letteredGame.updatedAt,
       },
-      day: dailyGame.day,
+      session: sessionData,
+    };
+
+    res.json(response);
+  } catch (error) {
+    console.error('Error in /api/lettered/:gameId/game:', error);
+    res.status(500).json({
+      status: 'error',
+      message: 'Failed to fetch lettered game',
+    });
+  }
+});
+
+// GET /api/lettered/game - Returns today's lettered game and the user's game session
+router.get('/api/lettered/game', async (_req, res): Promise<void> => {
+  try {
+    const userId = await ensureUserExistsAndGetId();
+
+    // Get or create today's daily lettered game
+    const letteredGame = await getTodaysLetteredGame();
+
+    // Get or create user's session for this game
+    const existingSession = await getOrCreateLetteredSession(userId, letteredGame.id);
+
+    console.log('existingSession', existingSession);
+
+    // User has an existing session, get the latest board state submission
+    const latestSubmission = await getLatestLetteredSubmission(userId, letteredGame.id);
+
+    // Calculate elapsed time
+    const gameStartTime = toUTCTimestamp(existingSession.startedAt);
+    const now = getCurrentUTCTime();
+    const timeElapsedMs = Math.max(0, now - gameStartTime);
+
+    const sessionData: LetteredGameSessionResponse = {
+      type: 'lettered_game_session',
+      sessionId: existingSession.id,
+      timeElapsed: existingSession.isCompleted ? existingSession.timeElapsed : timeElapsedMs,
+      isCompleted: existingSession.isCompleted,
+      moves: existingSession.moves,
+      pieces: latestSubmission?.boardState.placedPieces || {},
+    };
+
+    const response: LetteredDailyGameResponse = {
+      type: 'lettered_game',
+      game: {
+        id: letteredGame.id,
+        postType: 'daily',
+        category: letteredGame.category,
+        phrase: letteredGame.phrase,
+        grid: letteredGame.grid as GridCell[][],
+        rows: letteredGame.rows,
+        cols: letteredGame.cols,
+        pieces: letteredGame.pieces as LetterPiece[],
+        initialPiecePositions: letteredGame.initialPiecePositions || {},
+        solution: letteredGame.solution,
+        seed: letteredGame.seed,
+        createdAt: letteredGame.createdAt,
+        updatedAt: letteredGame.updatedAt,
+      },
       session: sessionData,
     };
 
@@ -235,19 +260,20 @@ router.get('/api/lettered/game', async (_req, res): Promise<void> => {
     console.error('Error in /api/lettered/game:', error);
     res.status(500).json({
       status: 'error',
-      message: "Failed to fetch today's daily lettered game",
+      message: "Failed to fetch today's lettered game",
     });
   }
 });
 
 // POST /api/lettered/:gameId/session
-router.post('/api/lettered/:dailyGameId/session', async (req, res): Promise<void> => {
-  console.log('POST /api/lettered/:dailyGameId/session', {
-    dailyGameId: req.params.dailyGameId,
+router.post('/api/lettered/:gameId/session', async (req, res): Promise<void> => {
+  console.log('POST /api/lettered/:gameId/session', {
+    gameId: req.params.gameId,
     body: req.body,
     placedPieces: req.body.boardState.placedPieces,
   });
   try {
+    const { gameId } = req.params;
     const userId = await ensureUserExistsAndGetId();
 
     if (!userId) {
@@ -273,11 +299,31 @@ router.post('/api/lettered/:dailyGameId/session', async (req, res): Promise<void
 
     const { boardState } = payloadValidation.data;
 
-    // Get today's daily lettered game
-    const dailyLetterGame = await getTodaysLetteredGame();
+    // Get the lettered game by ID (works for both daily and custom games)
+    const redis = await getRedisClient();
+    const gameDataRaw = await redis.get(RedisKeys.letteredGame.byId(gameId));
+    if (!gameDataRaw) {
+      res.status(404).json({
+        status: 'error',
+        message: 'Game not found',
+      });
+      return;
+    }
+    const dailyLetterGame = deserialize<{
+      grid: GridCell[][];
+      pieces: LetterPiece[];
+      solution: Record<string, GridPosition>;
+    }>(gameDataRaw);
+    if (!dailyLetterGame) {
+      res.status(500).json({
+        status: 'error',
+        message: 'Failed to parse game data',
+      });
+      return;
+    }
 
-    // Get or create game session
-    const session = await getOrCreateUserLetteredSessionForToday(userId);
+    // Get or create game session for this specific game
+    const session = await getOrCreateLetteredSession(userId, gameId);
 
     // Calculate moves based on pieces placed on main board only
     const mainGridHeight = dailyLetterGame.grid.length;
@@ -310,7 +356,7 @@ router.post('/api/lettered/:dailyGameId/session', async (req, res): Promise<void
       boardState.placedPieces,
       dailyLetterGame.grid,
       dailyLetterGame.pieces,
-      dailyLetterGame.solutionHash
+      dailyLetterGame.solution
     );
     console.log('Board validation result:', hasWon);
 
@@ -320,16 +366,15 @@ router.post('/api/lettered/:dailyGameId/session', async (req, res): Promise<void
     if (session.isCompleted) {
       console.log("Game is already complete, don't store anything but return success");
       // Game is already complete, don't store anything but return success
-      const currentScore = session.finalScore;
       placedPieces = Object.keys(boardState.placedPieces).length;
       boardStateStored = false;
 
       res.json({
         sessionId: session.id,
         accepted: true,
-        currentScore,
+        timeElapsed: session.timeElapsed,
         placedPieces,
-        moves: session.moves, // Return moves count even for completed games
+        moves: session.moves,
         boardStateStored,
         hasWon,
       });
@@ -341,32 +386,18 @@ router.post('/api/lettered/:dailyGameId/session', async (req, res): Promise<void
     // Calculate current score for this submission (using UTC consistently)
     const gameStartTime = toUTCTimestamp(session.startedAt);
     const placementTime = getCurrentUTCTime();
-    const elapsedSeconds = Math.max(0, (placementTime - gameStartTime) / 1000);
+    const timeElapsedMs = Math.max(0, placementTime - gameStartTime);
 
-    console.log('Calculating current score for submission', {
-      initialScore: session.initialScore,
+    console.log('Storing submission', {
       gameStartTime,
       placementTime,
-      elapsedSeconds,
+      timeElapsedMs,
     });
 
-    // Count placed pieces for score decay calculation
-    const placedCount = Object.keys(boardState.placedPieces).length;
-
-    // Use shared decay calculation for submissions
-    const currentScore = calculateDecayedScore({
-      initialScore: session.initialScore,
-      elapsedSeconds,
-      gameType: 'lettered',
-      placedPieces: placedCount,
-    });
-
-    console.log('Current score for submission', currentScore);
     // Store the complete board state as a single submission
     const submission = await createLetteredSubmission({
       gameSessionId: session.id,
       boardState,
-      scoreAtSubmission: currentScore,
     });
 
     console.log('Stored submission', submission);
@@ -375,26 +406,60 @@ router.post('/api/lettered/:dailyGameId/session', async (req, res): Promise<void
 
     // Check if player has won and mark game as completed
     if (hasWon) {
+      const completedAt = new Date(getCurrentUTCTime()).toISOString();
+
       await updateLetteredSession(session.id, {
         isCompleted: true,
-        completedAt: new Date(getCurrentUTCTime()).toISOString(),
-        finalScore: currentScore,
-        moves: updatedSession.moves, // Use the updated moves count
+        completedAt,
+        timeElapsed: timeElapsedMs,
+        moves: updatedSession.moves,
       });
 
-      // Update leaderboard tables with the final score
+      // Update leaderboard tables with the final time and moves
       try {
-        // Calculate time elapsed since game start
-        const gameStartTime = toUTCTimestamp(session.startedAt);
-        const timeElapsed = Math.max(0, (getCurrentUTCTime() - gameStartTime) / 1000);
+        // Get user's reddit handle
+        const redis = await getRedisClient();
+        const userData = await redis.get(RedisKeys.user.byId(userId));
+        const user = userData ? deserialize<{ handle: string }>(userData) : null;
+        const redditHandle = user?.handle || 'unknown';
 
-        await updateLetteredLeaderboards(userId, currentScore, updatedSession.moves, timeElapsed);
+        // Add to per-game leaderboard
+        const score = calculateLeaderboardScore(timeElapsedMs, updatedSession.moves);
+        const alreadyCompleted = await hasUserCompletedGame(gameId, userId);
+
+        if (!alreadyCompleted) {
+          await addToGameLeaderboard(gameId, {
+            userId,
+            username: redditHandle,
+            timeElapsed: timeElapsedMs,
+            moves: updatedSession.moves,
+            score,
+            completedAt,
+          });
+
+          console.log('Added to per-game leaderboard:', {
+            gameId,
+            userId,
+            username: redditHandle,
+            score,
+            timeElapsed: timeElapsedMs,
+            moves: updatedSession.moves,
+          });
+        }
+
+        // Update overall leaderboards
+        await updateLetteredLeaderboards(
+          userId,
+          redditHandle,
+          updatedSession.moves,
+          timeElapsedMs / 1000 // Convert to seconds for leaderboard
+        );
 
         console.log('Lettered leaderboard updated:', {
           userId,
-          finalScore: currentScore,
+          redditHandle,
           moves: updatedSession.moves,
-          timeElapsed,
+          timeElapsed: timeElapsedMs / 1000,
         });
       } catch (leaderboardError) {
         // Don't fail the request if leaderboard update fails, just log it
@@ -405,9 +470,9 @@ router.post('/api/lettered/:dailyGameId/session', async (req, res): Promise<void
     const response = {
       sessionId: session.id,
       accepted: true,
-      currentScore,
+      timeElapsed: timeElapsedMs,
       placedPieces,
-      moves: updatedSession.moves, // Return the updated moves count
+      moves: updatedSession.moves,
       boardStateStored: true,
       hasWon,
     };
@@ -436,26 +501,14 @@ router.get('/api/lettered/:gameId/session', async (req, res): Promise<void> => {
       return;
     }
 
-    const dailyGame = await getTodaysLetteredGame();
-
-    // Validate that the requested gameId matches today's game
-    if (gameId !== dailyGame.id) {
-      res.status(400).json({
-        status: 'error',
-        message: `Game session id is invalid for today's game`,
-      });
-      return;
-    }
-
-    // Get the user's game session
-    const session = await getOrCreateUserLetteredSessionForToday(userId);
-    const latestSubmission = await getLatestLetteredSubmissionForToday(session.id);
+    // Get the user's game session for this specific game (works for daily and custom)
+    const session = await getOrCreateLetteredSession(userId, gameId);
+    const latestSubmission = await getLatestLetteredSubmission(userId, gameId);
 
     const response: LetteredGameSessionResponse = {
       type: 'lettered_game_session',
       sessionId: session.id,
-      currentScore: session.isCompleted ? session.finalScore : session.initialScore,
-      initialScore: session.initialScore,
+      timeElapsed: session.timeElapsed,
       isCompleted: session.isCompleted,
       moves: session.moves,
       pieces: latestSubmission?.boardState.placedPieces || {},
@@ -467,6 +520,45 @@ router.get('/api/lettered/:gameId/session', async (req, res): Promise<void> => {
     res.status(500).json({
       status: 'error',
       message: 'Failed to get game session',
+    });
+  }
+});
+
+// DELETE /api/lettered/:gameId/session - Deletes the current game session for a user (debug/dev only)
+router.delete('/api/lettered/:gameId/session', async (req, res): Promise<void> => {
+  try {
+    const { gameId } = req.params;
+    const userId = await ensureUserExistsAndGetId();
+
+    if (!userId) {
+      res.status(401).json({
+        status: 'error',
+        message: 'User not authenticated with Reddit',
+      });
+      return;
+    }
+
+    console.log('DELETE /api/lettered/:gameId/session', { gameId, userId });
+
+    // Delete the user's session for this game
+    const deleted = await deleteLetteredSession(userId, gameId);
+
+    if (deleted) {
+      res.json({
+        status: 'success',
+        message: 'Session deleted successfully',
+      });
+    } else {
+      res.json({
+        status: 'success',
+        message: 'No session found to delete',
+      });
+    }
+  } catch (error) {
+    console.error('Error deleting game session:', error);
+    res.status(500).json({
+      status: 'error',
+      message: 'Failed to delete game session',
     });
   }
 });
@@ -489,25 +581,47 @@ router.get('/api/lettered/:gameId/postgame', async (req, res): Promise<void> => 
       return;
     }
 
-    const dailyGame = await getTodaysLetteredGame();
-
-    if (gameId !== dailyGame.id) {
-      res.status(400).json({
+    // Get the game data (works for both daily and custom games)
+    const redis = await getRedisClient();
+    const gameDataRaw = await redis.get(RedisKeys.letteredGame.byId(gameId));
+    if (!gameDataRaw) {
+      res.status(404).json({
         status: 'error',
-        message: "Game id is invalid for today's game",
+        message: 'Game not found',
+      });
+      return;
+    }
+    const game = deserialize<{
+      id: string;
+      postType: 'daily' | 'custom';
+      category: string;
+      phrase: string;
+      grid: GridCell[][];
+      rows: number;
+      cols: number;
+      pieces: LetterPiece[];
+      initialPiecePositions: Record<string, GridPosition>;
+      solution: Record<string, GridPosition>;
+      seed: number | null;
+      createdAt: string;
+      updatedAt: string;
+    }>(gameDataRaw);
+    if (!game) {
+      res.status(500).json({
+        status: 'error',
+        message: 'Failed to parse game data',
       });
       return;
     }
 
-    const session = await getOrCreateUserLetteredSessionForToday(userId);
-    const latestSubmission = await getLatestLetteredSubmissionForToday(userId);
-    const submissionsCount = await getTotalLetteredSubmissionsForToday(userId);
+    const session = await getOrCreateLetteredSession(userId, gameId);
+    const latestSubmission = await getLatestLetteredSubmission(userId, gameId);
 
     if (!latestSubmission) {
-      console.log('No submissions found for today');
+      console.log('No submissions found for this game');
       res.status(404).json({
         status: 'error',
-        message: 'No submissions found for today',
+        message: 'No submissions found for this game',
       });
       return;
     }
@@ -521,14 +635,44 @@ router.get('/api/lettered/:gameId/postgame', async (req, res): Promise<void> => 
       return;
     }
 
+    // Calculate player's score
+    const score = calculateLeaderboardScore(session.timeElapsed, session.moves);
+
+    // Get leaderboard data
+    const leaderboardEntries = await getGameLeaderboard(gameId, 10);
+    const playerRank = await getPlayerRankInGameLeaderboard(gameId, userId);
+    const totalPlayers = await getGameLeaderboardTotalPlayers(gameId);
+
+    // Format leaderboard entries for response
+    const leaderboard = leaderboardEntries.map((entry, index) => ({
+      username: entry.username,
+      timeElapsed: entry.timeElapsed,
+      moves: entry.moves,
+      score: entry.score,
+      rank: index + 1,
+    }));
+
     const response: LetteredPostGameResponse = {
       type: 'lettered_post_game',
-      dailyGame: dailyGame,
-      finalScore: session.finalScore,
+      game: game,
       isValid: true,
       pieces: latestSubmission?.boardState.placedPieces || {},
-      movesUsed: submissionsCount,
+      movesUsed: session.moves,
+      timeElapsed: session.timeElapsed,
+      score,
+      rank: playerRank ?? undefined,
+      totalPlayers,
+      leaderboard,
     };
+
+    console.log('Postgame response:', {
+      gameId,
+      userId,
+      score,
+      rank: playerRank,
+      totalPlayers,
+      leaderboardCount: leaderboard.length,
+    });
 
     res.json(response);
   } catch (error) {

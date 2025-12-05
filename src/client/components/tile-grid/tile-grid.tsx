@@ -1,6 +1,22 @@
-import React, { createContext, useContext, useState, useCallback, useMemo, ReactNode } from 'react';
+import React, {
+  createContext,
+  useContext,
+  useState,
+  useCallback,
+  useMemo,
+  useRef,
+  ReactNode,
+} from 'react';
 import { cn } from '../../lib/utils';
 import { isDevelopment } from '../../lib/dev-utils';
+
+// Auto-scroll configuration
+const AUTO_SCROLL_CONFIG = {
+  edgeThresholdPercent: 0.05, // Distance from viewport edge as percentage of viewport height (5%)
+  minScrollSpeed: 0.2, // Minimum scroll speed at start of zone (pixels per frame)
+  maxScrollSpeed: 8, // Maximum scroll speed at edge of screen (pixels per frame)
+  exponent: 2, // Exponential curve factor for speed scaling
+};
 
 // Core types for the grid system
 export type GridPosition = {
@@ -138,6 +154,7 @@ type GridContextType = {
   setDraggedItemId: (itemId: string | null) => void;
   setGrabOffset: (offset: GridPosition | null) => void;
   setGridBounds: (bounds: DOMRect | null) => void;
+  setInitialPointerPosition: (position: { clientX: number; clientY: number }) => void;
   isPositionValid: (
     item: DraggableItem,
     newPosition: GridPosition,
@@ -191,6 +208,14 @@ function GridProvider({
   const [grabOffset, setGrabOffset] = useState<GridPosition | null>(null);
   const [gridBounds, setGridBounds] = useState<DOMRect | null>(null);
   const [currentHoveredCell, setCurrentHoveredCell] = useState<GridPosition | null>(null);
+
+  // Auto-scroll refs - using refs to avoid stale closure issues in animation loop
+  const autoScrollFrameRef = useRef<number | null>(null);
+  const currentPointerPositionRef = useRef<{ clientX: number; clientY: number } | null>(null);
+  const currentScrollVelocityRef = useRef<number>(0); // For smooth velocity interpolation
+  const isDraggingRef = useRef<boolean>(false); // Track dragging state for animation loop
+  const dragStartedInScrollZoneRef = useRef<boolean>(false); // Track if drag started in scroll zone
+  const hasExitedScrollZoneRef = useRef<boolean>(false); // Track if user has exited scroll zone since drag start
 
   // Create and update tile grid
   const tileGrid = useMemo(() => {
@@ -280,19 +305,152 @@ function GridProvider({
     }
   }, []);
 
+  // Helper function to check if a Y position is in a scroll zone
+  const isInScrollZone = useCallback((clientY: number): boolean => {
+    const viewportHeight = window.innerHeight;
+    const edgeThreshold = viewportHeight * AUTO_SCROLL_CONFIG.edgeThresholdPercent;
+    const distanceFromBottom = viewportHeight - clientY;
+    return clientY < edgeThreshold || distanceFromBottom < edgeThreshold;
+  }, []);
+
+  // Calculate auto-scroll speed based on pointer position
+  // Uses exponential scaling: slower at zone start (t=0), faster at screen edge (t=1)
+  const calculateAutoScrollSpeed = useCallback(
+    (clientY: number): number => {
+      const viewportHeight = window.innerHeight;
+      const edgeThreshold = viewportHeight * AUTO_SCROLL_CONFIG.edgeThresholdPercent;
+      const { minScrollSpeed, maxScrollSpeed, exponent } = AUTO_SCROLL_CONFIG;
+
+      // Check if pointer is currently in a scroll zone
+      const currentlyInScrollZone = isInScrollZone(clientY);
+
+      // If drag started in scroll zone, don't scroll until user exits and re-enters
+      if (dragStartedInScrollZoneRef.current && !hasExitedScrollZoneRef.current) {
+        // Check if user has exited the scroll zone
+        if (!currentlyInScrollZone) {
+          hasExitedScrollZoneRef.current = true;
+        }
+        // Don't scroll yet - user hasn't exited and re-entered
+        return 0;
+      }
+
+      // Check if within top scroll zone
+      if (clientY < edgeThreshold) {
+        // t goes from 0 (at threshold boundary) to 1 (at screen edge)
+        const t = 1 - clientY / edgeThreshold;
+        // Exponential scaling: speed increases as cursor gets closer to edge
+        const speed = minScrollSpeed + (maxScrollSpeed - minScrollSpeed) * Math.pow(t, exponent);
+        return -speed; // Negative for scrolling up
+      }
+
+      // Check if within bottom scroll zone
+      const distanceFromBottom = viewportHeight - clientY;
+      if (distanceFromBottom < edgeThreshold) {
+        // t goes from 0 (at threshold boundary) to 1 (at screen edge)
+        const t = 1 - distanceFromBottom / edgeThreshold;
+        // Exponential scaling: speed increases as cursor gets closer to edge
+        const speed = minScrollSpeed + (maxScrollSpeed - minScrollSpeed) * Math.pow(t, exponent);
+        return speed; // Positive for scrolling down
+      }
+
+      // Not in any scroll zone
+      return 0;
+    },
+    [isInScrollZone]
+  );
+
+  // Auto-scroll animation loop with smooth velocity interpolation
+  // Using refs instead of state to avoid stale closure issues
+  const performAutoScroll = useCallback(() => {
+    // Check ref instead of state to always get current value
+    if (!isDraggingRef.current) {
+      autoScrollFrameRef.current = null;
+      currentScrollVelocityRef.current = 0;
+      return;
+    }
+
+    // Get current pointer position from ref
+    const pointerPos = currentPointerPositionRef.current;
+    let targetSpeed = 0;
+
+    if (pointerPos) {
+      targetSpeed = calculateAutoScrollSpeed(pointerPos.clientY);
+    }
+
+    // Smooth velocity interpolation (lerp towards target)
+    // Using different smoothing factors for acceleration vs deceleration
+    const currentVelocity = currentScrollVelocityRef.current;
+    const isAccelerating = Math.abs(targetSpeed) > Math.abs(currentVelocity);
+    const smoothingFactor = isAccelerating ? 0.12 : 0.18; // Slower to speed up, faster to slow down
+
+    // Lerp: current + (target - current) * factor
+    const newVelocity = currentVelocity + (targetSpeed - currentVelocity) * smoothingFactor;
+
+    // Update the velocity ref
+    currentScrollVelocityRef.current = newVelocity;
+
+    // Only scroll if velocity is significant (avoid micro-scrolls)
+    if (Math.abs(newVelocity) > 0.1) {
+      window.scrollBy({
+        top: newVelocity,
+        behavior: 'instant', // Use instant for animation-frame-based scrolling
+      });
+    }
+
+    // Continue the animation loop as long as we're dragging
+    autoScrollFrameRef.current = requestAnimationFrame(performAutoScroll);
+  }, [calculateAutoScrollSpeed]);
+
+  // Start auto-scroll when dragging begins
+  const startAutoScroll = useCallback(() => {
+    isDraggingRef.current = true;
+    if (autoScrollFrameRef.current === null) {
+      autoScrollFrameRef.current = requestAnimationFrame(performAutoScroll);
+    }
+  }, [performAutoScroll]);
+
+  // Stop auto-scroll when dragging ends
+  const stopAutoScroll = useCallback(() => {
+    isDraggingRef.current = false;
+    if (autoScrollFrameRef.current !== null) {
+      cancelAnimationFrame(autoScrollFrameRef.current);
+      autoScrollFrameRef.current = null;
+    }
+    currentPointerPositionRef.current = null;
+    currentScrollVelocityRef.current = 0;
+    dragStartedInScrollZoneRef.current = false;
+    hasExitedScrollZoneRef.current = false;
+  }, []);
+
+  // Set initial pointer position when drag starts (for immediate auto-scroll)
+  const setInitialPointerPosition = useCallback(
+    (position: { clientX: number; clientY: number }) => {
+      currentPointerPositionRef.current = position;
+      // Check if drag started in a scroll zone
+      dragStartedInScrollZoneRef.current = isInScrollZone(position.clientY);
+      hasExitedScrollZoneRef.current = false;
+    },
+    [isInScrollZone]
+  );
+
   // Global pointer tracking during drag operations
   const handleGlobalPointerMove = useCallback(
     (e: MouseEvent | TouchEvent) => {
-      if (!draggedItemId || !gridBounds || !grabOffset) return;
+      const coords = getGlobalEventCoordinates(e);
+
+      // ALWAYS store current pointer position for auto-scroll (before any early returns)
+      // This ensures auto-scroll works based on viewport position regardless of grid state
+      currentPointerPositionRef.current = coords;
 
       // Prevent default touch behavior (scrolling) during drag
       // This is critical for preventing scroll during fast movements
-      if (e.type.startsWith('touch')) {
+      if (isDraggingRef.current && e.type.startsWith('touch')) {
         e.preventDefault();
         e.stopPropagation();
       }
 
-      const coords = getGlobalEventCoordinates(e);
+      // Early return for grid-related logic if not ready
+      if (!draggedItemId || !gridBounds || !grabOffset) return;
 
       // Calculate pointer position relative to grid
       const pointerX = coords.clientX - gridBounds.left;
@@ -413,6 +571,17 @@ function GridProvider({
     ]
   );
 
+  // Auto-scroll effect - separate from event listeners to prevent restart on callback changes
+  // This effect only depends on draggedItemId, so it won't restart when other callbacks change
+  React.useEffect(() => {
+    if (draggedItemId) {
+      startAutoScroll();
+      return () => {
+        stopAutoScroll();
+      };
+    }
+  }, [draggedItemId, startAutoScroll, stopAutoScroll]);
+
   // Set up global event listeners during drag
   React.useEffect(() => {
     if (draggedItemId) {
@@ -489,6 +658,7 @@ function GridProvider({
       setDraggedItemId,
       setGrabOffset,
       setGridBounds,
+      setInitialPointerPosition,
       isPositionValid,
       getCellData,
     }),
@@ -511,6 +681,7 @@ function GridProvider({
       setDraggedItemId,
       setGrabOffset,
       setGridBounds,
+      setInitialPointerPosition,
       isPositionValid,
       getCellData,
     ]
@@ -622,7 +793,7 @@ type DraggableItemProps = {
 
 const DraggableItemComponent = React.memo(
   ({ item, onDragStart, onDragEnd, className = '', defaultClassName }: DraggableItemProps) => {
-    const { cellSize, spacing, disabled: gridDisabled } = useGrid();
+    const { cellSize, spacing, disabled: gridDisabled, setInitialPointerPosition } = useGrid();
     const isDisabled = (item.disabled ?? false) || gridDisabled;
     const [isDragging, setIsDragging] = useState(false);
     const [cursorType, setCursorType] = useState<'default' | 'move' | 'not-allowed'>('default');
@@ -687,13 +858,6 @@ const DraggableItemComponent = React.memo(
           return;
         }
 
-        // Immediately prevent default behavior for touch events to stop scrolling
-        // This must be done BEFORE any async operations or checks
-        if ('touches' in e) {
-          e.preventDefault();
-          e.stopPropagation();
-        }
-
         const coords = getEventCoordinates(e);
 
         // Calculate which cell within the bounding box was clicked
@@ -716,63 +880,13 @@ const DraggableItemComponent = React.memo(
 
         // Only allow dragging if clicking on an occupied cell
         if (!isOccupiedCell) {
-          // For empty spaces, temporarily hide this element to allow events to reach underlying pieces
-          // Use immediate synchronous handling to avoid delays that could cause scrolling
-          if (itemRef.current) {
-            const originalPointerEvents = itemRef.current.style.pointerEvents;
-            itemRef.current.style.pointerEvents = 'none';
-
-            // Immediately find the target element and forward the event
-            const targetElement = document.elementFromPoint(coords.clientX, coords.clientY);
-
-            // Restore pointer events immediately to prevent timing issues
-            itemRef.current.style.pointerEvents = originalPointerEvents;
-
-            if (targetElement && targetElement !== itemRef.current) {
-              // Create a proper TouchEvent to forward immediately
-              try {
-                if ('touches' in e) {
-                  const forwardedTouchEvent = new TouchEvent(e.type, {
-                    touches: e.touches as unknown as Touch[],
-                    changedTouches: e.changedTouches as unknown as Touch[],
-                    bubbles: true,
-                    cancelable: true,
-                  });
-                  targetElement.dispatchEvent(forwardedTouchEvent);
-                } else {
-                  // Fallback for mouse events
-                  const fallbackEvent = new MouseEvent(e.type, {
-                    clientX: coords.clientX,
-                    clientY: coords.clientY,
-                    button: e.button,
-                    buttons: e.buttons,
-                    bubbles: true,
-                    cancelable: true,
-                  });
-                  targetElement.dispatchEvent(fallbackEvent);
-                }
-              } catch (error) {
-                // Fallback: create a simple mouse event if event creation fails
-                console.warn('Event forwarding failed, using mouse fallback:', error);
-                const fallbackEvent = new MouseEvent(
-                  e.type === 'touchstart' ? 'mousedown' : e.type,
-                  {
-                    clientX: coords.clientX,
-                    clientY: coords.clientY,
-                    button: 'touches' in e ? 0 : e.button,
-                    buttons: 'touches' in e ? 1 : e.buttons,
-                    bubbles: true,
-                    cancelable: true,
-                  }
-                );
-                targetElement.dispatchEvent(fallbackEvent);
-              }
-            }
-          }
-          return; // Don't process this click in the current piece
+          // For empty spaces (dead areas), allow the event to bubble naturally
+          // This enables scrolling when touching dead areas of pieces
+          // We don't call preventDefault() here so the browser can handle scrolling
+          return;
         }
 
-        // Prevent default for all events that reach this point to ensure no scrolling
+        // Prevent default for touch/mouse events to stop scrolling when dragging from an occupied cell
         e.preventDefault();
 
         // Calculate grab offset - where on the piece the user clicked/touched
@@ -781,9 +895,20 @@ const DraggableItemComponent = React.memo(
           y: clickedGridY,
         };
 
+        // Set initial pointer position for immediate auto-scroll support
+        setInitialPointerPosition(coords);
+
         onDragStart?.(item, grabOffset);
       },
-      [item, onDragStart, cellSize, spacing, getEventCoordinates, isDisabled]
+      [
+        item,
+        onDragStart,
+        cellSize,
+        spacing,
+        getEventCoordinates,
+        isDisabled,
+        setInitialPointerPosition,
+      ]
     );
 
     const handlePointerUp = useCallback(
@@ -897,7 +1022,7 @@ const DraggableItemComponent = React.memo(
         style={{
           ...itemStyle,
           cursor: cursorType,
-          touchAction: 'none', // Prevent default touch behaviors like scrolling
+          touchAction: 'manipulation', // Allow scrolling on dead areas, prevent double-tap zoom
           pointerEvents: 'auto', // Ensure draggable items are always interactive
           userSelect: 'none', // Prevent text selection
           WebkitUserSelect: 'none', // Prevent text selection on Safari
@@ -1045,6 +1170,100 @@ const DragPreviewComponent = React.memo(
 
 DragPreviewComponent.displayName = 'DragPreview';
 
+// Scroll Zone Indicator Component - shows visible zones at top/bottom when dragging
+const ScrollZoneIndicator = React.memo(
+  ({ position, isVisible }: { position: 'top' | 'bottom'; isVisible: boolean }) => {
+    const zoneHeight = `${AUTO_SCROLL_CONFIG.edgeThresholdPercent * 100}vh`;
+
+    return (
+      <div
+        className={cn(
+          'fixed left-0 right-0 pointer-events-none z-[9999]',
+          'flex items-center justify-center',
+          'bg-black border-white/30',
+          'transition-all duration-200 ease-out overflow-hidden',
+          position === 'top' ? 'top-0 border-b origin-top' : 'bottom-0 border-t origin-bottom'
+        )}
+        style={{
+          height: isVisible ? zoneHeight : '0',
+        }}
+      >
+        <span
+          className={cn(
+            'text-white/50 text-sm font-medium tracking-wide',
+            'transition-opacity duration-150 delay-75',
+            isVisible ? 'opacity-100' : 'opacity-0'
+          )}
+        >
+          Drag Here to Scroll
+        </span>
+      </div>
+    );
+  }
+);
+
+ScrollZoneIndicator.displayName = 'ScrollZoneIndicator';
+
+// Pieces Below Indicator - shows when pieces are below the viewport
+const PiecesBelowIndicator = React.memo(
+  ({ isVisible, onClick }: { isVisible: boolean; onClick: () => void }) => {
+    return (
+      <div
+        className={cn(
+          'fixed left-0 right-0 bottom-0 z-[9998]',
+          'flex items-center justify-center',
+          'bg-black/80 border-t border-white/30',
+          'transition-all duration-200 ease-out overflow-hidden cursor-pointer',
+          'hover:bg-black/90'
+        )}
+        style={{
+          height: isVisible ? '40px' : '0',
+          pointerEvents: isVisible ? 'auto' : 'none',
+        }}
+        onClick={onClick}
+      >
+        <span
+          className={cn(
+            'text-white/70 text-sm font-medium tracking-wide flex items-center gap-2',
+            'transition-opacity duration-150 delay-75',
+            isVisible ? 'opacity-100' : 'opacity-0'
+          )}
+        >
+          <svg
+            xmlns="http://www.w3.org/2000/svg"
+            width="16"
+            height="16"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          >
+            <path d="m6 9 6 6 6-6" />
+          </svg>
+          Pieces Below
+          <svg
+            xmlns="http://www.w3.org/2000/svg"
+            width="16"
+            height="16"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          >
+            <path d="m6 9 6 6 6-6" />
+          </svg>
+        </span>
+      </div>
+    );
+  }
+);
+
+PiecesBelowIndicator.displayName = 'PiecesBelowIndicator';
+
 // Main Grid component
 type GridProps = {
   gridSize: GridSize;
@@ -1128,6 +1347,7 @@ function GridContent({
     cellSize,
     spacing,
     dragPreview,
+    draggedItemId,
     setDragPreview,
     setDraggedItemId,
     setGrabOffset,
@@ -1136,6 +1356,71 @@ function GridContent({
 
   const gridRef = React.useRef<HTMLDivElement>(null);
 
+  // Track scroll position to hide indicators when at top/bottom
+  const [canScrollUp, setCanScrollUp] = useState(false);
+  const [canScrollDown, setCanScrollDown] = useState(true);
+
+  // Track if pieces are below the viewport (80%+ hidden)
+  const [hasPiecesBelow, setHasPiecesBelow] = useState(false);
+  const lowestPieceBottomRef = useRef<number>(0);
+
+  // Check if any piece is 80%+ below the viewport
+  const checkPiecesBelow = useCallback(() => {
+    if (!gridRef.current || items.length === 0) {
+      setHasPiecesBelow(false);
+      return;
+    }
+
+    const gridRect = gridRef.current.getBoundingClientRect();
+    const viewportBottom = window.innerHeight;
+    let anyPieceBelow = false;
+    let lowestBottom = 0;
+
+    items.forEach((item) => {
+      // Calculate item's dimensions and position
+      const itemHeight = item.shape.height * cellSize.height + (item.shape.height - 1) * spacing;
+      const itemTop = item.position.y * (cellSize.height + spacing);
+      const itemBottom = itemTop + itemHeight;
+
+      // Convert to viewport position
+      const itemTopOnScreen = gridRect.top + itemTop;
+      const itemBottomOnScreen = gridRect.top + itemBottom;
+
+      // Calculate how much of the item is visible
+      const visibleTop = Math.max(0, itemTopOnScreen);
+      const visibleBottom = Math.min(viewportBottom, itemBottomOnScreen);
+      const visibleHeight = Math.max(0, visibleBottom - visibleTop);
+      const visibilityRatio = visibleHeight / itemHeight;
+
+      // If less than 20% is visible (80%+ is hidden) and it's below viewport
+      if (visibilityRatio < 0.2 && itemTopOnScreen > viewportBottom * 0.5) {
+        anyPieceBelow = true;
+      }
+
+      // Track lowest piece bottom for scrolling
+      const itemBottomOnPage = gridRect.top + window.scrollY + itemBottom;
+      if (itemBottomOnPage > lowestBottom) {
+        lowestBottom = itemBottomOnPage;
+      }
+    });
+
+    lowestPieceBottomRef.current = lowestBottom;
+    setHasPiecesBelow(anyPieceBelow);
+  }, [items, cellSize, spacing]);
+
+  // Scroll to the lowest piece
+  const scrollToLowestPiece = useCallback(() => {
+    const lowestBottom = lowestPieceBottomRef.current;
+    if (lowestBottom > 0) {
+      // Scroll so the lowest piece is visible with some padding
+      const targetScroll = lowestBottom - window.innerHeight + 60;
+      window.scrollTo({
+        top: Math.max(0, targetScroll),
+        behavior: 'smooth',
+      });
+    }
+  }, []);
+
   // Capture grid bounds when component mounts or resizes
   React.useEffect(() => {
     if (gridRef.current) {
@@ -1143,27 +1428,43 @@ function GridContent({
     }
   }, [setGridBounds, gridSize, cellSize]);
 
-  // Update grid bounds when page scrolls
+  // Update grid bounds and scroll state when page scrolls
   React.useEffect(() => {
-    const updateGridBounds = () => {
+    const updateScrollState = () => {
       if (gridRef.current) {
         setGridBounds(gridRef.current.getBoundingClientRect());
       }
+
+      // Check if we can scroll up (not at top)
+      const scrollTop = window.scrollY || document.documentElement.scrollTop;
+      setCanScrollUp(scrollTop > 5); // Small threshold to avoid floating point issues
+
+      // Check if we can scroll down (not at bottom)
+      const scrollHeight = document.documentElement.scrollHeight;
+      const clientHeight = window.innerHeight;
+      const maxScroll = scrollHeight - clientHeight;
+      setCanScrollDown(scrollTop < maxScroll - 5); // Small threshold
+
+      // Check for pieces below viewport
+      checkPiecesBelow();
     };
+
+    // Initial check
+    updateScrollState();
 
     // Listen for scroll events on window and document
-    window.addEventListener('scroll', updateGridBounds, { passive: true });
-    document.addEventListener('scroll', updateGridBounds, { passive: true });
+    window.addEventListener('scroll', updateScrollState, { passive: true });
+    document.addEventListener('scroll', updateScrollState, { passive: true });
 
     // Also listen for resize events in case the viewport changes
-    window.addEventListener('resize', updateGridBounds, { passive: true });
+    window.addEventListener('resize', updateScrollState, { passive: true });
 
     return () => {
-      window.removeEventListener('scroll', updateGridBounds);
-      document.removeEventListener('scroll', updateGridBounds);
-      window.removeEventListener('resize', updateGridBounds);
+      window.removeEventListener('scroll', updateScrollState);
+      document.removeEventListener('scroll', updateScrollState);
+      window.removeEventListener('resize', updateScrollState);
     };
-  }, [setGridBounds]);
+  }, [setGridBounds, checkPiecesBelow]);
 
   const handleDragStart = useCallback(
     (item: DraggableItem, initialGrabOffset?: GridPosition) => {
@@ -1211,39 +1512,51 @@ function GridContent({
   );
 
   return (
-    <div className={cn('inline-block', className)}>
-      <div ref={gridRef} style={{ ...gridStyle, pointerEvents: dragPreview ? 'none' : 'auto' }}>
-        {/* Grid cells as drop zones */}
-        {gridCells}
+    <>
+      {/* Scroll zone indicators - animate in/out when dragging, hide when at scroll limits */}
+      <ScrollZoneIndicator position="top" isVisible={!!draggedItemId && canScrollUp} />
+      <ScrollZoneIndicator position="bottom" isVisible={!!draggedItemId && canScrollDown} />
 
-        {/* Draggable items */}
-        {items.map((item) => (
-          <DraggableItemComponent
-            key={item.id}
-            item={item}
-            onDragStart={handleDragStart}
-            onDragEnd={handleDragEnd}
-            defaultClassName={defaultItemClassName}
-          />
-        ))}
+      {/* Pieces below indicator - shows when pieces are 80%+ below viewport, hidden during drag */}
+      <PiecesBelowIndicator
+        isVisible={hasPiecesBelow && !draggedItemId}
+        onClick={scrollToLowestPiece}
+      />
 
-        {/* Drag preview */}
-        {dragPreview && (
-          <DragPreviewComponent
-            item={dragPreview.item}
-            position={dragPreview.position}
-            isValid={dragPreview.isValid}
-            cellSize={cellSize}
-            spacing={spacing}
-            getTileDraggingClassName={getTileDraggingClassName}
-            defaultClassName={defaultItemClassName}
-          />
-        )}
+      <div className={cn('inline-block', className)}>
+        <div ref={gridRef} style={{ ...gridStyle, pointerEvents: dragPreview ? 'none' : 'auto' }}>
+          {/* Grid cells as drop zones */}
+          {gridCells}
 
-        {/* Custom children (for additional content) */}
-        {children}
+          {/* Draggable items */}
+          {items.map((item) => (
+            <DraggableItemComponent
+              key={item.id}
+              item={item}
+              onDragStart={handleDragStart}
+              onDragEnd={handleDragEnd}
+              defaultClassName={defaultItemClassName}
+            />
+          ))}
+
+          {/* Drag preview */}
+          {dragPreview && (
+            <DragPreviewComponent
+              item={dragPreview.item}
+              position={dragPreview.position}
+              isValid={dragPreview.isValid}
+              cellSize={cellSize}
+              spacing={spacing}
+              getTileDraggingClassName={getTileDraggingClassName}
+              defaultClassName={defaultItemClassName}
+            />
+          )}
+
+          {/* Custom children (for additional content) */}
+          {children}
+        </div>
       </div>
-    </div>
+    </>
   );
 }
 

@@ -1,8 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { motion } from 'framer-motion';
 import { Dialog, DialogContent, DialogClose } from './ui/dialog';
 import { Button } from './ui/button';
-import { calculateDecayAmount, DEFAULT_INITIAL_SCORE } from '../../shared/score-decay';
 
 interface LetteredInstructionsDialogProps {
   open: boolean;
@@ -91,7 +89,7 @@ const finalPieces: MockPiece[] = [
       { row: 0, col: 1 },
       { row: 0, col: 2 },
     ],
-    color: '#3B82F6', // Blue (T is TLIK group)
+    color: '#F7C846', // Gold (completed)
     position: { row: 1, col: 2 }, // Final position
   },
   {
@@ -103,7 +101,7 @@ const finalPieces: MockPiece[] = [
       { row: 0, col: 2 },
       { row: 0, col: 3 },
     ],
-    color: '#3B82F6', // Blue (L,I are TLIK group, O,N are ONNG group - mixed)
+    color: '#F7C846', // Gold (completed)
     position: { row: 2, col: 2 }, // Final position
   },
   {
@@ -115,7 +113,7 @@ const finalPieces: MockPiece[] = [
       { row: 0, col: 2 },
       { row: 0, col: 3 },
     ],
-    color: '#3B82F6', // Blue (K,I are TLIK group, N,G are ONNG group - mixed)
+    color: '#F7C846', // Gold (completed)
     position: { row: 3, col: 1 }, // Final position
   },
 ];
@@ -147,35 +145,46 @@ export const LetteredInstructionsDialog: React.FC<LetteredInstructionsDialogProp
   >('idle');
   const [placedPieces, setPlacedPieces] = useState<MockPiece[]>([]);
   const [transformStep, setTransformStep] = useState(0);
-  const [currentScore, setCurrentScore] = useState(DEFAULT_INITIAL_SCORE);
-  const countdownRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const [moveCount, setMoveCount] = useState(0);
+  const [elapsedTime, setElapsedTime] = useState(0);
+  const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const [startTime, setStartTime] = useState(Date.now());
 
-  // Score countdown effect - rapid decay while dialog is open
+  // Timer effect - count up elapsed time while playing
   useEffect(() => {
-    if (!open && animationPhase !== 'idle') return;
+    if (!open) return;
 
-    countdownRef.current = setInterval(() => {
-      setCurrentScore((prevAmount) => {
-        const newScore =
-          prevAmount - calculateDecayAmount('lettered', (Date.now() - startTime) / 1000);
-        return newScore;
-      });
-    }, 1000); // Update every 100ms for rapid countdown
+    if (animationPhase === 'transforming') {
+      timerRef.current = setInterval(() => {
+        setElapsedTime(Math.floor((Date.now() - startTime) / 1000));
+      }, 100);
+    }
 
-    return () => clearInterval(countdownRef.current!);
+    return () => {
+      if (timerRef.current) clearInterval(timerRef.current);
+    };
   }, [animationPhase, open, startTime]);
 
-  // Reset score when animation loops back to idle
+  // Reset time and moves when animation loops back to idle
   useEffect(() => {
     if (animationPhase === 'idle' && open) {
-      setCurrentScore(DEFAULT_INITIAL_SCORE);
+      setElapsedTime(0);
+      setMoveCount(0);
       setStartTime(Date.now());
     }
     if (animationPhase === 'complete' && open) {
-      clearInterval(countdownRef.current!);
+      if (timerRef.current) clearInterval(timerRef.current);
     }
   }, [animationPhase, open]);
+
+  // Update move count based on transform step
+  useEffect(() => {
+    if (animationPhase === 'transforming') {
+      setMoveCount(transformStep - 1);
+    } else if (animationPhase === 'complete') {
+      setMoveCount(3); // Final move count
+    }
+  }, [transformStep, animationPhase]);
 
   // Animation logic - pieces start in tray, then transform to final positions
   useEffect(() => {
@@ -294,34 +303,26 @@ export const LetteredInstructionsDialog: React.FC<LetteredInstructionsDialogProp
         const isLetterPosition = letterPositions.has(cellKey) && !isOccupied && !isTray;
 
         cells.push(
-          <motion.div
+          <div
             key={cellKey}
-            className={`w-5 h-5 rounded-sm flex items-center justify-center text-xs font-bold transition-all duration-50 ${
+            className={`w-5 h-5 rounded-sm flex items-center justify-center text-xs font-bold ${
               isOccupied
-                ? 'text-white border-2 border-white/20'
+                ? 'text-black border-2 border-black/20 dark:border-white/20'
                 : isTray
-                  ? 'bg-gray-600' // No border for tray cells
+                  ? 'bg-muted' // No border for tray cells
                   : isLetterPosition
-                    ? 'bg-gray-300 border border-border'
-                    : 'bg-gray-700 border border-border'
+                    ? 'bg-gray-200 border dark:bg-gray-300 border-border'
+                    : 'border bg-muted-foreground/30 dark:bg-gray-700 border-border'
             }`}
             style={{
-              backgroundColor: isOccupied
-                ? occupyingPiece?.color
-                : isTray
-                  ? '#6B7280'
-                  : isLetterPosition
-                    ? '#D1D5DB'
-                    : '#374151',
+              backgroundColor: isOccupied ? occupyingPiece?.color : undefined,
+              opacity: isOccupied ? 1 : 0.7,
             }}
-            initial={{ scale: 0.8, opacity: 0 }}
-            animate={{ scale: 1, opacity: isOccupied ? 1 : 0.7 }}
-            transition={{ duration: 0.3 }}
           >
             {isOccupied && occupyingPiece && localShapeIndex !== -1
               ? occupyingPiece.letters[localShapeIndex] || ''
               : ''}
-          </motion.div>
+          </div>
         );
       }
     }
@@ -332,131 +333,130 @@ export const LetteredInstructionsDialog: React.FC<LetteredInstructionsDialogProp
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent
-        className="p-0 border-4 border-black bg-card sm:max-w-4xl h-[90vh] max-h-[95vh] flex flex-col mt-4 overflow-y-visible"
+        className="flex overflow-y-visible flex-col p-0 h-full border-0 bg-background sm:max-w-4xl"
         hideCloseButton
       >
-        <DialogClose className="absolute top-4 right-4 z-30 text-white rounded-sm transition-colors hover:text-white/80 focus:outline-none focus:ring-2 focus:ring-white focus:ring-offset-2 focus:ring-offset-black disabled:pointer-events-none">
-          <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-            <path
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              strokeWidth={2}
-              d="M6 18L18 6M6 6l12 12"
-            />
+        <DialogClose className="absolute top-4 right-4 z-30 text-foreground rounded-sm transition-colors hover:text-[#F7C846] focus:outline-none focus:ring-2 focus:ring-[#F7C846] focus:ring-offset-2 focus:ring-offset-background disabled:pointer-events-none">
+          <svg
+            className="w-5 h-5"
+            fill="none"
+            viewBox="0 0 24 24"
+            stroke="currentColor"
+            strokeWidth={2.5}
+          >
+            <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
           </svg>
           <span className="sr-only">Close</span>
         </DialogClose>
 
-        {/* Header */}
-        <div className="relative flex-shrink-0 py-6 text-center text-white bg-black">
-          <div className="absolute -top-2 -left-2 z-10 px-3 py-1 text-black border-2 border-black transform -rotate-12 bg-primary">
-            <span className="text-sm font-black tracking-wide text-foreground">HOW TO PLAY</span>
+        {/* Header with Logo */}
+        <div className="relative flex-shrink-0 py-8 text-center bg-background">
+          <div className="flex gap-1 justify-center mb-2">
+            {['L', 'E', 'T', 'T', 'E', 'R', 'E', 'D'].map((letter, index) => (
+              <div
+                key={index}
+                className="flex items-center justify-center w-8 h-8 sm:w-11 sm:h-11 bg-[#F7C846] text-black font-black text-lg sm:text-2xl rounded-sm"
+              >
+                {letter}
+              </div>
+            ))}
           </div>
-          <h1 className="text-4xl font-black tracking-tight text-white">LETTERED</h1>
-          <h2 className="-mt-1 text-2xl font-black tracking-wider text-white">INSTRUCTIONS</h2>
+          <p className="text-sm font-semibold tracking-wide text-muted-foreground sm:text-base">
+            HOW TO PLAY
+          </p>
         </div>
 
-        <div className="overflow-y-auto flex-1 p-6 space-y-8 min-h-auto">
-          {/* Animation Section */}
-          <div className="space-y-4">
-            <h3 className="text-2xl font-black text-center text-foreground">HOW TO PLAY</h3>
-
-            {/* Game Board Animation */}
-            <div className="flex justify-center">
-              <div className="p-4 rounded-lg border-2 shadow-sm bg-card border-border">
-                <div className="flex justify-center">
-                  <div
-                    className="grid gap-1"
-                    style={{
-                      gridTemplateColumns: `repeat(${gridWidth}, 1fr)`,
-                      gridTemplateRows: `repeat(${gridHeight}, 1fr)`,
-                    }}
-                  >
-                    {renderGrid()}
-                  </div>
+        <div className="overflow-y-auto flex-1 px-6 pb-6 space-y-6 bg-background min-h-auto">
+          {/* Game Board Animation */}
+          <div className="flex justify-center">
+            <div className="p-4 rounded-lg border bg-card border-border">
+              <div className="flex justify-center">
+                <div
+                  className="grid gap-1"
+                  style={{
+                    gridTemplateColumns: `repeat(${gridWidth}, 1fr)`,
+                    gridTemplateRows: `repeat(${gridHeight}, 1fr)`,
+                  }}
+                >
+                  {renderGrid()}
                 </div>
               </div>
             </div>
+          </div>
 
-            {/* Animation Description */}
-            <div className="space-y-2 text-center">
-              {/* Dynamic Score Display */}
-              <div className="flex flex-col justify-center">
-                <div className="text-2xl font-black text-foreground">{currentScore}</div>
-                <div className="font-black text-md text-foreground">SCORE</div>
-              </div>
+          {/* Dynamic Moves and Time Display */}
+          <div className="flex gap-8 justify-center">
+            <div className="flex flex-col items-center">
+              <div className="text-3xl font-black text-[#F7C846]">{moveCount}</div>
+              <div className="text-xs font-bold tracking-wider text-muted-foreground">MOVES</div>
+            </div>
+            <div className="flex flex-col items-center">
+              <div className="text-3xl font-black text-[#F7C846]">0:0{elapsedTime}</div>
+              <div className="text-xs font-bold tracking-wider text-muted-foreground">TIME</div>
             </div>
           </div>
 
           {/* Game Explanation */}
-          <div className="space-y-4">
-            <h3 className="text-xl font-black text-foreground">GAME OBJECTIVE</h3>
-            <p className="leading-relaxed text-foreground">
-              Lettered is a word puzzle game where you must arrange letter pieces to form a complete
-              phrase or sentence. Each piece contains multiple letters that must be placed together
-              on the grid to spell out words.
+          <div className="p-4 space-y-3 rounded-lg border bg-card border-border">
+            <p className="text-sm leading-relaxed text-foreground">
+              Arrange letter pieces to form a complete phrase. Each piece contains multiple letters
+              that must be placed together on the grid. The timer starts when you open the game.
             </p>
           </div>
 
-          {/* How to Play */}
-          <div className="space-y-4">
-            <h3 className="text-xl font-black text-foreground">HOW TO PLAY</h3>
-            <div className="space-y-3">
-              <div className="flex items-start space-x-3">
-                <div className="w-6 h-6 bg-primary text-primary-foreground flex items-center justify-center text-sm font-bold flex-shrink-0 mt-0.5">
-                  1
-                </div>
-                <h4 className="text-foreground">
-                  <h5 className="text-lg font-black">Drag pieces from the tray</h5>
-                  <p className="text-sm text-muted-foreground">
-                    The tray contains all the letter pieces you need to solve the puzzle.
-                  </p>
-                </h4>
+          {/* How to Play Steps */}
+          <div className="space-y-3">
+            <div className="flex items-start p-3 space-x-3 rounded-lg border bg-card border-border">
+              <div className="w-7 h-7 bg-[#F7C846] text-black flex items-center justify-center text-sm font-black flex-shrink-0 rounded-sm">
+                1
               </div>
-              <div className="flex items-start space-x-3">
-                <div className="w-6 h-6 bg-primary text-primary-foreground flex items-center justify-center text-sm font-bold flex-shrink-0 mt-0.5">
-                  2
-                </div>
-                <h4 className="text-foreground">
-                  <h5 className="text-lg font-black">Place on the grid</h5>
-                  <p className="text-sm text-muted-foreground">
-                    Pieces can only be placed where they fit without overlapping existing pieces or
-                    going outside the grid boundaries.
-                  </p>
-                </h4>
+              <div>
+                <h5 className="font-bold text-foreground">Drag pieces from the tray</h5>
+                <p className="text-sm text-muted-foreground">
+                  The tray contains all the letter pieces you need.
+                </p>
               </div>
-              <div className="flex items-start space-x-3">
-                <div className="w-6 h-6 bg-primary text-primary-foreground flex items-center justify-center text-sm font-bold flex-shrink-0 mt-0.5">
-                  3
-                </div>
-                <h4 className="text-foreground">
-                  <h5 className="text-lg font-black">Form the phrase</h5>
-                  <p className="text-sm text-muted-foreground">
-                    Arrange all pieces correctly to reveal the hidden phrase. Some letters may
-                    already be placed on the board as hints.
-                  </p>
-                </h4>
+            </div>
+            <div className="flex items-start p-3 space-x-3 rounded-lg border bg-card border-border">
+              <div className="w-7 h-7 bg-[#F7C846] text-black flex items-center justify-center text-sm font-black flex-shrink-0 rounded-sm">
+                2
               </div>
-              <div className="flex items-start space-x-3">
-                <div className="w-6 h-6 bg-primary text-primary-foreground flex items-center justify-center text-sm font-bold flex-shrink-0 mt-0.5">
-                  4
-                </div>
-                <h4 className="text-foreground">
-                  <h5 className="text-lg font-black">Finish Fast</h5>
-                  <p className="text-sm text-muted-foreground">
-                    Score decreases over time, the faster you complete the puzzle the higher your
-                    score will be.
-                  </p>
-                </h4>
+              <div>
+                <h5 className="font-bold text-foreground">Place on the grid</h5>
+                <p className="text-sm text-muted-foreground">
+                  Pieces can only be placed where they fit without overlapping.
+                </p>
+              </div>
+            </div>
+            <div className="flex items-start p-3 space-x-3 rounded-lg border bg-card border-border">
+              <div className="w-7 h-7 bg-[#F7C846] text-black flex items-center justify-center text-sm font-black flex-shrink-0 rounded-sm">
+                3
+              </div>
+              <div>
+                <h5 className="font-bold text-foreground">Form the phrase</h5>
+                <p className="text-sm text-muted-foreground">
+                  Arrange all pieces correctly to reveal the hidden phrase.
+                </p>
+              </div>
+            </div>
+            <div className="flex items-start p-3 space-x-3 rounded-lg border bg-card border-border">
+              <div className="w-7 h-7 bg-[#F7C846] text-black flex items-center justify-center text-sm font-black flex-shrink-0 rounded-sm">
+                4
+              </div>
+              <div>
+                <h5 className="font-bold text-foreground">Finish fast</h5>
+                <p className="text-sm text-muted-foreground">
+                  Minimize moves and solve quickly for the best score!
+                </p>
               </div>
             </div>
           </div>
 
           {/* Close Button */}
-          <div className="flex justify-center pt-4 border-t">
+          <div className="flex justify-center pt-4">
             <Button
               onClick={() => onOpenChange(false)}
-              className="font-black text-xl py-4 px-8 shadow-lg hover:shadow-xl transition-all duration-200 hover:translate-x-[-2px] hover:translate-y-[-2px] tracking-wider"
+              className="px-10 py-3 text-lg tracking-wide"
             >
               GOT IT!
             </Button>

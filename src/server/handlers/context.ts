@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import { context } from '@devvit/web/server';
-import { redis } from '@devvit/redis';
+import { getRedisClient } from '../lib/redis-provider';
 import { isDevelopment } from '../../shared/utils';
 
 const router = Router();
@@ -14,8 +14,14 @@ router.get('/api/context', async (_req, res): Promise<void> => {
       status: 'success',
       context: {
         subredditName: 'test',
+        postId: 't3_test123',
+        metadata: {
+          postId: 't3_test123',
+          subredditName: 'test',
+        },
       },
     });
+    return;
   }
   try {
     // Access the post context to get metadata
@@ -29,43 +35,52 @@ router.get('/api/context', async (_req, res): Promise<void> => {
     // Get the post ID
     const postId = postContext.postId;
 
-    let customGameId = null;
+    let gameIdFromRedis = null;
 
     if (postId) {
       console.log('Found post ID:', postId);
-      // Look up game ID from post ID
+      // Look up game ID from post ID (works for both daily and custom games)
+      const redis = await getRedisClient();
       const postToGameKey = `custom-lettered:post:${postId}`;
-      customGameId = await redis.get(postToGameKey);
-      console.log('Found custom game ID for post:', customGameId);
+      gameIdFromRedis = await redis.get(postToGameKey);
+      console.log('Found game ID for post from Redis:', gameIdFromRedis);
 
       // Also try without the t3_ prefix if it exists
-      if (!customGameId && postId.startsWith('t3_')) {
+      if (!gameIdFromRedis && postId.startsWith('t3_')) {
         const shortPostId = postId.replace('t3_', '');
         const altKey = `custom-lettered:post:${shortPostId}`;
-        customGameId = await redis.get(altKey);
-        console.log('Tried alternate key:', altKey, 'result:', customGameId);
+        gameIdFromRedis = await redis.get(altKey);
+        console.log('Tried alternate key:', altKey, 'result:', gameIdFromRedis);
       }
     }
 
-    // Check if this is a custom game post
+    // Check post metadata
     const metadata = (postContext as any).webviewMetadata || {};
     console.log('Extracted metadata:', metadata);
 
-    // Use either the mapped game ID or metadata game ID
-    const gameId = customGameId || metadata.customGameId;
+    // Primary: Use Redis mapping (most reliable, works for both daily and custom)
+    // Fallback: Use metadata fields (for backwards compatibility)
+    const gameId = gameIdFromRedis || metadata.gameId || metadata.customGameId;
 
     res.json({
       status: 'success',
       context: {
         subredditName: postContext.subredditName,
+        postId: postId,
         metadata: {
           ...metadata,
-          customGameId: gameId,
+          postId: postId, // Post ID for sharing
+          subredditName: postContext.subredditName, // Subreddit name for sharing
+          gameId: gameId, // Unified game ID (from Redis or metadata)
+          customGameId: metadata.customGameId, // Keep for backwards compatibility
           gameType: gameId ? 'lettered' : metadata.gameType,
+          postType: metadata.postType || (gameId ? 'lettered' : 'daily'),
         },
         debug: {
           postId: postId,
-          foundGameId: customGameId,
+          gameIdFromRedis: gameIdFromRedis,
+          gameIdFromMetadata: metadata.gameId || metadata.customGameId,
+          finalGameId: gameId,
           contextKeys: Object.keys(postContext || {}),
           fullContext: postContext,
           hasWebviewMetadata: !!(postContext as any).webviewMetadata,

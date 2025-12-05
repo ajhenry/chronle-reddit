@@ -8,16 +8,7 @@ import { Button } from '../components/ui/button';
 import { PostGameModal } from '../components/PostGameModal';
 import { LetteredLoadingAnimation } from '../components/LetteredLoadingAnimation';
 import { LetteredInstructionsDialog } from '../components/LetteredInstructionsDialog';
-import { InGameCustomButton } from '../components/InGameCustomButton';
-import {
-  LetteredGameData,
-  GridPosition,
-  LetterPiece,
-  GridCell,
-  LetteredCustomGameResponse,
-} from '../../shared/types/api';
-import { DEFAULT_INITIAL_SCORE } from '../../shared/score-decay';
-import { isDevelopment } from '../lib/dev-utils';
+import { LetteredGameData, GridPosition, LetterPiece, GridCell } from '../../shared/types/api';
 import { getResponsiveCellSize, getResponsiveCellSpacing } from '../lib/lettered-utils';
 import { useViewport } from '../hooks/useViewport';
 import { Grid, DraggableItem } from '../components/tile-grid/tile-grid';
@@ -26,40 +17,23 @@ import { LetteredGameStateManager } from '../lib/lettered-game-state';
 import { apiFetch } from '../lib/utils';
 import { LetteredDailyGameResponse, LetteredPostGameResponse } from '../../shared/types/api';
 import { useTheme } from 'src/components/theme-provider';
+import { Plus, Share2 } from 'lucide-react';
+import { InGameCustomButton } from 'src/components/InGameCustomButton';
 
-// API functions for daily Lettered game
-const fetchTodaysGame = async (): Promise<LetteredDailyGameResponse> => {
-  const response = await apiFetch('/api/lettered/game', {
+// API function to fetch a game by ID (works for both daily and custom games)
+const fetchGameById = async (gameId: string): Promise<LetteredDailyGameResponse> => {
+  const response = await apiFetch(`/api/lettered/${gameId}/game`, {
     method: 'GET',
   });
   if (!response.ok) {
-    throw new Error("Failed to fetch today's game");
+    throw new Error(`Failed to fetch game ${gameId}`);
   }
   const data = await response.json();
-  console.log('fetchTodaysGame', data);
+  console.log('fetchGameById', { gameId, data });
   return data;
 };
 
-// API function to fetch custom lettered game
-const fetchCustomGame = async (gameId: string): Promise<LetteredCustomGameResponse> => {
-  const response = await apiFetch(`/api/custom/lettered/${gameId}`, {
-    method: 'GET',
-  });
-  if (!response.ok) {
-    throw new Error('Failed to fetch custom game');
-  }
-  const data = await response.json();
-  console.log('fetchCustomGame', { data });
-  // Transform the response to match the expected format
-  return {
-    type: 'lettered_custom_game',
-    game: data.gameData,
-    isCompleted: data.isCompleted,
-    gameScore: data.gameScore,
-  };
-};
-
-// API function to fetch postgame stats
+// API function to fetch postgame stats (works for both daily and custom games)
 const fetchPostGameStats = async (gameId: string): Promise<LetteredPostGameResponse> => {
   const response = await apiFetch(`/api/lettered/${gameId}/postgame`, {
     method: 'GET',
@@ -72,17 +46,36 @@ const fetchPostGameStats = async (gameId: string): Promise<LetteredPostGameRespo
   return data;
 };
 
-// API function to fetch custom game postgame stats
-const fetchCustomPostGameStats = async (gameId: string): Promise<LetteredPostGameResponse> => {
-  const response = await apiFetch(`/api/custom/lettered/${gameId}/postgame`, {
-    method: 'GET',
-  });
-  if (!response.ok) {
-    throw new Error('Failed to fetch custom game postgame stats');
+// Helper to get Reddit post URL for sharing
+const getRedditPostUrl = (postId?: string | null, subredditName?: string | null) => {
+  if (!postId || !subredditName) return null;
+  // Remove t3_ prefix if present
+  const cleanPostId = postId.startsWith('t3_') ? postId.slice(3) : postId;
+  return `https://www.reddit.com/r/${subredditName}/comments/${cleanPostId}/`;
+};
+
+// Handle share action
+const handleShare = async (postId?: string | null, subredditName?: string | null) => {
+  const redditUrl = getRedditPostUrl(postId, subredditName);
+  const shareUrl = redditUrl || window.location.href;
+
+  const shareData = {
+    title: 'Lettered',
+    text: 'Check out this puzzle game on Reddit!',
+    url: shareUrl,
+  };
+
+  try {
+    if (navigator.share && navigator.canShare(shareData)) {
+      await navigator.share(shareData);
+    } else {
+      // Fallback: copy to clipboard
+      await navigator.clipboard.writeText(shareUrl);
+    }
+  } catch (err) {
+    // User cancelled or share failed - ignore
+    console.error('Share failed:', err);
   }
-  const data = await response.json();
-  console.log('fetchCustomPostGameStats', data);
-  return data;
 };
 
 // Conversion functions for Grid component
@@ -233,16 +226,31 @@ interface UIState {
   isValidPreview: boolean; // Whether the current preview position is valid
 }
 
-export const LetteredPage = ({ onBack }: { onBack?: () => void }) => {
-  const { gameId } = useParams<{ gameId?: string }>();
+export const LetteredPage = ({
+  onBack,
+  isAdmin = false,
+}: {
+  onBack?: () => void;
+  isAdmin?: boolean;
+}) => {
+  const { gameId: urlGameId } = useParams<{ gameId?: string }>();
   const navigate = useNavigate();
-  const [showDevButtons, setShowDevButtons] = useState(false);
+  const [showDebugTools, setShowDebugTools] = useState(false);
   const [, setShowGoldShimmer] = useState(false);
   const [showInstructions, setShowInstructions] = useState(false);
   const [gameData, setGameData] = useState<LetteredGameData | null>(null);
-  const [dailyGameId, setDailyGameId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [isCheckingContext, setIsCheckingContext] = useState<boolean>(true);
+
+  // Game ID from context API (primary source of truth)
+  const [contextGameId, setContextGameId] = useState<string | null>(null);
+  // Post info for sharing
+  const [postId, setPostId] = useState<string | null>(null);
+  const [subredditName, setSubredditName] = useState<string | null>(null);
+
+  // Effective game ID - prefer context, fallback to URL param
+  const gameId = contextGameId || urlGameId;
 
   // UI-specific state
   const [uiState, setUIState] = useState<UIState>({
@@ -255,25 +263,21 @@ export const LetteredPage = ({ onBack }: { onBack?: () => void }) => {
   });
   const { theme } = useTheme();
 
-  // Flag to track if this is a reloaded completed game
-  const [isReloadedCompletedGame, setIsReloadedCompletedGame] = useState(false);
-
-  // Flag to track if session restoration is in progress
-  const [isRestoringSession, setIsRestoringSession] = useState(false);
-
   // Postgame stats state
   const [postGameStats, setPostGameStats] = useState<LetteredPostGameResponse | null>(null);
   const [postGameStatsLoading, setPostGameStatsLoading] = useState(false);
   const [postGameStatsError, setPostGameStatsError] = useState<string | null>(null);
 
+  // Session ID for debug display
+  const [sessionId, setSessionId] = useState<string | null>(null);
+
   // Game state manager (core game logic, doesn't cause rerenders)
   const gameStateManagerRef = useRef<LetteredGameStateManager | null>(null);
 
   // State for UI updates from game state manager
-  const [gameScore, setGameScore] = useState(DEFAULT_INITIAL_SCORE);
+  const [elapsedTime, setElapsedTime] = useState(0);
   const [placedPieces, setPlacedPieces] = useState<Map<string, GridPosition>>(new Map());
   const [gameComplete, setGameComplete] = useState(false);
-  const [gameWon, setGameWon] = useState(false);
   const [moves, setMoves] = useState(0);
 
   // Get responsive viewport information
@@ -281,33 +285,72 @@ export const LetteredPage = ({ onBack }: { onBack?: () => void }) => {
   const responsiveCellSize = getResponsiveCellSize(breakpoint, gameData?.rows, gameData?.cols);
   const responsiveCellSpacing = getResponsiveCellSpacing(breakpoint);
 
+  // Check for post context and get gameId
+  useEffect(() => {
+    const checkContext = async () => {
+      try {
+        console.log('Lettered: Checking for post context...');
+        const response = await apiFetch('/api/context');
+
+        if (response.ok) {
+          const data = await response.json();
+          const metadata = data.context?.metadata;
+          const debug = data.context?.debug;
+
+          // Get gameId from context (primary source of truth)
+          const gameIdFromContext = metadata?.gameId || metadata?.customGameId || debug?.gameId;
+
+          // Store post info for sharing
+          if (metadata?.postId) {
+            setPostId(metadata.postId);
+          }
+          if (metadata?.subredditName) {
+            setSubredditName(metadata.subredditName);
+          }
+
+          if (gameIdFromContext) {
+            console.log('Lettered: Using gameId from context:', gameIdFromContext);
+            setContextGameId(gameIdFromContext);
+          } else if (!urlGameId) {
+            // No gameId from context or URL - this is an error
+            console.error('Lettered: No gameId found in context or URL');
+            setError(
+              'Game ID is required. This post may not have a valid game associated with it.'
+            );
+          }
+        } else {
+          // Context API failed - fall back to URL param if available
+          if (!urlGameId) {
+            setError('Failed to get game context');
+          }
+        }
+      } catch (error) {
+        console.error('Lettered: Error checking context:', error);
+        // Fall back to URL param if context check fails
+        if (!urlGameId) {
+          setError('Failed to get game context');
+        }
+      } finally {
+        setIsCheckingContext(false);
+      }
+    };
+
+    void checkContext();
+  }, [urlGameId]);
+
   // Initialize game state manager and set up callbacks
   useEffect(() => {
     if (!gameStateManagerRef.current) {
       // Start with default values, will be updated when game loads
-      gameStateManagerRef.current = new LetteredGameStateManager(
-        null,
-        undefined,
-        undefined,
-        undefined,
-        0
-      );
-      // Disable timer initially to prevent decay before restoration
-      gameStateManagerRef.current.setTimerEnabled(false);
+      gameStateManagerRef.current = new LetteredGameStateManager(null, undefined, 0);
 
       // Set up callback to receive game state updates
       const unsubscribe = gameStateManagerRef.current.onUpdate((updates) => {
-        if (updates.score !== undefined) {
-          setGameScore(updates.score);
-        }
         if (updates.placedPieces) {
           setPlacedPieces(updates.placedPieces);
         }
         if (updates.gameComplete !== undefined) {
           setGameComplete(updates.gameComplete);
-        }
-        if (updates.gameWon !== undefined) {
-          setGameWon(updates.gameWon);
         }
         if (updates.moves !== undefined) {
           setMoves(updates.moves);
@@ -322,146 +365,86 @@ export const LetteredPage = ({ onBack }: { onBack?: () => void }) => {
     }
   }, []);
 
+  // Update elapsed time display every second
+  useEffect(() => {
+    if (!gameComplete && gameStateManagerRef.current) {
+      const timer = setInterval(() => {
+        const elapsed = gameStateManagerRef.current?.getElapsedTime() ?? 0;
+        setElapsedTime(elapsed);
+      }, 100); // Update every 100ms for smooth display
+
+      return () => clearInterval(timer);
+    }
+  }, [gameComplete]);
+
   // Load game data from API
   const loadGame = useCallback(async () => {
     try {
       setLoading(true);
 
-      // Reset flags for new game load
-      setIsReloadedCompletedGame(false);
-      setIsRestoringSession(false);
-      setMoves(0); // Reset moves for new game
+      // Game ID is required - all posts must have a gameId
+      if (!gameId) {
+        throw new Error('Something went wrong fetching the game.');
+      }
 
-      // Fetch game data - either daily or custom
-      let gameData: LetteredDailyGameResponse | LetteredCustomGameResponse;
-      if (gameId) {
-        // Fetch custom game by ID
-        gameData = await fetchCustomGame(gameId);
+      // Reset state for new game load
+      setMoves(0);
+
+      // Fetch game data using unified endpoint (works for both daily and custom games)
+      console.log('Loading game:', gameId);
+      const response = await fetchGameById(gameId);
+      const { game: apiGameData, session: apiSessionData } = response;
+      console.log('response', { response });
+
+      setGameData(apiGameData);
+
+      // Prepare session restoration data
+      let gameStartTime: number | undefined;
+      let movesForManager: number | undefined;
+
+      // Use session data if available
+      if (apiSessionData) {
+        // Calculate game start time from timeElapsed
+        gameStartTime = Date.now() - apiSessionData.timeElapsed;
+        movesForManager = apiSessionData.moves;
+
+        // Set the moves count and elapsed time from server data
+        setMoves(apiSessionData.moves);
+        setElapsedTime(apiSessionData.timeElapsed);
+
+        // Store session ID for debug display
+        setSessionId(apiSessionData.sessionId);
+
+        // Set if the game is complete
+        setGameComplete(apiSessionData.isCompleted);
       } else {
-        // Fetch today's daily game
-        gameData = await fetchTodaysGame();
+        // For new games, start time is now
+        gameStartTime = Date.now();
+        setSessionId(null);
       }
 
-      // Handle setting up the game data for custom games
-      if (gameData.type === 'lettered_custom_game') {
-        const { game: apiGameData, gameScore, isCompleted } = gameData;
-        setGameData(apiGameData);
+      // Initialize game state manager with new game and session data
+      if (gameStateManagerRef.current) {
+        gameStateManagerRef.current.initializeGame(apiGameData, gameStartTime, movesForManager);
 
-        // Initialize game state manager with new game and session data
-        if (gameStateManagerRef.current) {
-          gameStateManagerRef.current.initializeGame(
-            apiGameData,
-            gameScore?.score || DEFAULT_INITIAL_SCORE,
-            Date.now(),
-            gameScore?.score || DEFAULT_INITIAL_SCORE,
-            gameScore?.moves || 0
-          );
-
-          // If the game is completed, restore it to the completed state
-          if (isCompleted) {
-            // Set restoration flags to prevent race conditions
-            setIsRestoringSession(true);
-            gameStateManagerRef.current.setRestoring(true);
-            setIsReloadedCompletedGame(true);
-
-            // Place pieces from the solution to show the completed game
-            if (apiGameData.solution) {
-              for (const [pieceId, position] of Object.entries(apiGameData.solution)) {
-                await gameStateManagerRef.current.placePiece(pieceId, position);
-              }
-            }
-
-            // Update the score to match the session
-            if (gameScore) {
-              setGameScore(gameScore.score);
-              // Update moves count from server
-              setMoves(gameScore.moves);
-            }
-            // Update the game complete flag
-            setGameComplete(true);
-            // Update the game won flag
-            setGameWon(true);
-
-            // Clear restoration flags after all pieces are restored
-            gameStateManagerRef.current.setRestoring(false);
-            gameStateManagerRef.current.setTimerEnabled(false);
-            setIsRestoringSession(false);
-          } else {
-            // Enable client-side decay for visual feedback, but sync with server values
-            gameStateManagerRef.current.setTimerEnabled(true);
-            gameStateManagerRef.current.startScoreDecay();
-          }
-        }
-      }
-
-      // Handle setting up the game data for daily games
-      if (gameData.type === 'lettered_daily_game') {
-        const { game: apiGameData, session: apiSessionData } = gameData;
-
-        setGameData(apiGameData);
-        setDailyGameId(gameData.dailyGameId);
-
-        // Prepare session restoration data
-        let initialScoreForManager: number | undefined;
-        let currentScoreForManager: number | undefined;
-        let gameStartTime: number | undefined;
-        let movesForManager: number | undefined;
-
-        // Only use session data for daily games, not custom games
+        // If we have session data, restore the placed pieces
         if (apiSessionData) {
-          // Use the original initial score from server for decay calculations
-          // and set current score to the restored score
-          initialScoreForManager = apiSessionData.initialScore;
-          currentScoreForManager = apiSessionData.currentScore;
-          gameStartTime = Date.now();
-          movesForManager = apiSessionData.moves;
+          // Set restoration flag in manager to prevent first-time completion events
+          gameStateManagerRef.current.setRestoring(true);
 
-          // Set the moves count from server data
-          setMoves(apiSessionData.moves);
-        } else {
-          // For new games (no session data) or custom games, set the appropriate initial score
-          initialScoreForManager = DEFAULT_INITIAL_SCORE;
-        }
-
-        // Initialize game state manager with new game and session data
-        if (gameStateManagerRef.current) {
-          gameStateManagerRef.current.initializeGame(
-            apiGameData,
-            initialScoreForManager,
-            gameStartTime,
-            currentScoreForManager,
-            movesForManager
-          );
-
-          // If we have session data and this is NOT a custom game, restore the placed pieces
-          if (apiSessionData) {
-            // Set restoration flags to prevent race conditions
-            setIsRestoringSession(true);
-            gameStateManagerRef.current.setRestoring(true);
-
-            // Check if this is a reloaded completed game
-            if (apiSessionData.isCompleted) {
-              setIsReloadedCompletedGame(true);
-            }
-
-            // Place pieces from the session data
-            for (const [pieceId, position] of Object.entries(apiSessionData.pieces)) {
-              await gameStateManagerRef.current.placePiece(pieceId, position);
-            }
-
-            // Update the score to match the session
-            setGameScore(apiSessionData.currentScore);
-            // Update moves count from server
-            setMoves(apiSessionData.moves);
-
-            // Clear restoration flags after all pieces are restored
-            gameStateManagerRef.current.setRestoring(false);
-            setIsRestoringSession(false);
+          // Place pieces from the session data
+          for (const [pieceId, position] of Object.entries(apiSessionData.pieces)) {
+            await gameStateManagerRef.current.placePiece(pieceId, position);
           }
 
-          // Enable client-side decay for visual feedback, but sync with server values
-          gameStateManagerRef.current.setTimerEnabled(true);
-          gameStateManagerRef.current.startScoreDecay();
+          // Update moves count from server
+          setMoves(apiSessionData.moves);
+
+          // Clear restoration flag after all pieces are restored
+          gameStateManagerRef.current.setRestoring(false);
+
+          // Set if the game is complete
+          gameStateManagerRef.current.setGameComplete(apiSessionData.isCompleted);
         }
       }
 
@@ -482,75 +465,28 @@ export const LetteredPage = ({ onBack }: { onBack?: () => void }) => {
     } finally {
       setLoading(false);
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [gameId]);
 
   useEffect(() => {
     const initializeGame = async () => {
-      await loadGame();
+      // Wait for context checking to complete before loading the game
+      if (!isCheckingContext) {
+        await loadGame();
+      }
     };
 
     void initializeGame();
-  }, [loadGame]);
+  }, [loadGame, isCheckingContext]);
 
-  // Handle game completion effects (UI side)
-  const handleGameComplete = useCallback(() => {
-    console.log('🚀 handleGameComplete called:', {
-      gameWon,
-      gameComplete,
-      isReloadedCompletedGame,
-      gameId,
-      isCustomGame: !!gameId,
-      hasGameStateManager: !!gameStateManagerRef.current,
-    });
+  // Subscribe to first-time completion events (only fires on fresh wins)
+  useEffect(() => {
+    if (!gameStateManagerRef.current) return;
 
-    if (gameWon && gameComplete && !isReloadedCompletedGame) {
-      // Submit score for custom games
-      if (gameId && gameStateManagerRef.current) {
-        const finalScore = gameStateManagerRef.current.getScore();
-        const startTime = gameStateManagerRef.current.getState()?.gameStartTime;
-        const timeElapsed = startTime ? Math.floor((Date.now() - startTime) / 1000) : 0;
+    const unsubscribe = gameStateManagerRef.current.onFirstTimeCompletion(() => {
+      console.log('First-time completion event received');
 
-        console.log('📤 Submitting custom game score:', {
-          gameId,
-          finalScore,
-          timeElapsed,
-          moves,
-          startTime: new Date(startTime).toISOString(),
-        });
-
-        // Submit score to custom game endpoint
-        apiFetch(`/api/custom/lettered/${gameId}/score`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({
-            score: finalScore,
-            timeElapsed: timeElapsed,
-            moves: moves,
-          }),
-        })
-          .then((response) => {
-            if (response.ok) {
-              console.log('✅ Custom game score submitted successfully');
-            } else {
-              console.error('❌ Failed to submit custom game score, status:', response.status);
-            }
-          })
-          .catch((error) => {
-            console.error('💥 Error submitting custom game score:', error);
-          });
-      } else {
-        console.log('⏭️ Score submission skipped:', {
-          gameId,
-          hasGameStateManager: !!gameStateManagerRef.current,
-          reason: !gameId ? 'No gameId' : 'No gameStateManager',
-        });
-      }
-
-      // Only show confetti and modal for NEW completions, not reloaded ones
-      toast.success('🎉 Congratulations!', {
+      // Show toast for the win
+      toast.success('Congratulations!', {
         description: 'You completed the puzzle!',
         duration: 1500,
       });
@@ -570,74 +506,53 @@ export const LetteredPage = ({ onBack }: { onBack?: () => void }) => {
         clearTimeout(confettiTimer);
         clearTimeout(modalTimer);
       };
-    }
-  }, [gameWon, gameComplete, isReloadedCompletedGame, gameId, moves]);
+    });
+
+    return unsubscribe;
+  }, []);
 
   // Function to load postgame stats
   const loadPostGameStats = useCallback(async () => {
-    // Handle both custom games and daily games
-    if (!dailyGameId && !gameId) return; // Need either dailyGameId or gameId
+    // gameId is always required
+    if (!gameId) return;
 
     setPostGameStatsLoading(true);
     setPostGameStatsError(null);
 
     try {
-      let stats;
-      if (gameId) {
-        // Custom game - use custom postgame endpoint
-        stats = await fetchCustomPostGameStats(gameId);
-      } else if (dailyGameId) {
-        // Daily game - use regular postgame endpoint
-        stats = await fetchPostGameStats(dailyGameId);
-      }
-
-      if (stats) {
-        setPostGameStats(stats);
-      }
+      const stats = await fetchPostGameStats(gameId);
+      setPostGameStats(stats);
     } catch (error) {
       console.error('Error loading postgame stats:', error);
       setPostGameStatsError(error instanceof Error ? error.message : 'Failed to load stats');
     } finally {
       setPostGameStatsLoading(false);
     }
-  }, [dailyGameId, gameId]);
+  }, [gameId]);
 
-  // Handle game completion effects when game state changes
+  // Fetch postgame stats when game is complete (for restored completed games)
   useEffect(() => {
-    console.log('🎮 Game state changed:', {
-      gameWon,
-      gameComplete,
-      isReloadedCompletedGame,
-      gameId,
-      isCustomGame: !!gameId,
-      isDailyGame: !!dailyGameId,
-    });
-
-    if (gameWon && gameComplete && !isReloadedCompletedGame) {
-      console.log('🎉 Game completed - calling handleGameComplete');
-      handleGameComplete();
-    } else {
-      console.log('❌ Game completion conditions not met:', {
-        gameWon,
-        gameComplete,
-        isReloadedCompletedGame,
-        willTrigger: gameWon && gameComplete && !isReloadedCompletedGame,
-      });
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [gameWon, gameComplete, isReloadedCompletedGame, handleGameComplete]);
-
-  // Load postgame stats when modal opens (for both daily and custom games)
-  useEffect(() => {
-    if (uiState.showGameOverModal && gameComplete && (dailyGameId || gameId)) {
-      console.log('📊 Loading postgame stats for:', {
-        dailyGameId,
+    // Fetch stats for completed games - this handles both restored and fresh completions
+    // Fresh completions also fetch stats after session save in handleGridLayoutChange
+    if (gameId && gameComplete && !loading) {
+      console.log('Fetching postgame stats for completed game:', {
         gameId,
-        isCustomGame: !!gameId,
+        postType: gameData?.postType,
       });
       void loadPostGameStats();
     }
-  }, [uiState.showGameOverModal, gameComplete, dailyGameId, gameId, loadPostGameStats]);
+  }, [gameId, gameComplete, loading, gameData?.postType, loadPostGameStats]);
+
+  // Load postgame stats when modal opens
+  useEffect(() => {
+    if (uiState.showGameOverModal && gameComplete && gameId) {
+      console.log('Loading postgame stats for:', {
+        gameId,
+        postType: gameData?.postType,
+      });
+      void loadPostGameStats();
+    }
+  }, [uiState.showGameOverModal, gameComplete, gameId, gameData?.postType, loadPostGameStats]);
 
   // Always refetch stats when modal becomes visible
   const prevModalState = useRef(false);
@@ -645,156 +560,40 @@ export const LetteredPage = ({ onBack }: { onBack?: () => void }) => {
     const modalJustOpened = uiState.showGameOverModal && !prevModalState.current;
     prevModalState.current = uiState.showGameOverModal;
 
-    if (modalJustOpened && gameComplete && (dailyGameId || gameId)) {
+    if (modalJustOpened && gameComplete && gameId) {
       // Force refetch by clearing existing stats first
-      console.log('🔄 Force refetching postgame stats for:', {
-        dailyGameId,
+      console.log('Force refetching postgame stats for:', {
         gameId,
-        isCustomGame: !!gameId,
+        postType: gameData?.postType,
       });
       setPostGameStats(null);
       setPostGameStatsError(null);
       void loadPostGameStats();
     }
-  }, [uiState.showGameOverModal, gameComplete, dailyGameId, gameId, loadPostGameStats]);
+  }, [uiState.showGameOverModal, gameComplete, gameId, gameData?.postType, loadPostGameStats]);
 
   // Handle layout changes from the grid
   const handleGridLayoutChange = useCallback(
     async (layout: (string | null)[][]) => {
-      if (!gameData || !gameStateManagerRef.current) {
+      if (!gameStateManagerRef.current) {
         return;
       }
 
-      // Prevent handling layout changes during session restoration to avoid race conditions
-      if (isRestoringSession) {
-        console.log('[DEBUG] Skipping layout change during session restoration');
-        return;
-      }
+      // Delegate all game logic to the game state manager
+      const result = await gameStateManagerRef.current.updateFromLayout(layout);
 
-      // Convert layout to piece positions
-      const newPlacedPieces = new Map<string, GridPosition>();
-
-      // Process tray movements if any
-      // Layout processing continues below
-
-      // Process each piece to find its anchor point
-      const processedPieces = new Set<string>();
-
-      layout.forEach((row, rowIndex) => {
-        row.forEach((itemId, colIndex) => {
-          if (itemId && !processedPieces.has(itemId)) {
-            const piece = gameData.pieces.find((p: LetterPiece) => p.id === itemId);
-            if (!piece) return;
-
-            processedPieces.add(itemId);
-
-            // Use this occupied position to calculate anchor point
-            const occupiedPos = { row: rowIndex, col: colIndex };
-
-            // Find which shape position corresponds to this occupied position
-            // We'll assume this is a valid position and find the matching shape
-            let anchorPoint = occupiedPos; // fallback
-
-            for (const shapePos of piece.shape) {
-              // Check if this occupied position matches any shape position relative to some anchor
-              // We need to find: anchor + shapePos = occupiedPos
-              // So: anchor = occupiedPos - shapePos
-
-              const testAnchor = {
-                row: occupiedPos.row - shapePos.row,
-                col: occupiedPos.col - shapePos.col,
-              };
-
-              // Verify this anchor point works for the piece
-              let allCellsValid = true;
-              for (const testShapePos of piece.shape) {
-                const expectedRow = testAnchor.row + testShapePos.row;
-                const expectedCol = testAnchor.col + testShapePos.col;
-
-                // Check if this expected position is occupied by the same piece
-                const layoutRow = layout[expectedRow];
-                if (!layoutRow || layoutRow[expectedCol] !== itemId) {
-                  allCellsValid = false;
-                  break;
-                }
-              }
-
-              if (allCellsValid) {
-                anchorPoint = testAnchor;
-                break;
-              }
-            }
-
-            newPlacedPieces.set(itemId, anchorPoint);
-          }
-        });
-      });
-
-      // Update game state manager with new piece positions
-      const currentPlacedPieces = gameStateManagerRef.current.getPlacedPieces();
-      let hasAnyPieceMoved = false;
-
-      for (const [pieceId, newPosition] of newPlacedPieces) {
-        const currentPosition = currentPlacedPieces.get(pieceId);
-        if (
-          !currentPosition ||
-          currentPosition.row !== newPosition.row ||
-          currentPosition.col !== newPosition.col
-        ) {
-          await gameStateManagerRef.current.placePiece(pieceId, newPosition);
-          hasAnyPieceMoved = true;
-        }
-      }
-
-      // Remove pieces that are no longer placed
-      for (const [pieceId] of currentPlacedPieces) {
-        if (!newPlacedPieces.has(pieceId)) {
-          // gameStateManagerRef.current.removePiece(pieceId);
-          hasAnyPieceMoved = true; // Consider removal as a movement
-        }
-      }
-
-      // Check if any pieces were added
-      for (const [pieceId] of newPlacedPieces) {
-        if (!currentPlacedPieces.has(pieceId)) {
-          hasAnyPieceMoved = true;
-          break;
-        }
-      }
-
-      // Only save to server if pieces actually moved or layout changed
-      // Skip session saving for custom games
-      if (hasAnyPieceMoved && dailyGameId && !gameId) {
+      // Only make network request if pieces actually changed
+      if (result.hasChanges && gameId) {
         try {
-          // Send the complete board state
-          const currentBoardLayout = gameStateManagerRef.current.getBoardLayout();
-          const currentPlacedPieces = gameStateManagerRef.current.getPlacedPieces();
-
-          // Debug: Check for tray area pieces
-          const mainGridHeight = gameData.grid.length;
-          const trayPieces = Array.from(currentPlacedPieces.entries()).filter(
-            ([, position]) => position.row >= mainGridHeight
-          );
-
-          console.log(
-            `[DEBUG] Piece movement detected, sending to server. Tray pieces: ${trayPieces.length}`
-          );
-
-          // Convert placed pieces Map to record for JSON serialization
-          const placedPiecesRecord: Record<string, GridPosition> = {};
-          for (const [pieceId, position] of currentPlacedPieces.entries()) {
-            placedPiecesRecord[pieceId] = position;
-          }
-
-          const response = await apiFetch(`/api/lettered/${dailyGameId}/session`, {
+          const response = await apiFetch(`/api/lettered/${gameId}/session`, {
             method: 'POST',
             headers: {
               'Content-Type': 'application/json',
             },
             body: JSON.stringify({
               boardState: {
-                grid: currentBoardLayout,
-                placedPieces: placedPiecesRecord,
+                grid: result.boardLayout,
+                placedPieces: result.placedPieces,
               },
               timestamp: Date.now(),
             }),
@@ -804,26 +603,22 @@ export const LetteredPage = ({ onBack }: { onBack?: () => void }) => {
             const errorData = await response.json().catch(() => ({}));
             console.error('Failed to save game session:', { errorData });
           } else {
-            const result = await response.json();
-            console.log('Game session saved successfully:', { result });
+            const responseData = await response.json();
+            console.log('Game session saved successfully:', { result: responseData });
 
-            // Update the score to match the server's calculation
-            if (result.currentScore !== undefined && gameStateManagerRef.current) {
-              gameStateManagerRef.current.setScore(result.currentScore);
-              console.log('[DEBUG] Updated score from server:', result.currentScore);
-            } else if (result.currentScore === undefined) {
-              console.warn('[DEBUG] Server response missing currentScore');
+            // Fetch postgame stats after session save completes when user wins
+            // This ensures leaderboard entry is saved before we fetch stats
+            if (responseData.hasWon) {
+              console.log('User won! Fetching postgame stats after session save...');
+              void loadPostGameStats();
             }
           }
         } catch (error) {
           console.error('Error saving game session:', error);
         }
-      } else {
-        console.log('[DEBUG] No piece movement detected, skipping server update');
       }
     },
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [gameData, dailyGameId, isRestoringSession]
+    [gameId, loadPostGameStats]
   );
 
   const handleBackToMenu = () => {
@@ -833,6 +628,10 @@ export const LetteredPage = ({ onBack }: { onBack?: () => void }) => {
       window.history.pushState(null, '', '/');
       window.dispatchEvent(new PopStateEvent('popstate'));
     }
+  };
+
+  const handleCreateGame = () => {
+    void navigate('/custom');
   };
 
   const resetGame = () => {
@@ -858,6 +657,108 @@ export const LetteredPage = ({ onBack }: { onBack?: () => void }) => {
     }
   };
 
+  // Clear session and reset game to initial state
+  const clearSession = async () => {
+    if (!gameId) return;
+
+    try {
+      const response = await apiFetch(`/api/lettered/${gameId}/session`, {
+        method: 'DELETE',
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        console.error('Failed to clear session:', errorData);
+        toast.error('Failed to clear session');
+        return;
+      }
+
+      toast.success('Session cleared');
+      // Reload the game to start fresh
+      await loadGame();
+    } catch (error) {
+      console.error('Error clearing session:', error);
+      toast.error('Error clearing session');
+    }
+  };
+
+  // Regenerate game by clearing local state and reloading
+  const regenerateGame = async () => {
+    if (!gameStateManagerRef.current) return;
+
+    // Clear local state
+    setPlacedPieces(new Map());
+    setGameComplete(false);
+    setMoves(0);
+    setElapsedTime(0);
+    setPostGameStats(null);
+    setUIState({
+      showConfetti: false,
+      showGameOverModal: false,
+      previewPiece: null,
+      previewPosition: null,
+      lastValidPreviewPosition: null,
+      isValidPreview: false,
+    });
+
+    // Clear session on server and reload
+    await clearSession();
+  };
+
+  // Clear leaderboard entries for current game (admin only)
+  const clearGameLeaderboard = async () => {
+    if (!gameId) return;
+
+    try {
+      const response = await apiFetch(`/api/admin/lettered/${gameId}/leaderboard`, {
+        method: 'DELETE',
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        console.error('Failed to clear leaderboard:', errorData);
+        toast.error('Failed to clear leaderboard');
+        return;
+      }
+
+      const data = await response.json();
+      toast.success(`Leaderboard cleared (${data.data.deletedCount} entries)`);
+      // Reload postgame stats
+      await loadPostGameStats();
+    } catch (error) {
+      console.error('Error clearing leaderboard:', error);
+      toast.error('Error clearing leaderboard');
+    }
+  };
+
+  // Clear all player stats for current game (admin only)
+  const clearGameStats = async () => {
+    if (!gameId) return;
+
+    try {
+      const response = await apiFetch(`/api/admin/lettered/${gameId}/stats`, {
+        method: 'DELETE',
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        console.error('Failed to clear game stats:', errorData);
+        toast.error('Failed to clear game stats');
+        return;
+      }
+
+      const data = await response.json();
+      toast.success(
+        `Game stats cleared (${data.data.sessionsDeleted} sessions, ${data.data.submissionsDeleted} submissions)`
+      );
+      // Reload the game to refresh state
+      await loadGame();
+    } catch (error) {
+      console.error('Error clearing game stats:', error);
+      toast.error('Error clearing game stats');
+    }
+  };
+
   const boardTileClass = (x: number, y: number) => {
     const baseClass = 'bg-card hover:bg-accent transition-colors';
 
@@ -873,7 +774,6 @@ export const LetteredPage = ({ onBack }: { onBack?: () => void }) => {
 
     // Don't style cells that have pre-filled anchor letters (they're rendered as pieces)
     if (cell.isPreFilled) {
-      console.log('isPreFilled', cell);
       return cn(baseClass, 'bg-gray-900 text-white !border-0 !border-border');
     }
 
@@ -891,13 +791,7 @@ export const LetteredPage = ({ onBack }: { onBack?: () => void }) => {
       'text-primary-foreground transition-all touch-none duration-500 overflow-hidden';
     return cn(
       baseClass,
-      !(
-        gameStateManagerRef.current?.isGameComplete() ||
-        gameWon ||
-        gameComplete ||
-        isRestoringSession ||
-        isReloadedCompletedGame
-      )
+      !(gameStateManagerRef.current?.isGameComplete() || gameComplete)
         ? piece.color
         : 'bg-muted-foreground gold-shimmer-number'
     );
@@ -917,13 +811,40 @@ export const LetteredPage = ({ onBack }: { onBack?: () => void }) => {
     }
   };
 
-  // Show loading state
-  if (loading) {
+  // Show error state (check before loading to show errors from context check early)
+  if (error) {
     return (
       <GameLayout
         gameTitle="Lettered"
-        score={0}
+        time={0}
+        moves={0}
         onBack={handleBackToMenu}
+        onCreateGame={handleCreateGame}
+        postId={postId}
+        subredditName={subredditName}
+        logoSrc="/lettered-logo.svg"
+      >
+        <CardContent className="flex flex-col justify-center items-center p-8 space-y-4">
+          <div className="text-lg font-medium text-center text-destructive">{error}</div>
+          <Button onClick={() => window.location.reload()} type="button">
+            Try Again
+          </Button>
+        </CardContent>
+      </GameLayout>
+    );
+  }
+
+  // Show loading state (includes context checking and game loading)
+  if (isCheckingContext || loading) {
+    return (
+      <GameLayout
+        gameTitle="Lettered"
+        time={0}
+        moves={0}
+        onBack={handleBackToMenu}
+        onCreateGame={handleCreateGame}
+        postId={postId}
+        subredditName={subredditName}
         logoSrc="/lettered-logo.svg"
       >
         <CardContent className="flex justify-center items-center p-8">
@@ -933,18 +854,22 @@ export const LetteredPage = ({ onBack }: { onBack?: () => void }) => {
     );
   }
 
-  // Show error state
-  if (error || !gameData) {
+  // Show error state for missing game data
+  if (!gameData) {
     return (
       <GameLayout
         gameTitle="Lettered"
-        score={0}
+        time={0}
+        moves={0}
         onBack={handleBackToMenu}
+        onCreateGame={handleCreateGame}
+        postId={postId}
+        subredditName={subredditName}
         logoSrc="/lettered-logo.svg"
       >
         <CardContent className="flex flex-col justify-center items-center p-8 space-y-4">
           <div className="text-lg font-medium text-center text-destructive">
-            {error || "Failed to load today's puzzle"}
+            Failed to load puzzle
           </div>
           <Button onClick={() => window.location.reload()} type="button">
             Try Again
@@ -957,27 +882,30 @@ export const LetteredPage = ({ onBack }: { onBack?: () => void }) => {
   return (
     <GameLayout
       gameTitle="Lettered"
-      score={gameScore}
+      time={elapsedTime}
       moves={moves}
       onBack={handleBackToMenu}
       onLeaderboard={() => setUIState((prev) => ({ ...prev, showGameOverModal: true }))}
       onHelp={() => setShowInstructions(true)}
+      onCreateGame={handleCreateGame}
+      postId={postId}
+      subredditName={subredditName}
       logoSrc="/lettered-logo.svg"
     >
-      {/* Development Controls */}
-      {isDevelopment() && (
+      {/* Admin Debug Controls */}
+      {isAdmin && (
         <div className="mb-4">
           <Button
             variant="outline"
             size="sm"
-            onClick={() => setShowDevButtons(!showDevButtons)}
+            onClick={() => setShowDebugTools(!showDebugTools)}
             className="text-xs text-muted-foreground"
             type="button"
           >
-            {showDevButtons ? '🔧 Hide Dev Tools' : '🔧 Show Dev Tools'}
+            {showDebugTools ? 'Hide Debug Tools' : 'Show Debug Tools'}
           </Button>
 
-          {showDevButtons && (
+          {showDebugTools && (
             <div className="mt-2 space-y-3">
               {/* Action Buttons */}
               <div className="flex flex-wrap gap-2">
@@ -1000,42 +928,69 @@ export const LetteredPage = ({ onBack }: { onBack?: () => void }) => {
                 >
                   Reload Game
                 </Button>
+                <Button
+                  variant="destructive"
+                  size="sm"
+                  onClick={clearSession}
+                  className="text-xs"
+                  type="button"
+                >
+                  Clear Session
+                </Button>
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  onClick={regenerateGame}
+                  className="text-xs text-white bg-amber-600 hover:bg-amber-700"
+                  type="button"
+                >
+                  Regenerate Game
+                </Button>
+              </div>
+              {/* Admin-only Actions */}
+              <div className="flex flex-wrap gap-2">
+                <Button
+                  variant="destructive"
+                  size="sm"
+                  onClick={clearGameLeaderboard}
+                  className="text-xs bg-red-700 hover:bg-red-800"
+                  type="button"
+                >
+                  Clear Leaderboard
+                </Button>
+                <Button
+                  variant="destructive"
+                  size="sm"
+                  onClick={clearGameStats}
+                  className="text-xs bg-red-900 hover:bg-red-950"
+                  type="button"
+                >
+                  Clear All Game Stats
+                </Button>
+              </div>
+              {/* Debug Info */}
+              <div className="p-2 font-mono text-xs rounded-md bg-muted">
+                <div>Game ID: {gameId || 'N/A'}</div>
+                <div>Session ID: {sessionId || 'N/A'}</div>
+                <div>Moves: {moves}</div>
+                <div>Time: {Math.floor(elapsedTime / 1000)}s</div>
+                <div>Game Complete: {gameComplete ? 'Yes' : 'No'}</div>
+                <div>
+                  Pieces Placed: {placedPieces.size}/{gameData?.pieces.length || 0}
+                </div>
               </div>
             </div>
           )}
         </div>
       )}
 
-      {/* In-Game Custom Game Button */}
-      {!isReloadedCompletedGame && !postGameStats && (
-        <div className="flex flex-row justify-center mb-8 space-x-2">
-          <InGameCustomButton className={cn('w-auto')} />
-          {gameId && (
-            <Button
-              onClick={() => {
-                const date = new Date();
-                date.setTime(date.getTime() + 24 * 60 * 60 * 1000);
-                const expires = `expires=${date.toUTCString()}`;
-                document.cookie = `dailyMode=true;${expires};path=/`;
-                void navigate('/?dailyMode=true');
-              }}
-              variant="outline"
-              className="self-start w-auto"
-              type="button"
-            >
-              Play Daily Podium
-            </Button>
-          )}
-        </div>
-      )}
-
-      {/* Completion Banner for Reloaded Games */}
-      {(isReloadedCompletedGame || postGameStats) && (
+      {/* Completion Banner for Completed Games */}
+      {gameComplete && (
         <div className="p-4 mb-4 rounded-lg border-2 border-foreground">
           <div
             className={cn(
               'flex flex-col gap-3',
-              !gameId
+              gameData.postType === 'daily'
                 ? 'items-start sm:items-center sm:flex-row sm:justify-between'
                 : 'sm:items-start'
             )}
@@ -1044,44 +999,32 @@ export const LetteredPage = ({ onBack }: { onBack?: () => void }) => {
               <div>
                 <div className="font-semibold text-foreground">Puzzle Solved</div>
                 <div className="text-sm text-muted-foreground">
-                  {!gameId
+                  {gameData.postType === 'daily'
                     ? 'Check back in tomorrow for a new puzzle'
-                    : 'You already solved this puzzle'}
+                    : 'Congrats, you solved the puzzle'}
                 </div>
               </div>
             </div>
             <div
               className={cn(
                 'flex flex-col gap-2 w-full sm:w-auto sm:flex-row',
-                !gameId ? 'sm:flex-row' : 'sm:w-full'
+                gameData.postType === 'daily' ? 'sm:flex-row' : 'sm:w-full'
               )}
             >
               <Button
                 onClick={() => setUIState((prev) => ({ ...prev, showGameOverModal: true }))}
                 variant="outline"
-                className={cn('self-start w-full', !gameId && 'sm:w-auto')}
+                className={cn('self-start w-full', gameData.postType === 'daily' && 'sm:w-auto')}
                 type="button"
               >
                 View Stats
               </Button>
               {/* In-Game Custom Game Button */}
-              <InGameCustomButton className={cn('w-full', !gameId && 'sm:w-auto')} />
-              {gameId && (
-                <Button
-                  onClick={() => {
-                    const date = new Date();
-                    date.setTime(date.getTime() + 24 * 60 * 60 * 1000);
-                    const expires = `expires=${date.toUTCString()}`;
-                    document.cookie = `dailyMode=true;${expires};path=/`;
-                    void navigate('/?dailyMode=true');
-                  }}
-                  variant="secondary"
-                  className="self-start w-full"
-                  type="button"
-                >
-                  Play Daily Podium
-                </Button>
-              )}
+              <InGameCustomButton
+                className={cn('w-full', gameData.postType === 'daily' && 'sm:w-auto')}
+                postId={postId}
+                subredditName={subredditName}
+              />
             </div>
           </div>
         </div>
@@ -1097,7 +1040,7 @@ export const LetteredPage = ({ onBack }: { onBack?: () => void }) => {
       {/* Game Content */}
       <div className="flex justify-center">
         <Grid
-          key={`${gameWon}-${isRestoringSession}`}
+          key={`${gameComplete}`}
           gridSize={{
             width: gameData.grid[0]!.length || 8,
             height: gameData.grid.length + 20, // Extend grid height to match server's maxRows for letter pieces area
@@ -1107,7 +1050,7 @@ export const LetteredPage = ({ onBack }: { onBack?: () => void }) => {
           initialItems={convertGridDataToItems({
             grid: gameData.grid,
             placedPieces:
-              placedPieces.size === 0 && !isRestoringSession
+              placedPieces.size === 0
                 ? new Map(Object.entries(gameData.initialPiecePositions))
                 : placedPieces,
             pieces: gameData.pieces,
@@ -1119,7 +1062,7 @@ export const LetteredPage = ({ onBack }: { onBack?: () => void }) => {
           defaultItemClassName="bg-primary text-primary-foreground"
           getBoardTileClassName={boardTileClass}
           getTileDraggingClassName={pieceTileDraggingClass}
-          disabled={gameComplete || isRestoringSession}
+          disabled={gameComplete}
         />
       </div>
       {/* Confetti Animation */}
@@ -1151,13 +1094,12 @@ export const LetteredPage = ({ onBack }: { onBack?: () => void }) => {
           }
         }}
         gameType="lettered"
-        isCustomGame={!!gameId} // Pass true if this is a custom game
+        isCustomGame={gameData.postType === 'custom'}
         loading={postGameStatsLoading}
         error={postGameStatsError}
-        score={postGameStats?.finalScore ?? gameScore}
-        secondaryStatValue={postGameStats?.movesUsed ?? placedPieces.size}
-        secondaryStatLabel="MOVES"
-        theme={postGameStats?.dailyGame.phrase ?? 'Loading...'}
+        time={postGameStats?.timeElapsed ?? elapsedTime}
+        moves={postGameStats?.movesUsed ?? moves}
+        theme={postGameStats?.game.phrase ?? '—'}
         leaderboard={postGameStats?.leaderboard}
         playerRank={postGameStats?.rank}
         totalPlayers={postGameStats?.totalPlayers}

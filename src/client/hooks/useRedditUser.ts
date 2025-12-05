@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { apiFetch } from '../lib/utils';
 
-// Reddit user type - moved from shared types since client shouldn't depend on Supabase types
+// Reddit user type
 export interface RedditUser {
   id: string;
   handle: string;
