@@ -198,8 +198,7 @@ export const DevPage = ({ onBack }: DevPageProps) => {
   };
 
   const pieceTileClass = (piece: LetterPiece) => {
-    const baseClass =
-      'text-primary-foreground transition-all touch-none duration-500 overflow-hidden';
+    const baseClass = 'text-primary-foreground transition-all duration-500 overflow-hidden';
     return cn(baseClass, piece.color);
   };
 

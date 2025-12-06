@@ -189,6 +189,11 @@ export type StatusResponse = {
   day: string;
 };
 
+// User preferences for app settings and tutorial state
+export interface UserPreferences {
+  tutorialCompleted: boolean;
+}
+
 export type User = {
   id: string;
   redditId: string;
@@ -197,6 +202,7 @@ export type User = {
   admin: boolean;
   createdAt: string;
   updatedAt: string;
+  preferences?: UserPreferences;
 };
 
 // Per-game leaderboard entry for post-game display

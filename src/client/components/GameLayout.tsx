@@ -9,7 +9,8 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from './ui/dropdown-menu';
-import { Menu, Plus, Share2, HelpCircle } from 'lucide-react';
+import { Menu, Plus, Share2, HelpCircle, Hand, MousePointer } from 'lucide-react';
+import type { DragMode } from '../hooks/useDragMode';
 
 interface GameLayoutProps {
   gameTitle: string;
@@ -24,6 +25,8 @@ interface GameLayoutProps {
   subredditName?: string | null;
   logoSrc?: string;
   className?: string;
+  dragMode?: DragMode;
+  onDragModeChange?: (mode: DragMode) => void;
 }
 
 // Format milliseconds to MM:SS or HH:MM:SS
@@ -84,6 +87,8 @@ export const GameLayout = ({
   subredditName,
   logoSrc = '/lettered-logo.svg',
   className,
+  dragMode = 'tap-to-drag',
+  onDragModeChange,
 }: GameLayoutProps) => {
   const [showHelpModal, setShowHelpModal] = useState(false);
 
@@ -177,6 +182,29 @@ export const GameLayout = ({
               <Share2 className="w-5 h-5" />
             </Button>
 
+            {/* Desktop: Drag Mode Toggle */}
+            {onDragModeChange && (
+              <Button
+                variant="outline"
+                size="icon"
+                onClick={() =>
+                  onDragModeChange(dragMode === 'tap-to-drag' ? 'hold-to-drag' : 'tap-to-drag')
+                }
+                className="hidden md:flex"
+                title={
+                  dragMode === 'tap-to-drag'
+                    ? 'Tap to Drag (click to switch)'
+                    : 'Hold to Drag (click to switch)'
+                }
+              >
+                {dragMode === 'tap-to-drag' ? (
+                  <MousePointer className="w-5 h-5" />
+                ) : (
+                  <Hand className="w-5 h-5" />
+                )}
+              </Button>
+            )}
+
             {/* Mobile: Hamburger Menu */}
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
@@ -199,6 +227,32 @@ export const GameLayout = ({
                   Help
                 </DropdownMenuItem>
                 <DropdownMenuSeparator />
+                {/* Drag Mode Toggle */}
+                {onDragModeChange && (
+                  <>
+                    <DropdownMenuItem
+                      onClick={() =>
+                        onDragModeChange(
+                          dragMode === 'tap-to-drag' ? 'hold-to-drag' : 'tap-to-drag'
+                        )
+                      }
+                      className="cursor-pointer py-3 text-base hover:bg-[#F7C846] hover:text-black focus:bg-[#F7C846] focus:text-black"
+                    >
+                      {dragMode === 'tap-to-drag' ? (
+                        <>
+                          <MousePointer className="mr-3 w-5 h-5" />
+                          Tap to Drag
+                        </>
+                      ) : (
+                        <>
+                          <Hand className="mr-3 w-5 h-5" />
+                          Hold to Drag
+                        </>
+                      )}
+                    </DropdownMenuItem>
+                    <DropdownMenuSeparator />
+                  </>
+                )}
                 <DropdownMenuItem
                   onClick={() => void handleShare(postId, subredditName)}
                   className="cursor-pointer py-3 text-base hover:bg-[#F7C846] hover:text-black focus:bg-[#F7C846] focus:text-black"

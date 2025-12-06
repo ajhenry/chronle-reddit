@@ -7,6 +7,7 @@ import { PrivacyPage } from './pages/privacy';
 import { AdminPage } from './pages/admin';
 import { CustomGamePage } from './pages/custom';
 import { LeaderboardPage } from './pages/leaderboard';
+import { TutorialPage } from './pages/tutorial';
 import { ScrollToTop } from './components/ScrollToTop';
 import { AdminBanner } from './components/AdminBanner';
 import { apiFetch } from './lib/utils';
@@ -54,26 +55,26 @@ export const App = () => {
     void fetchGameStatus();
   }, []);
 
+  // Fetch user info
+  const fetchUserInfo = async () => {
+    try {
+      console.log('Fetching user info...');
+      const response = await apiFetch('/api/user');
+      if (response.ok) {
+        const data = await response.json();
+        setUserInfo(data.user);
+        console.log('User info fetched:', data.user);
+      } else {
+        console.log('Failed to fetch user info:', response.statusText);
+      }
+    } catch (error) {
+      console.error('Error fetching user info:', error);
+    }
+  };
+
   // Fetch user info when app loads
   useEffect(() => {
-    const fetchUserInfo = async () => {
-      try {
-        console.log('Fetching user info...');
-        const response = await apiFetch('/api/user');
-        if (response.ok) {
-          const data = await response.json();
-          setUserInfo(data.user);
-          console.log('User info fetched:', data.user, userInfo);
-        } else {
-          console.log('Failed to fetch user info:', response.statusText);
-        }
-      } catch (error) {
-        console.error('Error fetching user info:', error);
-      }
-    };
-
     void fetchUserInfo();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const handleBackToMenu = () => {
@@ -88,12 +89,20 @@ export const App = () => {
     void navigate('/');
   };
 
+  const handleTutorialComplete = () => {
+    console.log('[TutorialComplete] Called, navigating to /');
+    void navigate('/');
+    // Also refetch in background to sync any other changes
+    void fetchUserInfo();
+  };
+
   return (
     <>
       {showAdminUI && <AdminBanner user={userInfo} />}
       <ScrollToTop />
 
       <Routes>
+        <Route path="/tutorial" element={<TutorialPage onComplete={handleTutorialComplete} />} />
         <Route path="/custom" element={<CustomGamePage />} />
         <Route
           path="/leaderboard"

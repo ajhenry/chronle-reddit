@@ -5,10 +5,12 @@ import React, {
   useCallback,
   useMemo,
   useRef,
+  useEffect,
   ReactNode,
 } from 'react';
 import { cn } from '../../lib/utils';
 import { isDevelopment } from '../../lib/dev-utils';
+import { DragMode } from '../../hooks/useDragMode';
 
 // Auto-scroll configuration
 const AUTO_SCROLL_CONFIG = {
@@ -140,10 +142,14 @@ type GridContextType = {
   cellSize: GridSize;
   spacing: number;
   disabled: boolean;
+  dragMode: DragMode;
   dragPreview: { item: DraggableItem; position: GridPosition; isValid: boolean } | null;
   draggedItemId: string | null;
   grabOffset: GridPosition | null;
   currentHoveredCell: GridPosition | null;
+  // Tap-to-drag specific state
+  tapDragActiveItemId: string | null; // ID of item activated for tap-to-drag
+  tapDragOriginalPosition: GridPosition | null; // Original position before tap-to-drag started
   setItems: (items: DraggableItem[]) => void;
   addItem: (item: Omit<DraggableItem, 'id'>) => void;
   removeItem: (itemId: string) => void;
@@ -161,6 +167,12 @@ type GridContextType = {
     excludeItemId?: string
   ) => boolean;
   getCellData: (x: number, y: number) => GridCellData | null;
+  // Tap-to-drag methods
+  activateTapDrag: (itemId: string) => void;
+  deactivateTapDrag: () => void;
+  placeTapDragItem: () => void;
+  // Auto-complete callback
+  shouldAutoComplete: ((previewLayout: (string | null)[][]) => boolean) | null;
 };
 
 const GridContext = createContext<GridContextType | null>(null);
@@ -181,6 +193,9 @@ type GridProviderProps = {
   initialItems?: Omit<DraggableItem, 'id'>[];
   onLayoutChange?: (layout: (string | null)[][]) => void;
   disabled?: boolean;
+  dragMode?: DragMode;
+  shouldAutoComplete?: (previewLayout: (string | null)[][]) => boolean;
+  onDragStateChange?: (isActive: boolean) => void;
 };
 
 function GridProvider({
@@ -190,6 +205,9 @@ function GridProvider({
   initialItems = [],
   onLayoutChange,
   disabled = false,
+  dragMode = 'tap-to-drag',
+  shouldAutoComplete,
+  onDragStateChange,
 }: GridProviderProps) {
   const spacing = gridSize.spacing ?? 0;
   const gridId = useMemo(() => generateGridId(), []);
@@ -209,6 +227,19 @@ function GridProvider({
   const [gridBounds, setGridBounds] = useState<DOMRect | null>(null);
   const [currentHoveredCell, setCurrentHoveredCell] = useState<GridPosition | null>(null);
 
+  // Tap-to-drag state
+  const [tapDragActiveItemId, setTapDragActiveItemId] = useState<string | null>(null);
+  const [tapDragOriginalPosition, setTapDragOriginalPosition] = useState<GridPosition | null>(null);
+
+  // Notify parent when drag state changes
+  useEffect(() => {
+    onDragStateChange?.(!!tapDragActiveItemId);
+  }, [tapDragActiveItemId, onDragStateChange]);
+
+  // Store shouldAutoComplete in a ref to avoid stale closures
+  const shouldAutoCompleteRef = useRef(shouldAutoComplete);
+  shouldAutoCompleteRef.current = shouldAutoComplete;
+
   // Auto-scroll refs - using refs to avoid stale closure issues in animation loop
   const autoScrollFrameRef = useRef<number | null>(null);
   const currentPointerPositionRef = useRef<{ clientX: number; clientY: number } | null>(null);
@@ -217,15 +248,54 @@ function GridProvider({
   const dragStartedInScrollZoneRef = useRef<boolean>(false); // Track if drag started in scroll zone
   const hasExitedScrollZoneRef = useRef<boolean>(false); // Track if user has exited scroll zone since drag start
 
+  // Refs to store latest event handlers - allows effect to not re-run when callbacks change
+  const handleGlobalPointerMoveRef = useRef<(e: MouseEvent | TouchEvent) => void>(() => {});
+  const handleGlobalPointerUpRef = useRef<(e: MouseEvent | TouchEvent) => void>(() => {});
+
   // Create and update tile grid
   const tileGrid = useMemo(() => {
     const emptyGrid = createEmptyTileGrid(gridSize);
     return updateTileOccupancy(emptyGrid, items);
   }, [gridSize, items]);
 
+  // Helper function to build a preview layout for auto-complete checking
+  const buildPreviewLayout = useCallback(
+    (previewItemId: string, previewPosition: GridPosition): (string | null)[][] => {
+      const layout: (string | null)[][] = [];
+
+      // Initialize empty layout
+      for (let y = 0; y < gridSize.height; y++) {
+        const row: (string | null)[] = [];
+        for (let x = 0; x < gridSize.width; x++) {
+          row[x] = null;
+        }
+        layout[y] = row;
+      }
+
+      // Fill in all items with their current positions (or preview position for the dragged item)
+      for (const item of items) {
+        const position = item.id === previewItemId ? previewPosition : item.position;
+        const occupiedPositions = item.shape.cells.map((cell) => ({
+          x: position.x + cell.x,
+          y: position.y + cell.y,
+        }));
+
+        for (const pos of occupiedPositions) {
+          if (pos.y >= 0 && pos.y < gridSize.height && pos.x >= 0 && pos.x < gridSize.width) {
+            layout[pos.y]![pos.x] = item.id;
+          }
+        }
+      }
+
+      return layout;
+    },
+    [items, gridSize]
+  );
+
   // Call onLayoutChange whenever tileGrid changes
+  // Skip layout change notifications while in tap-drag mode (moves are counted on placement only)
   React.useEffect(() => {
-    if (onLayoutChange) {
+    if (onLayoutChange && !tapDragActiveItemId) {
       const layout = tileGrid.map((row) => row.map((cell) => cell.occupyingItemId || null));
 
       // Debug: Log layout changes in development
@@ -237,7 +307,7 @@ function GridProvider({
 
       onLayoutChange(layout);
     }
-  }, [tileGrid, onLayoutChange]);
+  }, [tileGrid, onLayoutChange, tapDragActiveItemId]);
 
   const addItem = useCallback(
     (item: Omit<DraggableItem, 'id'>) => {
@@ -286,6 +356,93 @@ function GridProvider({
     },
     [tileGrid, gridSize]
   );
+
+  // Tap-to-drag methods
+  const activateTapDrag = useCallback(
+    (itemId: string) => {
+      console.log(`[activateTapDrag] Activating drag mode for item=${itemId}`);
+      const item = items.find((i) => i.id === itemId);
+      if (item) {
+        setTapDragActiveItemId(itemId);
+        setTapDragOriginalPosition({ ...item.position });
+        console.log(`[activateTapDrag] SUCCESS - tapDragActiveItemId is now ${itemId}`);
+      } else {
+        console.log(`[activateTapDrag] FAILED - item not found`);
+      }
+    },
+    [items]
+  );
+
+  const deactivateTapDrag = useCallback(() => {
+    console.log(`[deactivateTapDrag] Deactivating - tapDragActiveItemId=${tapDragActiveItemId}`);
+    // Reset piece to original position if tap drag is active
+    if (tapDragActiveItemId && tapDragOriginalPosition) {
+      setItems((prev) =>
+        prev.map((item) =>
+          item.id === tapDragActiveItemId ? { ...item, position: tapDragOriginalPosition } : item
+        )
+      );
+    }
+    setTapDragActiveItemId(null);
+    setTapDragOriginalPosition(null);
+    setDraggedItemId(null);
+    setGrabOffset(null);
+    setDragPreview(null);
+  }, [tapDragActiveItemId, tapDragOriginalPosition]);
+
+  const placeTapDragItem = useCallback(() => {
+    if (!tapDragActiveItemId) return;
+
+    const item = items.find((i) => i.id === tapDragActiveItemId);
+    if (!item) {
+      deactivateTapDrag();
+      return;
+    }
+
+    // Check if current position is valid
+    const isValid = isPositionValid(item, item.position, item.id);
+
+    if (isValid) {
+      // Check if the piece actually moved from its original position
+      const didMove =
+        !tapDragOriginalPosition ||
+        item.position.x !== tapDragOriginalPosition.x ||
+        item.position.y !== tapDragOriginalPosition.y;
+
+      // Position is valid, finalize the placement
+      setTapDragActiveItemId(null);
+      setTapDragOriginalPosition(null);
+      setDraggedItemId(null);
+      setGrabOffset(null);
+      setDragPreview(null);
+
+      // If the piece moved, explicitly call onLayoutChange
+      // This is needed because when selecting another piece immediately after,
+      // React batches the state updates and the effect condition fails
+      if (didMove && onLayoutChange) {
+        const layout = tileGrid.map((row) => row.map((cell) => cell.occupyingItemId || null));
+        onLayoutChange(layout);
+      }
+    } else {
+      // Position is invalid, reset to original position
+      if (tapDragOriginalPosition) {
+        setItems((prev) =>
+          prev.map((i) =>
+            i.id === tapDragActiveItemId ? { ...i, position: tapDragOriginalPosition } : i
+          )
+        );
+      }
+      // Stay in tap drag mode so user can try again
+    }
+  }, [
+    tapDragActiveItemId,
+    tapDragOriginalPosition,
+    items,
+    isPositionValid,
+    deactivateTapDrag,
+    onLayoutChange,
+    tileGrid,
+  ]);
 
   // Utility function to get coordinates from global mouse or touch events
   const getGlobalEventCoordinates = useCallback((e: MouseEvent | TouchEvent) => {
@@ -445,8 +602,15 @@ function GridProvider({
       // Prevent default touch behavior (scrolling) during drag
       // This is critical for preventing scroll during fast movements
       if (isDraggingRef.current && e.type.startsWith('touch')) {
+        console.log(
+          `[GlobalPointerMove] PREVENTING DEFAULT - isDraggingRef=${isDraggingRef.current}, type=${e.type}`
+        );
         e.preventDefault();
         e.stopPropagation();
+      } else if (e.type.startsWith('touch')) {
+        console.log(
+          `[GlobalPointerMove] NOT preventing default - isDraggingRef=${isDraggingRef.current}, draggedItemId=${draggedItemId}`
+        );
       }
 
       // Early return for grid-related logic if not ready
@@ -548,6 +712,28 @@ function GridProvider({
 
         if (isValid) {
           moveItem(currentDraggedItemId, dropPosition);
+
+          // Check for auto-complete in tap-to-drag mode:
+          // If piece is dropped at a position that would complete the puzzle, auto-finalize
+          if (tapDragActiveItemId && shouldAutoCompleteRef.current) {
+            const previewLayout = buildPreviewLayout(draggedItem.id, dropPosition);
+            if (shouldAutoCompleteRef.current(previewLayout)) {
+              console.log('[AutoComplete] Puzzle complete after drop, auto-finalizing placement');
+              // Clear tap-drag state to finalize the placement
+              setTapDragActiveItemId(null);
+              setTapDragOriginalPosition(null);
+              // Clean up drag state
+              setDraggedItemId(null);
+              setGrabOffset(null);
+              setDragPreview(null);
+              setCurrentHoveredCell(null);
+              // Trigger layout change callback
+              if (onLayoutChange) {
+                onLayoutChange(previewLayout);
+              }
+              return; // Early return since we've handled everything
+            }
+          }
         }
       }
 
@@ -568,8 +754,15 @@ function GridProvider({
       isPositionValid,
       moveItem,
       getGlobalEventCoordinates,
+      tapDragActiveItemId,
+      buildPreviewLayout,
+      onLayoutChange,
     ]
   );
+
+  // Keep refs updated with latest callbacks (avoids re-attaching event listeners when callbacks change)
+  handleGlobalPointerMoveRef.current = handleGlobalPointerMove;
+  handleGlobalPointerUpRef.current = handleGlobalPointerUp;
 
   // Auto-scroll effect - separate from event listeners to prevent restart on callback changes
   // This effect only depends on draggedItemId, so it won't restart when other callbacks change
@@ -583,46 +776,52 @@ function GridProvider({
   }, [draggedItemId, startAutoScroll, stopAutoScroll]);
 
   // Set up global event listeners during drag
+  // Uses refs for callbacks so effect only runs when draggedItemId changes (not when callbacks change)
   React.useEffect(() => {
-    if (draggedItemId) {
-      // Add dragging class to body to prevent scrolling
-      document.body.classList.add('dragging-active');
+    if (!draggedItemId) return;
 
-      const handlePointerMove = (e: MouseEvent | TouchEvent) => handleGlobalPointerMove(e);
-      const handlePointerUp = (e: MouseEvent | TouchEvent) => handleGlobalPointerUp(e);
+    console.log(`[GlobalListeners] ATTACHING global listeners - draggedItemId=${draggedItemId}`);
+    // Add dragging class to body to prevent scrolling
+    document.body.classList.add('dragging-active');
+
+    // Wrapper functions that call refs - allows callbacks to update without re-attaching listeners
+    const handlePointerMove = (e: MouseEvent | TouchEvent) => handleGlobalPointerMoveRef.current(e);
+    const handlePointerUp = (e: MouseEvent | TouchEvent) => handleGlobalPointerUpRef.current(e);
+
+    // Mouse events
+    document.addEventListener('mousemove', handlePointerMove);
+    document.addEventListener('mouseup', handlePointerUp);
+
+    // Touch events with passive: false to allow preventDefault
+    document.addEventListener('touchmove', handlePointerMove, {
+      passive: false,
+      capture: true, // Use capture phase for better event control
+    });
+    document.addEventListener('touchend', handlePointerUp, {
+      passive: false,
+      capture: true,
+    });
+
+    return () => {
+      console.log(
+        `[GlobalListeners] REMOVING global listeners - draggedItemId was ${draggedItemId}`
+      );
+      // Remove dragging class from body
+      document.body.classList.remove('dragging-active');
 
       // Mouse events
-      document.addEventListener('mousemove', handlePointerMove);
-      document.addEventListener('mouseup', handlePointerUp);
+      document.removeEventListener('mousemove', handlePointerMove);
+      document.removeEventListener('mouseup', handlePointerUp);
 
-      // Touch events with passive: false to allow preventDefault
-      document.addEventListener('touchmove', handlePointerMove, {
-        passive: false,
-        capture: true, // Use capture phase for better event control
-      });
-      document.addEventListener('touchend', handlePointerUp, {
-        passive: false,
+      // Touch events (must match the options used when adding)
+      document.removeEventListener('touchmove', handlePointerMove, {
         capture: true,
-      });
-
-      return () => {
-        // Remove dragging class from body
-        document.body.classList.remove('dragging-active');
-
-        // Mouse events
-        document.removeEventListener('mousemove', handlePointerMove);
-        document.removeEventListener('mouseup', handlePointerUp);
-
-        // Touch events (must match the options used when adding)
-        document.removeEventListener('touchmove', handlePointerMove, {
-          capture: true,
-        } as EventListenerOptions);
-        document.removeEventListener('touchend', handlePointerUp, {
-          capture: true,
-        } as EventListenerOptions);
-      };
-    }
-  }, [draggedItemId, handleGlobalPointerMove, handleGlobalPointerUp]);
+      } as EventListenerOptions);
+      document.removeEventListener('touchend', handlePointerUp, {
+        capture: true,
+      } as EventListenerOptions);
+    };
+  }, [draggedItemId]);
 
   const getCellData = useCallback(
     (x: number, y: number): GridCellData | null => {
@@ -646,10 +845,13 @@ function GridProvider({
       cellSize,
       spacing,
       disabled,
+      dragMode,
       dragPreview,
       draggedItemId,
       grabOffset,
       currentHoveredCell,
+      tapDragActiveItemId,
+      tapDragOriginalPosition,
       setItems,
       addItem,
       removeItem,
@@ -661,6 +863,10 @@ function GridProvider({
       setInitialPointerPosition,
       isPositionValid,
       getCellData,
+      activateTapDrag,
+      deactivateTapDrag,
+      placeTapDragItem,
+      shouldAutoComplete: shouldAutoComplete || null,
     }),
     [
       gridId,
@@ -670,10 +876,13 @@ function GridProvider({
       cellSize,
       spacing,
       disabled,
+      dragMode,
       dragPreview,
       draggedItemId,
       grabOffset,
       currentHoveredCell,
+      tapDragActiveItemId,
+      tapDragOriginalPosition,
       addItem,
       removeItem,
       moveItem,
@@ -684,6 +893,10 @@ function GridProvider({
       setInitialPointerPosition,
       isPositionValid,
       getCellData,
+      activateTapDrag,
+      deactivateTapDrag,
+      placeTapDragItem,
+      shouldAutoComplete,
     ]
   );
 
@@ -713,6 +926,7 @@ const GridCell = React.memo(({ x, y, className = '', style }: GridCellProps) => 
       top: y * (cellSize.height + spacing),
       width: cellSize.width,
       height: cellSize.height,
+      touchAction: 'auto', // Allow scrolling on background cells
       ...style, // Apply custom styles
     }),
     [x, y, cellSize, spacing, style]
@@ -793,11 +1007,23 @@ type DraggableItemProps = {
 
 const DraggableItemComponent = React.memo(
   ({ item, onDragStart, onDragEnd, className = '', defaultClassName }: DraggableItemProps) => {
-    const { cellSize, spacing, disabled: gridDisabled, setInitialPointerPosition } = useGrid();
+    const {
+      cellSize,
+      spacing,
+      disabled: gridDisabled,
+      setInitialPointerPosition,
+      dragMode,
+      tapDragActiveItemId,
+      activateTapDrag,
+      placeTapDragItem,
+    } = useGrid();
     const isDisabled = (item.disabled ?? false) || gridDisabled;
     const [isDragging, setIsDragging] = useState(false);
     const [cursorType, setCursorType] = useState<'default' | 'move' | 'not-allowed'>('default');
     const itemRef = React.useRef<HTMLDivElement>(null);
+
+    // Check if this item is the one being tap-dragged
+    const isTapDragActive = tapDragActiveItemId === item.id;
 
     const boundingBox = useMemo(() => getItemBoundingBox(item), [item]);
 
@@ -853,12 +1079,28 @@ const DraggableItemComponent = React.memo(
 
     const handlePointerDown = useCallback(
       (e: React.MouseEvent | React.TouchEvent) => {
+        console.log(
+          `[PointerDown] item=${item.id}, type=${e.type}, disabled=${isDisabled}, dragMode=${dragMode}, tapDragActiveItemId=${tapDragActiveItemId}, isTapDragActive=${isTapDragActive}`
+        );
+
         // Prevent dragging if the piece is disabled
         if (isDisabled) {
+          console.log(`[PointerDown] EARLY RETURN: piece is disabled`);
+          return;
+        }
+
+        // In tap-to-drag mode, allow clicks on other pieces to pass through to handleClick
+        // Don't call preventDefault() - allow scrolling on non-active pieces
+        if (dragMode === 'tap-to-drag' && tapDragActiveItemId && !isTapDragActive) {
+          // Another piece is in tap-drag mode, let handleClick handle switching pieces
+          console.log(
+            `[PointerDown] Another piece is active - letting handleClick handle piece switching`
+          );
           return;
         }
 
         const coords = getEventCoordinates(e);
+        console.log(`[PointerDown] coords: clientX=${coords.clientX}, clientY=${coords.clientY}`);
 
         // Calculate which cell within the bounding box was clicked
         let clickedGridX = 0;
@@ -872,21 +1114,57 @@ const DraggableItemComponent = React.memo(
           clickedGridX = Math.floor(relativeX / (cellSize.width + spacing));
           clickedGridY = Math.floor(relativeY / (cellSize.height + spacing));
         }
+        console.log(`[PointerDown] clickedGrid: x=${clickedGridX}, y=${clickedGridY}`);
 
         // Check if the clicked position corresponds to an occupied cell in the shape
         const isOccupiedCell = item.shape.cells.some(
           (cell) => cell.x === clickedGridX && cell.y === clickedGridY
         );
+        console.log(`[PointerDown] isOccupiedCell=${isOccupiedCell}`);
 
         // Only allow dragging if clicking on an occupied cell
         if (!isOccupiedCell) {
           // For empty spaces (dead areas), allow the event to bubble naturally
           // This enables scrolling when touching dead areas of pieces
           // We don't call preventDefault() here so the browser can handle scrolling
+          console.log(`[PointerDown] EARLY RETURN: not an occupied cell, allowing scroll`);
           return;
         }
 
+        // In tap-to-drag mode, first tap activates drag mode
+        if (dragMode === 'tap-to-drag') {
+          // If this item is already in tap-drag mode, start actual dragging
+          if (isTapDragActive) {
+            // Prevent default for touch/mouse events to stop scrolling when dragging
+            console.log(
+              `[PointerDown] Active piece tapped again - starting drag, calling preventDefault()`
+            );
+            e.preventDefault();
+
+            // Calculate grab offset - where on the piece the user clicked/touched
+            const grabOffset: GridPosition = {
+              x: clickedGridX,
+              y: clickedGridY,
+            };
+
+            // Set initial pointer position for immediate auto-scroll support
+            setInitialPointerPosition(coords);
+
+            onDragStart?.(item, grabOffset);
+          } else {
+            // First touch on non-active piece - do nothing here
+            // Let the browser handle touch naturally (allows scrolling)
+            // Tap activation is handled by onClick instead
+            console.log(
+              `[PointerDown] Non-active piece touched - doing nothing, letting browser handle scroll. onClick will handle tap.`
+            );
+          }
+          return;
+        }
+
+        // Hold-to-drag mode: immediate drag start
         // Prevent default for touch/mouse events to stop scrolling when dragging from an occupied cell
+        console.log(`[PointerDown] Hold-to-drag mode - starting drag, calling preventDefault()`);
         e.preventDefault();
 
         // Calculate grab offset - where on the piece the user clicked/touched
@@ -908,11 +1186,17 @@ const DraggableItemComponent = React.memo(
         getEventCoordinates,
         isDisabled,
         setInitialPointerPosition,
+        dragMode,
+        tapDragActiveItemId,
+        isTapDragActive,
       ]
     );
 
     const handlePointerUp = useCallback(
       (e: React.MouseEvent | React.TouchEvent) => {
+        console.log(
+          `[PointerUp] item=${item.id}, type=${e.type}, isTapDragActive=${isTapDragActive}`
+        );
         // Always handle the pointer up locally for visual feedback
         setIsDragging(false);
         onDragEnd?.(item);
@@ -941,6 +1225,75 @@ const DraggableItemComponent = React.memo(
       }
     }, [isDragging, isDisabled]);
 
+    // Handle click/tap to activate drag mode for non-active pieces
+    // Using onClick because the browser only fires click for taps, not scroll gestures
+    const handleClick = useCallback(
+      (e: React.MouseEvent) => {
+        console.log(
+          `[Click] item=${item.id}, disabled=${isDisabled}, dragMode=${dragMode}, isTapDragActive=${isTapDragActive}, tapDragActiveItemId=${tapDragActiveItemId}`
+        );
+        console.log(
+          `[Click] touchAction on this item would be: ${isTapDragActive ? 'none' : 'auto'}`
+        );
+
+        // Only handle clicks in tap-to-drag mode
+        if (dragMode !== 'tap-to-drag' || isDisabled) {
+          console.log(`[Click] Ignoring - not tap-to-drag mode or disabled`);
+          return;
+        }
+
+        // Calculate which cell was clicked
+        let clickedGridX = 0;
+        let clickedGridY = 0;
+        if (itemRef.current) {
+          const rect = itemRef.current.getBoundingClientRect();
+          const relativeX = e.clientX - rect.left;
+          const relativeY = e.clientY - rect.top;
+          clickedGridX = Math.floor(relativeX / (cellSize.width + spacing));
+          clickedGridY = Math.floor(relativeY / (cellSize.height + spacing));
+        }
+
+        // Check if clicked on an occupied cell
+        const isOccupiedCell = item.shape.cells.some(
+          (cell) => cell.x === clickedGridX && cell.y === clickedGridY
+        );
+
+        if (!isOccupiedCell) {
+          console.log(`[Click] Ignoring - not an occupied cell`);
+          return;
+        }
+
+        // If this piece is already active, do nothing (keep it in drag mode)
+        // User must click elsewhere (empty space) or the Place button to confirm placement
+        if (isTapDragActive) {
+          console.log(`[Click] Ignoring - piece is already active, click elsewhere to place`);
+          return;
+        }
+
+        // If another piece is active, place it first then activate this one
+        if (tapDragActiveItemId) {
+          console.log(`[Click] Placing current piece and activating item=${item.id}`);
+          placeTapDragItem();
+          activateTapDrag(item.id);
+          return;
+        }
+
+        console.log(`[Click] Activating drag mode for item=${item.id}`);
+        activateTapDrag(item.id);
+      },
+      [
+        item,
+        isDisabled,
+        dragMode,
+        isTapDragActive,
+        tapDragActiveItemId,
+        cellSize,
+        spacing,
+        activateTapDrag,
+        placeTapDragItem,
+      ]
+    );
+
     const itemStyle = useMemo(
       () => ({
         position: 'absolute' as const,
@@ -948,9 +1301,9 @@ const DraggableItemComponent = React.memo(
         top: item.position.y * (cellSize.height + spacing),
         width: boundingBox.width * cellSize.width + (boundingBox.width - 1) * spacing,
         height: boundingBox.height * cellSize.height + (boundingBox.height - 1) * spacing,
-        zIndex: isDragging ? 1000 : 1,
+        zIndex: isDragging || isTapDragActive ? 1000 : 1,
       }),
-      [item.position, boundingBox, cellSize, spacing, isDragging]
+      [item.position, boundingBox, cellSize, spacing, isDragging, isTapDragActive]
     );
 
     // Render individual cells for the shape
@@ -960,14 +1313,34 @@ const DraggableItemComponent = React.memo(
       const shouldDistributeLetters =
         contentString.length > 1 && item.shape.cells.length === contentString.length;
 
+      // Calculate half spacing for hit area extension
+      const halfSpacing = spacing / 2;
+
       return item.shape.cells.map((cell, index) => {
-        const cellStyle = {
+        // Hit area style - extends into spacing to cover gaps between cells
+        const hitAreaStyle: React.CSSProperties = {
           position: 'absolute' as const,
-          left: cell.x * (cellSize.width + spacing),
-          top: cell.y * (cellSize.height + spacing),
+          // Position offset by half spacing to extend hit area
+          left: cell.x * (cellSize.width + spacing) - halfSpacing,
+          top: cell.y * (cellSize.height + spacing) - halfSpacing,
+          // Size includes the spacing
+          width: cellSize.width + spacing,
+          height: cellSize.height + spacing,
+          zIndex: isDragging || isTapDragActive ? 1001 : 2,
+          // Block touch scrolling on letter cells in hold-to-drag mode or when piece is active
+          touchAction: dragMode === 'hold-to-drag' || isTapDragActive ? 'none' : 'auto',
+          pointerEvents: 'auto', // Hit area captures events
+          cursor: isDisabled ? 'default' : 'pointer',
+        };
+
+        // Visual cell style - the actual displayed cell
+        const cellStyle: React.CSSProperties = {
+          position: 'absolute' as const,
+          left: halfSpacing,
+          top: halfSpacing,
           width: cellSize.width,
           height: cellSize.height,
-          zIndex: isDragging ? 1001 : 2,
+          pointerEvents: 'none', // Visual cell doesn't need to capture events
           ...item.style, // Apply custom styles
         };
 
@@ -980,26 +1353,29 @@ const DraggableItemComponent = React.memo(
         }
 
         return (
-          <div
-            key={`cell-${index}`}
-            className={cn(
-              'border border-border dark:border-transparent flex justify-center items-center overflow-y-hidden',
-              isDragging ? 'opacity-70' : 'opacity-100',
-              item.className || defaultClassName || ''
-            )}
-            style={cellStyle}
-          >
-            {cellContent && (
-              <div
-                className={cn(
-                  'p-1 text-xs font-semibold text-center text-primary-foreground',
-                  // Apply text-related classes from item.className to the text element
-                  item.className
-                )}
-              >
-                {cellContent}
-              </div>
-            )}
+          <div key={`cell-${index}`} style={hitAreaStyle}>
+            <div
+              className={cn(
+                'flex justify-center items-center overflow-y-hidden',
+                'border border-border dark:border-transparent',
+                // Hide piece when actively dragging in tap-drag mode
+                isDragging && isTapDragActive ? 'opacity-0' : 'opacity-100',
+                item.className || defaultClassName || ''
+              )}
+              style={cellStyle}
+            >
+              {cellContent && (
+                <div
+                  className={cn(
+                    'p-1 text-xs font-semibold text-center text-primary-foreground pointer-events-none',
+                    // Apply text-related classes from item.className to the text element
+                    item.className
+                  )}
+                >
+                  {cellContent}
+                </div>
+              )}
+            </div>
           </div>
         );
       });
@@ -1011,19 +1387,43 @@ const DraggableItemComponent = React.memo(
       cellSize,
       spacing,
       isDragging,
+      isTapDragActive,
+      isDisabled,
       defaultClassName,
+      dragMode,
     ]);
+
+    // Determine touch action based on drag mode
+    // - Hold-to-drag mode: always use 'none' to prevent scroll interference
+    // - Tap-to-drag mode: allow scrolling on non-active pieces, block on active piece
+    const getTouchAction = () => {
+      let result: string;
+      if (dragMode === 'hold-to-drag') {
+        result = 'none'; // Prevent all touch scrolling in hold-to-drag mode
+      } else if (isTapDragActive) {
+        result = 'none'; // Active piece blocks scrolling
+      } else {
+        result = 'auto'; // Non-active pieces allow scrolling
+      }
+      // Only log when this is relevant (piece is being rendered)
+      return result;
+    };
 
     return (
       <div
         ref={itemRef}
         id={item.id}
-        className={cn('transition-all select-none', className)}
+        className={cn(
+          'transition-all select-none',
+          // Add scale effect when tap-drag is active
+          isTapDragActive && 'scale-105',
+          className
+        )}
         style={{
           ...itemStyle,
           cursor: cursorType,
-          touchAction: 'manipulation', // Allow scrolling on dead areas, prevent double-tap zoom
-          pointerEvents: 'auto', // Ensure draggable items are always interactive
+          touchAction: getTouchAction(),
+          pointerEvents: 'none', // Wrapper doesn't capture events - only cells do (fixes dead space blocking)
           userSelect: 'none', // Prevent text selection
           WebkitUserSelect: 'none', // Prevent text selection on Safari
           WebkitTouchCallout: 'none', // Disable callout on iOS Safari
@@ -1035,7 +1435,9 @@ const DraggableItemComponent = React.memo(
         onTouchEnd={handlePointerUp}
         onMouseMove={handleMouseMove}
         onMouseLeave={handleMouseLeave}
+        onClick={handleClick}
         data-testid={`draggable-item-${item.id}`}
+        data-tap-drag-active={isTapDragActive}
       >
         {shapeCells}
       </div>
@@ -1045,7 +1447,7 @@ const DraggableItemComponent = React.memo(
 
 DraggableItemComponent.displayName = 'DraggableItem';
 
-// Drag Preview Component - shows semi-transparent preview of shape
+// Drag Preview Component - shows preview of shape at drop location
 const DragPreviewComponent = React.memo(
   ({
     item,
@@ -1092,7 +1494,7 @@ const DragPreviewComponent = React.memo(
         : undefined;
 
       return item.shape.cells.map((cell, index) => {
-        const cellStyle = {
+        const cellStyle: React.CSSProperties = {
           position: 'absolute' as const,
           left: cell.x * (cellSize.width + spacing),
           top: cell.y * (cellSize.height + spacing),
@@ -1100,6 +1502,7 @@ const DragPreviewComponent = React.memo(
           height: cellSize.height,
           zIndex: 1000,
           ...item.style, // Apply custom styles
+          opacity: 1, // Always full opacity for preview
         };
 
         // Get the letter for this cell
@@ -1114,35 +1517,17 @@ const DragPreviewComponent = React.memo(
           <div
             key={`preview-cell-${index}`}
             className={cn(
-              'border-2 border-dashed dark:border-transparent flex justify-center items-center',
+              'flex justify-center items-center',
+              'border border-border dark:border-transparent',
               item.className || defaultClassName || '',
               customDraggingClassName || '' // Add custom dragging class
             )}
-            style={{
-              ...cellStyle,
-              // Only apply default styling if no custom class is provided
-              ...(customDraggingClassName
-                ? {}
-                : {
-                    backgroundColor: isValid
-                      ? 'hsl(var(--primary) / 0.3)' // Semi-transparent primary for valid
-                      : 'hsl(var(--destructive) / 0.3)', // Semi-transparent destructive for invalid
-                    borderColor: isValid
-                      ? 'hsl(var(--primary) / 0.6)' // Primary border for valid
-                      : 'hsl(var(--destructive) / 0.6)', // Destructive border for invalid
-                  }),
-            }}
+            style={cellStyle}
           >
             {cellContent && (
               <div
                 className={cn(
-                  'p-1 text-xs font-semibold text-center',
-                  // Only apply default text color if no custom class is provided
-                  customDraggingClassName
-                    ? ''
-                    : isValid
-                      ? 'text-primary-foreground'
-                      : 'text-destructive-foreground',
+                  'p-1 text-xs font-semibold text-center text-primary-foreground',
                   // Apply text-related classes from item.className to the text element
                   item.className
                     ?.split(' ')
@@ -1180,7 +1565,7 @@ const ScrollZoneIndicator = React.memo(
         className={cn(
           'fixed left-0 right-0 pointer-events-none z-[9999]',
           'flex items-center justify-center',
-          'bg-black border-white/30',
+          'bg-black/0 border-white/0',
           'transition-all duration-200 ease-out overflow-hidden',
           position === 'top' ? 'top-0 border-b origin-top' : 'bottom-0 border-t origin-bottom'
         )}
@@ -1190,9 +1575,8 @@ const ScrollZoneIndicator = React.memo(
       >
         <span
           className={cn(
-            'text-white/50 text-sm font-medium tracking-wide',
-            'transition-opacity duration-150 delay-75',
-            isVisible ? 'opacity-100' : 'opacity-0'
+            'text-sm font-medium tracking-wide text-white/50',
+            'opacity-0 transition-opacity duration-150 delay-75'
           )}
         >
           Drag Here to Scroll
@@ -1210,10 +1594,10 @@ const PiecesBelowIndicator = React.memo(
     return (
       <div
         className={cn(
-          'fixed left-0 right-0 bottom-0 z-[9998]',
-          'flex items-center justify-center',
-          'bg-black/80 border-t border-white/30',
-          'transition-all duration-200 ease-out overflow-hidden cursor-pointer',
+          'fixed right-0 bottom-0 left-0 z-[9998]',
+          'flex justify-center items-center',
+          'border-t bg-black/80 border-white/30',
+          'overflow-hidden transition-all duration-200 ease-out cursor-pointer',
           'hover:bg-black/90'
         )}
         style={{
@@ -1224,7 +1608,7 @@ const PiecesBelowIndicator = React.memo(
       >
         <span
           className={cn(
-            'text-white/70 text-sm font-medium tracking-wide flex items-center gap-2',
+            'flex gap-2 items-center text-sm font-medium tracking-wide text-white/70',
             'transition-opacity duration-150 delay-75',
             isVisible ? 'opacity-100' : 'opacity-0'
           )}
@@ -1264,6 +1648,79 @@ const PiecesBelowIndicator = React.memo(
 
 PiecesBelowIndicator.displayName = 'PiecesBelowIndicator';
 
+// Tap-to-Drag Mode Banner - shows at bottom when in tap-drag mode
+const TapDragBanner = React.memo(
+  ({ isVisible, onPlace }: { isVisible: boolean; onPlace: () => void }) => {
+    return (
+      <div
+        className={cn(
+          'fixed right-0 bottom-0 left-0 z-[9998]',
+          'flex flex-col',
+          'backdrop-blur-sm bg-muted/95',
+          'overflow-hidden transition-all duration-300 ease-out'
+        )}
+        style={{
+          height: isVisible ? 'calc(60px + env(safe-area-inset-bottom, 0px))' : '0',
+          paddingBottom: isVisible ? 'env(safe-area-inset-bottom, 0px)' : '0',
+          pointerEvents: isVisible ? 'auto' : 'none',
+        }}
+      >
+        {/* Main banner content */}
+        <div
+          className={cn(
+            'flex flex-1 justify-between items-center px-4',
+            'transition-opacity duration-200 delay-100',
+            isVisible ? 'opacity-100' : 'opacity-0'
+          )}
+        >
+          <div className="flex flex-col">
+            <span className="text-sm font-bold text-foreground">Drag Mode</span>
+            <span className="text-xs text-muted-foreground">
+              Moves don&apos;t count until you place it
+            </span>
+          </div>
+          <button
+            onClick={onPlace}
+            className={cn(
+              'px-4 py-2 font-bold rounded-md bg-foreground text-background',
+              'transition-all duration-150',
+              'hover:bg-foreground/90 active:scale-95',
+              isVisible ? 'opacity-100' : 'opacity-0'
+            )}
+          >
+            Place
+          </button>
+        </div>
+      </div>
+    );
+  }
+);
+
+TapDragBanner.displayName = 'TapDragBanner';
+
+// Tap Hint Pill - shows when no piece is active to guide the user
+const TapHintPill = React.memo(({ isVisible }: { isVisible: boolean }) => {
+  return (
+    <div
+      className={cn(
+        'fixed left-1/2 -translate-x-1/2 z-[9999]',
+        'px-4 py-2 rounded-md',
+        'border backdrop-blur-sm bg-muted/90 border-border',
+        'text-sm font-medium text-muted-foreground',
+        'transition-all duration-300 ease-out',
+        isVisible ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-4 pointer-events-none'
+      )}
+      style={{
+        bottom: '4rem',
+      }}
+    >
+      Tap a piece to drag it
+    </div>
+  );
+});
+
+TapHintPill.displayName = 'TapHintPill';
+
 // Main Grid component
 type GridProps = {
   gridSize: GridSize;
@@ -1276,12 +1733,20 @@ type GridProps = {
   className?: string;
   children?: ReactNode;
   disabled?: boolean; // Whether all pieces are disabled and cannot be moved
+  dragMode?: DragMode; // 'tap-to-drag' (default) or 'hold-to-drag'
   getBoardTileStyle?: (x: number, y: number) => React.CSSProperties | undefined;
   getBoardTileClassName?: (x: number, y: number) => string | undefined;
   getTileDraggingClassName?: (piece: DraggableItem, valid: boolean) => string | undefined;
   // Default classes that can be completely overridden
   defaultBoardTileClassName?: string;
   defaultItemClassName?: string;
+  // Optional callback to check if placing a piece would complete the puzzle
+  // If provided and returns true during drag, the piece will be auto-placed
+  shouldAutoComplete?: (previewLayout: (string | null)[][]) => boolean;
+  // Optional callback when drag state changes (piece selected/deselected in tap-to-drag mode)
+  onDragStateChange?: (isActive: boolean) => void;
+  // Hide the "Tap a piece to drag it" hint pill
+  hideHintPill?: boolean;
 };
 
 function Grid({
@@ -1295,11 +1760,15 @@ function Grid({
   className = '',
   children,
   disabled = false,
+  dragMode = 'tap-to-drag',
   getBoardTileStyle,
   getBoardTileClassName,
   getTileDraggingClassName,
   defaultBoardTileClassName,
   defaultItemClassName,
+  shouldAutoComplete,
+  onDragStateChange,
+  hideHintPill = false,
 }: GridProps) {
   return (
     <GridProvider
@@ -1308,6 +1777,9 @@ function Grid({
       initialItems={initialItems}
       onLayoutChange={onLayoutChange}
       disabled={disabled}
+      dragMode={dragMode}
+      shouldAutoComplete={shouldAutoComplete}
+      onDragStateChange={onDragStateChange}
     >
       <GridContent
         className={className}
@@ -1316,6 +1788,7 @@ function Grid({
         getTileDraggingClassName={getTileDraggingClassName}
         defaultBoardTileClassName={defaultBoardTileClassName}
         defaultItemClassName={defaultItemClassName}
+        hideHintPill={hideHintPill}
       >
         {children}
       </GridContent>
@@ -1332,6 +1805,7 @@ function GridContent({
   getTileDraggingClassName,
   defaultBoardTileClassName,
   defaultItemClassName,
+  hideHintPill = false,
 }: {
   className: string;
   children: ReactNode;
@@ -1340,18 +1814,23 @@ function GridContent({
   getTileDraggingClassName?: (piece: DraggableItem, valid: boolean) => string | undefined;
   defaultBoardTileClassName?: string;
   defaultItemClassName?: string;
+  hideHintPill?: boolean;
 }) {
   const {
     items,
     gridSize,
     cellSize,
     spacing,
+    disabled,
     dragPreview,
     draggedItemId,
+    dragMode,
     setDragPreview,
     setDraggedItemId,
     setGrabOffset,
     setGridBounds,
+    tapDragActiveItemId,
+    placeTapDragItem,
   } = useGrid();
 
   const gridRef = React.useRef<HTMLDivElement>(null);
@@ -1359,6 +1838,16 @@ function GridContent({
   // Track scroll position to hide indicators when at top/bottom
   const [canScrollUp, setCanScrollUp] = useState(false);
   const [canScrollDown, setCanScrollDown] = useState(true);
+
+  // Track if user has ever tapped a piece (to hide hint pill permanently)
+  const [hasEverTappedPiece, setHasEverTappedPiece] = useState(false);
+
+  // Set hasEverTappedPiece when a piece is first activated
+  React.useEffect(() => {
+    if (tapDragActiveItemId && !hasEverTappedPiece) {
+      setHasEverTappedPiece(true);
+    }
+  }, [tapDragActiveItemId, hasEverTappedPiece]);
 
   // Track if pieces are below the viewport (80%+ hidden)
   const [hasPiecesBelow, setHasPiecesBelow] = useState(false);
@@ -1514,17 +2003,85 @@ function GridContent({
   return (
     <>
       {/* Scroll zone indicators - animate in/out when dragging, hide when at scroll limits */}
-      <ScrollZoneIndicator position="top" isVisible={!!draggedItemId && canScrollUp} />
-      <ScrollZoneIndicator position="bottom" isVisible={!!draggedItemId && canScrollDown} />
+      {/* Scroll zone indicators - show when piece is active in drag mode or actively dragging */}
+      <ScrollZoneIndicator
+        position="top"
+        isVisible={(!!draggedItemId || !!tapDragActiveItemId) && canScrollUp}
+      />
+      <ScrollZoneIndicator
+        position="bottom"
+        isVisible={(!!draggedItemId || !!tapDragActiveItemId) && canScrollDown}
+      />
 
-      {/* Pieces below indicator - shows when pieces are 80%+ below viewport, hidden during drag */}
+      {/* Pieces below indicator - shows when pieces are 80%+ below viewport, hidden during drag and tap-drag */}
       <PiecesBelowIndicator
-        isVisible={hasPiecesBelow && !draggedItemId}
+        isVisible={hasPiecesBelow && !draggedItemId && !tapDragActiveItemId}
         onClick={scrollToLowestPiece}
       />
 
+      {/* Tap-to-Drag banner - shows when in tap-drag mode */}
+      <TapDragBanner isVisible={!!tapDragActiveItemId} onPlace={placeTapDragItem} />
+
+      {/* Tap hint pill - shows when in tap-to-drag mode and no piece is active, hides after first tap or when disabled */}
+      <TapHintPill
+        isVisible={
+          !disabled &&
+          !hideHintPill &&
+          !hasEverTappedPiece &&
+          dragMode === 'tap-to-drag' &&
+          !tapDragActiveItemId &&
+          !draggedItemId
+        }
+      />
+
       <div className={cn('inline-block', className)}>
-        <div ref={gridRef} style={{ ...gridStyle, pointerEvents: dragPreview ? 'none' : 'auto' }}>
+        <div
+          ref={gridRef}
+          style={{
+            ...gridStyle,
+            pointerEvents: dragPreview ? 'none' : 'auto',
+            // Allow scrolling on the grid - only the active piece blocks touch scrolling
+            touchAction: 'auto',
+          }}
+          onTouchStart={(e) => {
+            console.log(
+              `[GridContainer TouchStart] target=${(e.target as HTMLElement).className}, tapDragActiveItemId=${tapDragActiveItemId}, draggedItemId=${draggedItemId}`
+            );
+          }}
+          onTouchMove={(e) => {
+            console.log(
+              `[GridContainer TouchMove] touches=${e.touches.length}, tapDragActiveItemId=${tapDragActiveItemId}`
+            );
+          }}
+          onClick={(e) => {
+            // If there's an active tap-drag piece, clicking on empty space (not a piece) should place it
+            if (!tapDragActiveItemId) return;
+
+            // Check if the click was on a draggable item (piece)
+            // We traverse up the DOM to see if any parent has the draggable-item data attribute
+            let target = e.target as HTMLElement | null;
+            while (target && target !== gridRef.current) {
+              if (target.dataset?.testid?.startsWith('draggable-item-')) {
+                // Click was on a piece - let the piece's click handler deal with it
+                return;
+              }
+              target = target.parentElement;
+            }
+
+            // Click was on empty space (grid background/cell), place the piece
+            console.log(`[GridContainer Click] Placing piece - clicked on empty space`);
+            placeTapDragItem();
+          }}
+        >
+          {/* Opacity overlay for drag mode - always rendered for smooth transitions */}
+          <div
+            className={cn(
+              'absolute inset-0 pointer-events-none bg-background/50 z-[500]',
+              'transition-opacity duration-200 ease-out',
+              tapDragActiveItemId ? 'opacity-100' : 'opacity-0'
+            )}
+          />
+
           {/* Grid cells as drop zones */}
           {gridCells}
 
@@ -1561,3 +2118,4 @@ function GridContent({
 }
 
 export { Grid };
+export type { DragMode } from '../../hooks/useDragMode';

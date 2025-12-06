@@ -1,5 +1,5 @@
 import { getRedisClient } from '../lib/redis-provider';
-import type { User } from '../../shared/types/api';
+import type { User, UserPreferences } from '../../shared/types/api';
 import { RedisKeys, serialize, deserialize } from '../../shared/types/redis';
 
 const convertUser = (data: {
@@ -197,5 +197,65 @@ export const createOrUpdateUser = async (
     return createUser(userData);
   } catch (error) {
     return createUser(userData);
+  }
+};
+
+// Default preferences for new users
+const DEFAULT_PREFERENCES: UserPreferences = {
+  tutorialCompleted: false,
+};
+
+/**
+ * Get user preferences by user ID
+ */
+export const getUserPreferences = async (userId: string): Promise<UserPreferences> => {
+  try {
+    const redis = await getRedisClient();
+    const prefsData = await redis.get(RedisKeys.user.preferences(userId));
+
+    if (!prefsData) {
+      return DEFAULT_PREFERENCES;
+    }
+
+    const prefs = deserialize<UserPreferences>(prefsData);
+    if (!prefs) {
+      return DEFAULT_PREFERENCES;
+    }
+
+    return prefs;
+  } catch (error) {
+    console.error('Failed to get user preferences:', { error, userId });
+    return DEFAULT_PREFERENCES;
+  }
+};
+
+/**
+ * Update user preferences (partial update supported)
+ */
+export const updateUserPreferences = async (
+  userId: string,
+  updates: Partial<UserPreferences>
+): Promise<UserPreferences> => {
+  try {
+    const redis = await getRedisClient();
+
+    // Get existing preferences
+    const existingPrefs = await getUserPreferences(userId);
+
+    // Merge with updates
+    const updatedPrefs: UserPreferences = {
+      ...existingPrefs,
+      ...updates,
+    };
+
+    // Save to Redis
+    await redis.set(RedisKeys.user.preferences(userId), serialize(updatedPrefs));
+
+    console.log('Updated user preferences:', { userId, updates });
+
+    return updatedPrefs;
+  } catch (error) {
+    console.error('Failed to update user preferences:', { error, userId });
+    throw error;
   }
 };
