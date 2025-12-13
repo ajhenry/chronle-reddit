@@ -53,7 +53,19 @@ const letteredSessionPayloadSchema = z.object({
   timestamp: z.number().positive(),
 });
 
+// Generate a unique signature for a piece based on its letters and shape
+// Pieces with the same signature are interchangeable
+const getPieceSignature = (piece: LetterPiece): string => {
+  const letters = piece.letters.join('');
+  const shapeStr = piece.shape
+    .map((pos) => `${pos.row},${pos.col}`)
+    .sort()
+    .join(';');
+  return `${letters}:${shapeStr}`;
+};
+
 // Check if player has won by comparing placed pieces with the solution
+// Handles identical pieces that can be validly swapped
 const checkPlayerHasWon = (
   placedPieces: Record<string, GridPosition>,
   gameGrid: GridCell[][],
@@ -80,24 +92,52 @@ const checkPlayerHasWon = (
     return false;
   }
 
-  // Check if each piece is in the correct position
-  for (const [pieceId, placedPosition] of mainBoardPieces) {
-    const solutionPosition = solution[pieceId];
-    if (!solutionPosition) {
-      console.log('Board validation: No solution position for piece', { pieceId });
+  // Group pieces by their signature (identical pieces can be swapped)
+  const piecesBySignature = new Map<string, LetterPiece[]>();
+  for (const piece of pieces) {
+    const signature = getPieceSignature(piece);
+    const group = piecesBySignature.get(signature) || [];
+    group.push(piece);
+    piecesBySignature.set(signature, group);
+  }
+
+  // For each group of identical pieces, check if placed positions match solution positions
+  for (const [signature, groupPieces] of piecesBySignature) {
+    // Get the solution positions for all pieces in this group
+    const solutionPositions = groupPieces.map((piece) => {
+      const pos = solution[piece.id];
+      return pos ? `${pos.row},${pos.col}` : null;
+    }).filter(Boolean).sort();
+
+    // Get the placed positions for all pieces in this group
+    const placedPositions = groupPieces.map((piece) => {
+      const pos = placedPieces[piece.id];
+      // Only count positions within the main grid
+      if (pos && pos.row < mainGridHeight && pos.col < mainGridWidth) {
+        return `${pos.row},${pos.col}`;
+      }
+      return null;
+    }).filter(Boolean).sort();
+
+    // Check if the sets of positions match (order doesn't matter for identical pieces)
+    if (solutionPositions.length !== placedPositions.length) {
+      console.log('Board validation: Position count mismatch for group', {
+        signature,
+        solutionCount: solutionPositions.length,
+        placedCount: placedPositions.length,
+      });
       return false;
     }
 
-    if (
-      placedPosition.row !== solutionPosition.row ||
-      placedPosition.col !== solutionPosition.col
-    ) {
-      console.log('Board validation: Piece in wrong position', {
-        pieceId,
-        placed: placedPosition,
-        solution: solutionPosition,
-      });
-      return false;
+    for (let i = 0; i < solutionPositions.length; i++) {
+      if (solutionPositions[i] !== placedPositions[i]) {
+        console.log('Board validation: Position mismatch for identical pieces', {
+          signature,
+          solutionPositions,
+          placedPositions,
+        });
+        return false;
+      }
     }
   }
 

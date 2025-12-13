@@ -545,7 +545,19 @@ export const LetteredPage = ({
     }
   }, [uiState.showGameOverModal, gameComplete, gameId, gameData?.postType, loadPostGameStats]);
 
+  // Generate a unique signature for a piece based on its letters and shape
+  // Pieces with the same signature are interchangeable
+  const getPieceSignature = useCallback((piece: LetterPiece): string => {
+    const letters = piece.letters.join('');
+    const shapeStr = piece.shape
+      .map((pos) => `${pos.row},${pos.col}`)
+      .sort()
+      .join(';');
+    return `${letters}:${shapeStr}`;
+  }, []);
+
   // Check if a given layout would complete the puzzle (for auto-complete during drag)
+  // Handles identical pieces that can be validly swapped
   const checkPuzzleComplete = useCallback(
     (layout: (string | null)[][]): boolean => {
       console.log(`[checkPuzzleComplete] START`);
@@ -619,28 +631,60 @@ export const LetteredPage = ({
         return false;
       }
 
-      // Each piece must be in its solution position
-      for (const [pieceId, placedPosition] of mainBoardPieces) {
-        const solutionPosition = gameData.solution[pieceId];
-        if (!solutionPosition) {
-          console.log(`[checkPuzzleComplete] No solution for piece ${pieceId}`);
+      // Group pieces by their signature (identical pieces can be swapped)
+      const piecesBySignature = new Map<string, LetterPiece[]>();
+      for (const piece of gameData.pieces) {
+        const signature = getPieceSignature(piece);
+        const group = piecesBySignature.get(signature) || [];
+        group.push(piece);
+        piecesBySignature.set(signature, group);
+      }
+
+      // For each group of identical pieces, check if placed positions match solution positions
+      for (const [signature, groupPieces] of piecesBySignature) {
+        // Get the solution positions for all pieces in this group
+        const solutionPositions = groupPieces
+          .map((piece) => {
+            const pos = gameData.solution[piece.id];
+            return pos ? `${pos.row},${pos.col}` : null;
+          })
+          .filter(Boolean)
+          .sort();
+
+        // Get the placed positions for all pieces in this group
+        const placedPositions = groupPieces
+          .map((piece) => {
+            const pos = piecesInLayout.get(piece.id);
+            // Only count positions within the main grid
+            if (pos && pos.row < mainGridHeight && pos.col < mainGridWidth) {
+              return `${pos.row},${pos.col}`;
+            }
+            return null;
+          })
+          .filter(Boolean)
+          .sort();
+
+        // Check if the sets of positions match (order doesn't matter for identical pieces)
+        if (solutionPositions.length !== placedPositions.length) {
+          console.log(`[checkPuzzleComplete] Position count mismatch for group ${signature}`);
           return false;
         }
-        if (
-          placedPosition.row !== solutionPosition.row ||
-          placedPosition.col !== solutionPosition.col
-        ) {
-          console.log(
-            `[checkPuzzleComplete] Piece ${pieceId} not in correct position: placed=(${placedPosition.row},${placedPosition.col}), solution=(${solutionPosition.row},${solutionPosition.col})`
-          );
-          return false;
+
+        for (let i = 0; i < solutionPositions.length; i++) {
+          if (solutionPositions[i] !== placedPositions[i]) {
+            console.log(
+              `[checkPuzzleComplete] Position mismatch for identical pieces: ${signature}`,
+              { solutionPositions, placedPositions }
+            );
+            return false;
+          }
         }
       }
 
       console.log(`[checkPuzzleComplete] All pieces correct! Returning true`);
       return true;
     },
-    [gameData, gameComplete]
+    [gameData, gameComplete, getPieceSignature]
   );
 
   // Handle layout changes from the grid

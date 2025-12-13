@@ -562,7 +562,19 @@ export class LetteredGameStateManager {
     }
   }
 
+  // Generate a unique signature for a piece based on its letters and shape
+  // Pieces with the same signature are interchangeable
+  private getPieceSignature(piece: LetterPiece): string {
+    const letters = piece.letters.join('');
+    const shapeStr = piece.shape
+      .map((pos) => `${pos.row},${pos.col}`)
+      .sort()
+      .join(';');
+    return `${letters}:${shapeStr}`;
+  }
+
   // Validate by comparing placed pieces with solution positions
+  // Handles identical pieces that can be validly swapped
   private async validateBoardAgainstPhrase(): Promise<boolean> {
     if (!this.state.gameData || !this.state.gameData.solution) {
       return false;
@@ -585,18 +597,48 @@ export class LetteredGameStateManager {
       return false;
     }
 
-    // Check if each piece is in the correct position
-    for (const [pieceId, placedPosition] of mainBoardPieces) {
-      const solutionPosition = solution[pieceId];
-      if (!solutionPosition) {
+    // Group pieces by their signature (identical pieces can be swapped)
+    const piecesBySignature = new Map<string, LetterPiece[]>();
+    for (const piece of this.state.gameData.pieces) {
+      const signature = this.getPieceSignature(piece);
+      const group = piecesBySignature.get(signature) || [];
+      group.push(piece);
+      piecesBySignature.set(signature, group);
+    }
+
+    // For each group of identical pieces, check if placed positions match solution positions
+    for (const [, groupPieces] of piecesBySignature) {
+      // Get the solution positions for all pieces in this group
+      const solutionPositions = groupPieces
+        .map((piece) => {
+          const pos = solution[piece.id];
+          return pos ? `${pos.row},${pos.col}` : null;
+        })
+        .filter((pos): pos is string => pos !== null)
+        .sort();
+
+      // Get the placed positions for all pieces in this group
+      const placedPositions = groupPieces
+        .map((piece) => {
+          const pos = this.state.placedPieces.get(piece.id);
+          // Only count positions within the main grid
+          if (pos && pos.row < mainGridHeight && pos.col < mainGridWidth) {
+            return `${pos.row},${pos.col}`;
+          }
+          return null;
+        })
+        .filter((pos): pos is string => pos !== null)
+        .sort();
+
+      // Check if the sets of positions match (order doesn't matter for identical pieces)
+      if (solutionPositions.length !== placedPositions.length) {
         return false;
       }
 
-      if (
-        placedPosition.row !== solutionPosition.row ||
-        placedPosition.col !== solutionPosition.col
-      ) {
-        return false;
+      for (let i = 0; i < solutionPositions.length; i++) {
+        if (solutionPositions[i] !== placedPositions[i]) {
+          return false;
+        }
       }
     }
 
