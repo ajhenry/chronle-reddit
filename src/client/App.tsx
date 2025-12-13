@@ -118,6 +118,7 @@ export const App = () => {
             <LetteredPage
               onBack={handleBackToMenu}
               isAdmin={showAdminUI && (userInfo?.admin ?? false)}
+              onToggleAdmin={() => setShowAdminUI(false)}
             />
           }
         />

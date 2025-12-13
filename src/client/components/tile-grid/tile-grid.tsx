@@ -2245,21 +2245,22 @@ const PiecesBelowIndicator = React.memo(
 
 PiecesBelowIndicator.displayName = 'PiecesBelowIndicator';
 
-// Bottom Banner - shows either "Open Piece Tray" or "Drag Mode" based on state
+// Bottom Banner - shows drag mode controls when a piece is being dragged
 const BottomBanner = React.memo(
   ({
     isVisible,
     isDragMode,
     onPlace,
-    onOpenTray,
     unplacedPieceCount,
   }: {
     isVisible: boolean;
     isDragMode: boolean;
     onPlace: () => void;
-    onOpenTray?: () => void;
     unplacedPieceCount: number;
   }) => {
+    // Only show banner when in drag mode (piece is being dragged)
+    const showBanner = isVisible && isDragMode;
+
     return (
       <div
         className={cn(
@@ -2269,9 +2270,9 @@ const BottomBanner = React.memo(
           'overflow-hidden transition-all duration-300 ease-out'
         )}
         style={{
-          height: isVisible ? 'calc(60px + env(safe-area-inset-bottom, 0px))' : '0',
-          paddingBottom: isVisible ? 'env(safe-area-inset-bottom, 0px)' : '0',
-          pointerEvents: isVisible ? 'auto' : 'none',
+          height: showBanner ? 'calc(60px + env(safe-area-inset-bottom, 0px))' : '0',
+          paddingBottom: showBanner ? 'env(safe-area-inset-bottom, 0px)' : '0',
+          pointerEvents: showBanner ? 'auto' : 'none',
         }}
       >
         {/* Main banner content */}
@@ -2279,54 +2280,25 @@ const BottomBanner = React.memo(
           className={cn(
             'flex flex-1 justify-between items-center px-4',
             'transition-opacity duration-200 delay-100',
-            isVisible ? 'opacity-100' : 'opacity-0'
+            showBanner ? 'opacity-100' : 'opacity-0'
           )}
         >
-          {isDragMode ? (
-            // Drag Mode state
-            <>
-              <div className="flex flex-col">
-                <span className="text-sm font-bold text-foreground">Drag Mode</span>
-                <span className="text-xs text-muted-foreground">
-                  Moves don&apos;t count until you place it
-                </span>
-              </div>
-              <button
-                onClick={onPlace}
-                className={cn(
-                  'px-4 py-2 font-bold rounded-md bg-foreground text-background',
-                  'transition-all duration-150',
-                  'hover:bg-foreground/90 active:scale-95'
-                )}
-              >
-                Place
-              </button>
-            </>
-          ) : (
-            // Piece Selection state
-            <>
-              <div className="flex flex-col">
-                <span className="text-sm font-bold text-foreground">
-                  Tap a piece to enter drag mode
-                </span>
-                <span className="text-xs text-muted-foreground">
-                  {unplacedPieceCount} piece{unplacedPieceCount !== 1 ? 's' : ''} remaining
-                </span>
-              </div>
-              {onOpenTray && (
-                <button
-                  onClick={onOpenTray}
-                  className={cn(
-                    'px-4 py-2 font-bold rounded-md bg-foreground text-background',
-                    'transition-all duration-150',
-                    'hover:bg-foreground/90 active:scale-95'
-                  )}
-                >
-                  See Pieces
-                </button>
-              )}
-            </>
-          )}
+          <div className="flex flex-col">
+            <span className="text-sm font-bold text-foreground">Drag Mode</span>
+            <span className="text-xs text-muted-foreground">
+              {unplacedPieceCount} piece{unplacedPieceCount !== 1 ? 's' : ''} remaining
+            </span>
+          </div>
+          <button
+            onClick={onPlace}
+            className={cn(
+              'px-4 py-2 font-bold rounded-md bg-foreground text-background',
+              'transition-all duration-150',
+              'hover:bg-foreground/90 active:scale-95'
+            )}
+          >
+            Place
+          </button>
         </div>
       </div>
     );
@@ -2363,8 +2335,6 @@ type GridProps = {
   hideBanner?: boolean;
   // Callback when an external drag results in an invalid drop (piece should return to tray)
   onExternalDragInvalid?: (itemId: string) => void;
-  // Callback to open the piece tray modal
-  onOpenTray?: () => void;
   // Number of unplaced pieces (for display in banner)
   unplacedPieceCount?: number;
   // Callback to check if a cell is blocked (e.g., black tiles that pieces cannot be placed on)
@@ -2396,7 +2366,6 @@ const Grid = forwardRef<GridRef, GridProps>(function Grid(
     onDragStateChange,
     hideBanner = false,
     onExternalDragInvalid,
-    onOpenTray,
     unplacedPieceCount = 0,
     isCellBlocked,
     onPiecesRemoved,
@@ -2426,7 +2395,6 @@ const Grid = forwardRef<GridRef, GridProps>(function Grid(
         defaultItemClassName={defaultItemClassName}
         hideBanner={hideBanner}
         onExternalDragInvalid={onExternalDragInvalid}
-        onOpenTray={onOpenTray}
         unplacedPieceCount={unplacedPieceCount}
       >
         {children}
@@ -2448,7 +2416,6 @@ const GridContent = forwardRef<
     defaultItemClassName?: string;
     hideBanner?: boolean;
     onExternalDragInvalid?: (itemId: string) => void;
-    onOpenTray?: () => void;
     unplacedPieceCount?: number;
   }
 >(function GridContent(
@@ -2462,7 +2429,6 @@ const GridContent = forwardRef<
     defaultItemClassName,
     hideBanner = false,
     onExternalDragInvalid,
-    onOpenTray,
     unplacedPieceCount = 0,
   },
   ref
@@ -2737,12 +2703,11 @@ const GridContent = forwardRef<
         onClick={scrollToLowestPiece}
       />
 
-      {/* Bottom Banner - swaps between "Open Piece Tray" and "Drag Mode" */}
+      {/* Bottom Banner - shows drag mode controls when dragging */}
       <BottomBanner
         isVisible={!disabled && !hideBanner && dragMode === 'tap-to-drag' && unplacedPieceCount > 0}
         isDragMode={!!tapDragActiveItemId}
         onPlace={placeTapDragItem}
-        onOpenTray={onOpenTray}
         unplacedPieceCount={unplacedPieceCount}
       />
 

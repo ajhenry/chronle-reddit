@@ -15,7 +15,7 @@ createRoot(document.getElementById('root')!).render(
       <ThemeProvider defaultTheme="system" storageKey="vite-ui-theme">
         <TooltipProvider>
           <App />
-          <Toaster />
+          <Toaster position="top-center" />
         </TooltipProvider>
       </ThemeProvider>
     </BrowserRouter>

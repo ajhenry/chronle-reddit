@@ -19,7 +19,7 @@ import { LetteredDailyGameResponse, LetteredPostGameResponse } from '../../share
 import { useTheme } from 'src/components/theme-provider';
 import { InGameCustomButton } from 'src/components/InGameCustomButton';
 import { useDragMode } from '../hooks/useDragMode';
-import { PieceTrayModal } from '../components/PieceTrayModal';
+import { PieceTray } from '../components/PieceTray';
 
 // API function to fetch a game by ID (works for both daily and custom games)
 const fetchGameById = async (gameId: string): Promise<LetteredDailyGameResponse> => {
@@ -188,9 +188,11 @@ interface UIState {
 export const LetteredPage = ({
   onBack,
   isAdmin = false,
+  onToggleAdmin,
 }: {
   onBack?: () => void;
   isAdmin?: boolean;
+  onToggleAdmin?: () => void;
 }) => {
   const { gameId: urlGameId } = useParams<{ gameId?: string }>();
   const navigate = useNavigate();
@@ -247,8 +249,7 @@ export const LetteredPage = ({
   // Drag mode preference
   const { dragMode, setDragMode } = useDragMode();
 
-  // Piece tray modal state
-  const [isTrayOpen, setIsTrayOpen] = useState(false);
+  // Grid ref for external drag
   const gridRef = useRef<GridRef>(null);
 
   // Compute unplaced pieces (pieces not yet placed on the grid)
@@ -547,7 +548,13 @@ export const LetteredPage = ({
   // Check if a given layout would complete the puzzle (for auto-complete during drag)
   const checkPuzzleComplete = useCallback(
     (layout: (string | null)[][]): boolean => {
+      console.log(`[checkPuzzleComplete] START`);
+      console.log(`[checkPuzzleComplete] Layout pieces:`, layout.flat().filter(Boolean));
+
       if (!gameData || !gameData.solution || gameComplete) {
+        console.log(
+          `[checkPuzzleComplete] EARLY EXIT - gameData=${!!gameData}, solution=${!!gameData?.solution}, gameComplete=${gameComplete}`
+        );
         return false;
       }
 
@@ -604,7 +611,11 @@ export const LetteredPage = ({
       });
 
       // All pieces must be on the main board
+      console.log(
+        `[checkPuzzleComplete] mainBoardPieces=${mainBoardPieces.length}, totalPieces=${gameData.pieces.length}`
+      );
       if (mainBoardPieces.length !== gameData.pieces.length) {
+        console.log(`[checkPuzzleComplete] Not all pieces on board yet`);
         return false;
       }
 
@@ -612,16 +623,21 @@ export const LetteredPage = ({
       for (const [pieceId, placedPosition] of mainBoardPieces) {
         const solutionPosition = gameData.solution[pieceId];
         if (!solutionPosition) {
+          console.log(`[checkPuzzleComplete] No solution for piece ${pieceId}`);
           return false;
         }
         if (
           placedPosition.row !== solutionPosition.row ||
           placedPosition.col !== solutionPosition.col
         ) {
+          console.log(
+            `[checkPuzzleComplete] Piece ${pieceId} not in correct position: placed=(${placedPosition.row},${placedPosition.col}), solution=(${solutionPosition.row},${solutionPosition.col})`
+          );
           return false;
         }
       }
 
+      console.log(`[checkPuzzleComplete] All pieces correct! Returning true`);
       return true;
     },
     [gameData, gameComplete]
@@ -630,12 +646,17 @@ export const LetteredPage = ({
   // Handle layout changes from the grid
   const handleGridLayoutChange = useCallback(
     async (layout: (string | null)[][]) => {
+      console.log(`[handleGridLayoutChange] START`);
+      console.log(`[handleGridLayoutChange] Layout pieces:`, layout.flat().filter(Boolean));
+
       if (!gameStateManagerRef.current) {
+        console.log(`[handleGridLayoutChange] EARLY EXIT - no gameStateManagerRef`);
         return;
       }
 
       // Delegate all game logic to the game state manager
       const result = await gameStateManagerRef.current.updateFromLayout(layout);
+      console.log(`[handleGridLayoutChange] updateFromLayout result:`, result);
 
       // Only make network request if pieces actually changed
       if (result.hasChanges && gameId) {
@@ -856,27 +877,32 @@ export const LetteredPage = ({
     return cn(pieceTileClass(piece), additionalClassName);
   };
 
-  // Handle piece selection from tray modal
-  const handlePieceSelectFromTray = useCallback(
+  // Handle piece drag start from tray
+  const handlePieceDragStart = useCallback(
     (pieceId: string, touchPosition: { clientX: number; clientY: number }) => {
-      if (!gameData || !gridRef.current) return;
+      console.log(`[handlePieceDragStart] START - pieceId=${pieceId}`);
+      if (!gameData || !gridRef.current) {
+        console.log(`[handlePieceDragStart] EARLY EXIT - no gameData or gridRef`);
+        return;
+      }
 
       const piece = gameData.pieces.find((p) => p.id === pieceId);
-      if (!piece) return;
-
-      // Close the tray modal immediately
-      setIsTrayOpen(false);
+      if (!piece) {
+        console.log(`[handlePieceDragStart] EARLY EXIT - piece not found`);
+        return;
+      }
 
       // Convert piece to draggable item format
       const draggableItem = convertPieceToDraggableItem(piece, (p) =>
         getPieceTileClass(p, 'text-2xl font-bold')
       );
+      console.log(
+        `[handlePieceDragStart] Created draggableItem with shape.name=${draggableItem.shape.name}`
+      );
 
       // Start external drag on the grid
-      // Use setTimeout to ensure the modal is closed before starting drag
-      setTimeout(() => {
-        gridRef.current?.startExternalDrag(draggableItem, touchPosition);
-      }, 0);
+      gridRef.current.startExternalDrag(draggableItem, touchPosition);
+      console.log(`[handlePieceDragStart] Called startExternalDrag`);
     },
     [gameData, getPieceTileClass]
   );
@@ -1098,16 +1124,18 @@ export const LetteredPage = ({
                   Pieces Placed: {placedPieces.size}/{gameData?.pieces.length || 0}
                 </div>
               </div>
-              {/* Hide Button */}
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => setShowDebugTools(false)}
-                className="w-full text-xs"
-                type="button"
-              >
-                Hide Debug Menu
-              </Button>
+              {/* Toggle Admin Mode */}
+              {onToggleAdmin && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={onToggleAdmin}
+                  className="w-full text-xs"
+                  type="button"
+                >
+                  Hide Admin Mode (`)
+                </Button>
+              )}
             </div>
           )}
         </div>
@@ -1191,22 +1219,25 @@ export const LetteredPage = ({
           disabled={gameComplete}
           dragMode={dragMode}
           shouldAutoComplete={checkPuzzleComplete}
-          hideBanner={uiState.showGameOverModal || showInstructions || isTrayOpen}
+          hideBanner={uiState.showGameOverModal || showInstructions}
           onExternalDragInvalid={handleExternalDragInvalid}
-          onOpenTray={() => setIsTrayOpen(true)}
           unplacedPieceCount={unplacedPieces.length}
           isCellBlocked={isCellBlocked}
           onPiecesRemoved={handlePiecesRemoved}
         />
       </div>
 
-      {/* Piece Tray Modal */}
-      <PieceTrayModal
-        isOpen={isTrayOpen}
-        onClose={() => setIsTrayOpen(false)}
-        pieces={unplacedPieces}
-        onPieceSelect={handlePieceSelectFromTray}
-      />
+      {/* Piece Tray */}
+      <div className="flex justify-center mt-4">
+        <PieceTray
+          pieces={unplacedPieces}
+          cellSize={responsiveCellSize}
+          cellSpacing={responsiveCellSpacing}
+          onPieceDragStart={handlePieceDragStart}
+          getPieceClassName={(piece) => getPieceTileClass(piece, 'text-2xl font-bold')}
+          disabled={gameComplete}
+        />
+      </div>
       {/* Confetti Animation */}
       {uiState.showConfetti && (
         <Confetti
