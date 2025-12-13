@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import Confetti from 'react-confetti';
 import { GameLayout } from '../components/GameLayout';
@@ -11,7 +11,7 @@ import { LetteredInstructionsDialog } from '../components/LetteredInstructionsDi
 import { LetteredGameData, GridPosition, LetterPiece, GridCell } from '../../shared/types/api';
 import { getResponsiveCellSize, getResponsiveCellSpacing } from '../lib/lettered-utils';
 import { useViewport } from '../hooks/useViewport';
-import { Grid, DraggableItem } from '../components/tile-grid/tile-grid';
+import { Grid, DraggableItem, GridRef } from '../components/tile-grid/tile-grid';
 import { cn } from '@sglara/cn';
 import { LetteredGameStateManager } from '../lib/lettered-game-state';
 import { apiFetch } from '../lib/utils';
@@ -19,6 +19,7 @@ import { LetteredDailyGameResponse, LetteredPostGameResponse } from '../../share
 import { useTheme } from 'src/components/theme-provider';
 import { InGameCustomButton } from 'src/components/InGameCustomButton';
 import { useDragMode } from '../hooks/useDragMode';
+import { PieceTrayModal } from '../components/PieceTrayModal';
 
 // API function to fetch a game by ID (works for both daily and custom games)
 const fetchGameById = async (gameId: string): Promise<LetteredDailyGameResponse> => {
@@ -47,18 +48,17 @@ const fetchPostGameStats = async (gameId: string): Promise<LetteredPostGameRespo
 };
 
 // Conversion functions for Grid component
+// Only includes placed pieces and anchor letters (unplaced pieces are shown in the tray modal)
 const convertGridDataToItems = ({
   grid,
   placedPieces,
   pieces,
-  initialPiecePositions,
   getTileStyle,
   getTileClassName,
 }: {
   grid: GridCell[][];
   placedPieces: Map<string, GridPosition>;
   pieces: LetterPiece[];
-  initialPiecePositions: Record<string, GridPosition>;
   getTileStyle?: (piece: LetterPiece) => React.CSSProperties | undefined;
   getTileClassName?: (piece: LetterPiece) => string | undefined;
 }): Omit<DraggableItem, 'id'>[] => {
@@ -139,49 +139,40 @@ const convertGridDataToItems = ({
     }
   }
 
-  // Add unplaced letter pieces using server-generated initial positions
-  const unplacedPieces = pieces.filter((piece) => !placedPieces.has(piece.id));
-
-  for (const piece of unplacedPieces) {
-    // Use server-generated initial position
-    const initialPosition = initialPiecePositions[piece.id];
-
-    if (!initialPosition) {
-      console.warn(`No initial position found for piece ${piece.id}, skipping`);
-      continue;
-    }
-
-    // Convert piece shape to Grid component format
-    const shapeCells: { x: number; y: number }[] = piece.shape.map((shapePos) => ({
-      x: shapePos.col,
-      y: shapePos.row,
-    }));
-
-    // Calculate bounding box
-    const width = Math.max(...shapeCells.map((cell) => cell.x)) + 1;
-    const height = Math.max(...shapeCells.map((cell) => cell.y)) + 1;
-
-    const shape = {
-      name: piece.id,
-      cells: shapeCells,
-      width,
-      height,
-    };
-
-    // Create content from letters
-    const content = piece.letters.join('') || piece.id;
-
-    items.push({
-      position: { x: initialPosition.col, y: initialPosition.row },
-      shape,
-      content,
-      disabled: false,
-      style: getTileStyle ? getTileStyle(piece) : undefined,
-      className: getTileClassName ? getTileClassName(piece) : undefined,
-    });
-  }
+  // Note: Unplaced pieces are NOT included here - they are shown in the PieceTrayModal
 
   return items;
+};
+
+// Helper function to convert a LetterPiece to DraggableItem format for external drag
+const convertPieceToDraggableItem = (
+  piece: LetterPiece,
+  getTileClassName?: (piece: LetterPiece) => string | undefined
+): Omit<DraggableItem, 'id'> => {
+  const shapeCells: { x: number; y: number }[] = piece.shape.map((shapePos) => ({
+    x: shapePos.col,
+    y: shapePos.row,
+  }));
+
+  const width = Math.max(...shapeCells.map((cell) => cell.x)) + 1;
+  const height = Math.max(...shapeCells.map((cell) => cell.y)) + 1;
+
+  const shape = {
+    name: piece.id,
+    cells: shapeCells,
+    width,
+    height,
+  };
+
+  const content = piece.letters.join('') || piece.id;
+
+  return {
+    position: { x: 0, y: 0 }, // Will be set during drag
+    shape,
+    content,
+    disabled: false,
+    className: getTileClassName ? getTileClassName(piece) : undefined,
+  };
 };
 
 // UI-specific state (separate from core game state)
@@ -255,6 +246,16 @@ export const LetteredPage = ({
 
   // Drag mode preference
   const { dragMode, setDragMode } = useDragMode();
+
+  // Piece tray modal state
+  const [isTrayOpen, setIsTrayOpen] = useState(false);
+  const gridRef = useRef<GridRef>(null);
+
+  // Compute unplaced pieces (pieces not yet placed on the grid)
+  const unplacedPieces = useMemo(() => {
+    if (!gameData) return [];
+    return gameData.pieces.filter((piece) => !placedPieces.has(piece.id));
+  }, [gameData, placedPieces]);
 
   // Check for post context and get gameId
   useEffect(() => {
@@ -855,6 +856,42 @@ export const LetteredPage = ({
     return cn(pieceTileClass(piece), additionalClassName);
   };
 
+  // Handle piece selection from tray modal
+  const handlePieceSelectFromTray = useCallback(
+    (pieceId: string, touchPosition: { clientX: number; clientY: number }) => {
+      if (!gameData || !gridRef.current) return;
+
+      const piece = gameData.pieces.find((p) => p.id === pieceId);
+      if (!piece) return;
+
+      // Close the tray modal immediately
+      setIsTrayOpen(false);
+
+      // Convert piece to draggable item format
+      const draggableItem = convertPieceToDraggableItem(piece, (p) =>
+        getPieceTileClass(p, 'text-2xl font-bold')
+      );
+
+      // Start external drag on the grid
+      // Use setTimeout to ensure the modal is closed before starting drag
+      setTimeout(() => {
+        gridRef.current?.startExternalDrag(draggableItem, touchPosition);
+      }, 0);
+    },
+    [gameData, getPieceTileClass]
+  );
+
+  // Handle invalid drop from external drag (piece returns to tray)
+  const handleExternalDragInvalid = useCallback((itemId: string) => {
+    console.log(
+      `[handleExternalDragInvalid] Piece ${itemId} dropped in invalid position, returning to tray`
+    );
+    toast.error('Invalid placement', {
+      description: 'The piece could not be placed there. Try again.',
+      duration: 2000,
+    });
+  }, []);
+
   const pieceTileDraggingClass = (_piece: DraggableItem, valid: boolean) => {
     const baseClass = 'border-2 border-dashed opacity-80 transition-colors';
     if (valid) {
@@ -863,6 +900,33 @@ export const LetteredPage = ({
       return cn(baseClass, 'bg-destructive/20 border-destructive');
     }
   };
+
+  // Check if a cell is blocked (black tile or pre-filled - cannot place pieces on it)
+  const isCellBlocked = useCallback(
+    (x: number, y: number) => {
+      if (!gameData) return false;
+
+      const cell = gameData.grid[y]?.[x];
+      if (!cell) return true; // Out of bounds is considered blocked
+
+      // Blocked cells include:
+      // - isUnused: empty black tiles
+      // - isSpace: space characters (gaps between words)
+      // - isPreFilled: anchor letters (already have a fixed letter)
+      return cell.isUnused || cell.isSpace || cell.isPreFilled || false;
+    },
+    [gameData]
+  );
+
+  // Handle when pieces are removed due to overlap during placement
+  const handlePiecesRemoved = useCallback((pieceIds: string[]) => {
+    console.log(`[handlePiecesRemoved] Pieces returned to tray: ${pieceIds.join(', ')}`);
+    // Explicitly remove pieces from the game state manager
+    // (They are already removed from the Grid's items state)
+    if (gameStateManagerRef.current) {
+      gameStateManagerRef.current.removePieces(pieceIds);
+    }
+  }, []);
 
   // Show error state (check before loading to show errors from context check early)
   if (error) {
@@ -1034,6 +1098,16 @@ export const LetteredPage = ({
                   Pieces Placed: {placedPieces.size}/{gameData?.pieces.length || 0}
                 </div>
               </div>
+              {/* Hide Button */}
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setShowDebugTools(false)}
+                className="w-full text-xs"
+                type="button"
+              >
+                Hide Debug Menu
+              </Button>
             </div>
           )}
         </div>
@@ -1095,21 +1169,18 @@ export const LetteredPage = ({
       {/* Game Content */}
       <div className="flex justify-center">
         <Grid
+          ref={gridRef}
           key={`${gameComplete}`}
           gridSize={{
             width: gameData.grid[0]!.length || 8,
-            height: gameData.grid.length + 20, // Extend grid height to match server's maxRows for letter pieces area
+            height: gameData.grid.length, // No scroll - grid is exactly the size of the phrase
             spacing: responsiveCellSpacing,
           }}
           cellSize={responsiveCellSize}
           initialItems={convertGridDataToItems({
             grid: gameData.grid,
-            placedPieces:
-              placedPieces.size === 0
-                ? new Map(Object.entries(gameData.initialPiecePositions))
-                : placedPieces,
+            placedPieces: placedPieces,
             pieces: gameData.pieces,
-            initialPiecePositions: gameData.initialPiecePositions,
             getTileClassName: (piece) => getPieceTileClass(piece, 'text-2xl font-bold'),
           })}
           onLayoutChange={handleGridLayoutChange}
@@ -1120,9 +1191,22 @@ export const LetteredPage = ({
           disabled={gameComplete}
           dragMode={dragMode}
           shouldAutoComplete={checkPuzzleComplete}
-          hideHintPill={uiState.showGameOverModal || showInstructions}
+          hideBanner={uiState.showGameOverModal || showInstructions || isTrayOpen}
+          onExternalDragInvalid={handleExternalDragInvalid}
+          onOpenTray={() => setIsTrayOpen(true)}
+          unplacedPieceCount={unplacedPieces.length}
+          isCellBlocked={isCellBlocked}
+          onPiecesRemoved={handlePiecesRemoved}
         />
       </div>
+
+      {/* Piece Tray Modal */}
+      <PieceTrayModal
+        isOpen={isTrayOpen}
+        onClose={() => setIsTrayOpen(false)}
+        pieces={unplacedPieces}
+        onPieceSelect={handlePieceSelectFromTray}
+      />
       {/* Confetti Animation */}
       {uiState.showConfetti && (
         <Confetti

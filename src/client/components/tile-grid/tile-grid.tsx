@@ -7,6 +7,8 @@ import React, {
   useRef,
   useEffect,
   ReactNode,
+  forwardRef,
+  useImperativeHandle,
 } from 'react';
 import { cn } from '../../lib/utils';
 import { isDevelopment } from '../../lib/dev-utils';
@@ -56,6 +58,21 @@ export type DraggableItem = {
   style?: React.CSSProperties; // Custom styles to apply to the tile
   className?: string; // Custom CSS classes to apply to the tile
 };
+
+// Ref type for external Grid control
+export interface GridRef {
+  // Start dragging a piece from an external source (e.g., piece tray modal)
+  startExternalDrag: (
+    item: Omit<DraggableItem, 'id'>,
+    pointerPosition: { clientX: number; clientY: number }
+  ) => void;
+  // Add an item to the grid
+  addItem: (item: Omit<DraggableItem, 'id'>) => string;
+  // Remove an item from the grid
+  removeItem: (itemId: string) => void;
+  // Get current items
+  getItems: () => DraggableItem[];
+}
 
 // Unique ID generation for grid instances
 let gridInstanceCounter = 0;
@@ -150,6 +167,10 @@ type GridContextType = {
   // Tap-to-drag specific state
   tapDragActiveItemId: string | null; // ID of item activated for tap-to-drag
   tapDragOriginalPosition: GridPosition | null; // Original position before tap-to-drag started
+  // IDs of pieces that would be overlapped by the current drag preview
+  overlappingPieceIds: string[];
+  // Ref to check if a drag just finished (to suppress post-drag click events)
+  justFinishedDragRef: React.MutableRefObject<boolean>;
   setItems: (items: DraggableItem[]) => void;
   addItem: (item: Omit<DraggableItem, 'id'>) => void;
   removeItem: (itemId: string) => void;
@@ -173,6 +194,16 @@ type GridContextType = {
   placeTapDragItem: () => void;
   // Auto-complete callback
   shouldAutoComplete: ((previewLayout: (string | null)[][]) => boolean) | null;
+  // External drag methods
+  startExternalDrag: (
+    item: Omit<DraggableItem, 'id'>,
+    pointerPosition: { clientX: number; clientY: number }
+  ) => void;
+  getGridBounds: () => DOMRect | null;
+  // Ref to check if external drag was placed validly
+  externalDragWasPlacedValidlyRef: React.MutableRefObject<boolean>;
+  // Cell blocked check (for static preview validation)
+  isCellBlocked: ((x: number, y: number) => boolean) | null;
 };
 
 const GridContext = createContext<GridContextType | null>(null);
@@ -196,6 +227,8 @@ type GridProviderProps = {
   dragMode?: DragMode;
   shouldAutoComplete?: (previewLayout: (string | null)[][]) => boolean;
   onDragStateChange?: (isActive: boolean) => void;
+  isCellBlocked?: (x: number, y: number) => boolean;
+  onPiecesRemoved?: (pieceIds: string[]) => void;
 };
 
 function GridProvider({
@@ -208,14 +241,31 @@ function GridProvider({
   dragMode = 'tap-to-drag',
   shouldAutoComplete,
   onDragStateChange,
+  isCellBlocked,
+  onPiecesRemoved,
 }: GridProviderProps) {
   const spacing = gridSize.spacing ?? 0;
   const gridId = useMemo(() => generateGridId(), []);
-  const [items, setItems] = useState<DraggableItem[]>(() =>
+  const [items, setItemsInternal] = useState<DraggableItem[]>(() =>
     initialItems.map((item, index) => ({
       ...item,
       id: item.shape.name || generateItemId(gridId, index),
     }))
+  );
+
+  // Wrap setItems to add debugging
+  const setItems = useCallback(
+    (updater: DraggableItem[] | ((prev: DraggableItem[]) => DraggableItem[])) => {
+      console.log(`[setItems] Called`);
+      console.trace('[setItems] Stack trace');
+      setItemsInternal((prev) => {
+        const newItems = typeof updater === 'function' ? updater(prev) : updater;
+        console.log(`[setItems] prev: [${prev.map((i) => i.id).join(', ')}]`);
+        console.log(`[setItems] new: [${newItems.map((i) => i.id).join(', ')}]`);
+        return newItems;
+      });
+    },
+    []
   );
   const [dragPreview, setDragPreview] = useState<{
     item: DraggableItem;
@@ -231,10 +281,66 @@ function GridProvider({
   const [tapDragActiveItemId, setTapDragActiveItemId] = useState<string | null>(null);
   const [tapDragOriginalPosition, setTapDragOriginalPosition] = useState<GridPosition | null>(null);
 
+  // Ref to track when a drag just ended - used to suppress click events immediately after drag
+  // This prevents the mouseup from triggering a click that auto-places the piece
+  const justFinishedDragRef = useRef<boolean>(false);
+
   // Notify parent when drag state changes
   useEffect(() => {
     onDragStateChange?.(!!tapDragActiveItemId);
   }, [tapDragActiveItemId, onDragStateChange]);
+
+  // Compute overlapping piece IDs based on current drag state
+  // This is used to show a warning indicator on pieces that would be removed
+  const overlappingPieceIds = useMemo(() => {
+    // If there's a drag preview, compute overlaps from that
+    if (dragPreview) {
+      const testItem = { ...dragPreview.item, position: dragPreview.position };
+      const testPositions = getItemOccupiedPositions(testItem);
+      const overlapping = new Set<string>();
+
+      for (const otherItem of items) {
+        if (otherItem.id === dragPreview.item.id) continue;
+        const otherPositions = getItemOccupiedPositions(otherItem);
+        for (const testPos of testPositions) {
+          for (const otherPos of otherPositions) {
+            if (testPos.x === otherPos.x && testPos.y === otherPos.y) {
+              overlapping.add(otherItem.id);
+              break;
+            }
+          }
+          if (overlapping.has(otherItem.id)) break;
+        }
+      }
+      return Array.from(overlapping);
+    }
+
+    // If there's an active tap-drag item (but not actively dragging), compute overlaps from current position
+    if (tapDragActiveItemId && !draggedItemId) {
+      const activeItem = items.find((i) => i.id === tapDragActiveItemId);
+      if (activeItem) {
+        const testPositions = getItemOccupiedPositions(activeItem);
+        const overlapping = new Set<string>();
+
+        for (const otherItem of items) {
+          if (otherItem.id === tapDragActiveItemId) continue;
+          const otherPositions = getItemOccupiedPositions(otherItem);
+          for (const testPos of testPositions) {
+            for (const otherPos of otherPositions) {
+              if (testPos.x === otherPos.x && testPos.y === otherPos.y) {
+                overlapping.add(otherItem.id);
+                break;
+              }
+            }
+            if (overlapping.has(otherItem.id)) break;
+          }
+        }
+        return Array.from(overlapping);
+      }
+    }
+
+    return [];
+  }, [dragPreview, tapDragActiveItemId, draggedItemId, items]);
 
   // Store shouldAutoComplete in a ref to avoid stale closures
   const shouldAutoCompleteRef = useRef(shouldAutoComplete);
@@ -252,10 +358,22 @@ function GridProvider({
   const handleGlobalPointerMoveRef = useRef<(e: MouseEvent | TouchEvent) => void>(() => {});
   const handleGlobalPointerUpRef = useRef<(e: MouseEvent | TouchEvent) => void>(() => {});
 
+  // Ref to track if external drag was placed validly (used by GridContent effect)
+  const externalDragWasPlacedValidlyRef = useRef<boolean>(false);
+
+  // Ref to skip the onLayoutChange effect when we just handled overlapping pieces
+  // This prevents double-calling onLayoutChange which can cause infinite loops
+  const skipLayoutChangeEffectRef = useRef<boolean>(false);
+
   // Create and update tile grid
   const tileGrid = useMemo(() => {
+    console.log(
+      `[tileGrid memo] Recalculating - items count: ${items.length}, items: [${items.map((i) => i.id).join(', ')}]`
+    );
     const emptyGrid = createEmptyTileGrid(gridSize);
-    return updateTileOccupancy(emptyGrid, items);
+    const result = updateTileOccupancy(emptyGrid, items);
+    console.log(`[tileGrid memo] Done recalculating`);
+    return result;
   }, [gridSize, items]);
 
   // Helper function to build a preview layout for auto-complete checking
@@ -295,19 +413,39 @@ function GridProvider({
   // Call onLayoutChange whenever tileGrid changes
   // Skip layout change notifications while in tap-drag mode (moves are counted on placement only)
   React.useEffect(() => {
+    console.log(
+      `[onLayoutChange Effect] START - skipFlag=${skipLayoutChangeEffectRef.current}, tapDragActiveItemId=${tapDragActiveItemId}, hasOnLayoutChange=${!!onLayoutChange}`
+    );
+
+    // Skip if we just handled overlapping pieces (to prevent double-calling)
+    // We check and clear the flag, but only proceed if it was not set
+    if (skipLayoutChangeEffectRef.current) {
+      console.log(`[onLayoutChange Effect] SKIPPING - skipLayoutChangeEffectRef is true`);
+      // Keep the flag true - it will be cleared after a timeout
+      return;
+    }
+
     if (onLayoutChange && !tapDragActiveItemId) {
       const layout = tileGrid.map((row) => row.map((cell) => cell.occupyingItemId || null));
 
       // Debug: Log layout changes in development
-      if (isDevelopment()) {
-        const occupiedCells = layout.flat().filter((cell) => cell !== null).length;
-        const totalCells = layout.flat().length;
-        console.log(`[Grid Debug] Layout changed: ${occupiedCells}/${totalCells} cells occupied`);
-      }
+      const occupiedCells = layout.flat().filter((cell) => cell !== null).length;
+      const totalCells = layout.flat().length;
+      console.log(
+        `[onLayoutChange Effect] Layout changed: ${occupiedCells}/${totalCells} cells occupied`
+      );
+      console.log(`[onLayoutChange Effect] Calling onLayoutChange callback`);
 
       onLayoutChange(layout);
+      console.log(`[onLayoutChange Effect] onLayoutChange callback returned`);
+    } else {
+      console.log(
+        `[onLayoutChange Effect] NOT calling onLayoutChange - onLayoutChange=${!!onLayoutChange}, tapDragActiveItemId=${tapDragActiveItemId}`
+      );
     }
-  }, [tileGrid, onLayoutChange, tapDragActiveItemId]);
+
+    console.log(`[onLayoutChange Effect] END`);
+  }, [tileGrid, onLayoutChange, tapDragActiveItemId]); // NOTE: Do NOT add 'items' here - it causes infinite loops
 
   const addItem = useCallback(
     (item: Omit<DraggableItem, 'id'>) => {
@@ -357,6 +495,102 @@ function GridProvider({
     [tileGrid, gridSize]
   );
 
+  // Check if any cell of the item at the given position would be on a blocked tile
+  const isPositionOnBlockedTile = useCallback(
+    (item: DraggableItem, newPosition: GridPosition) => {
+      if (!isCellBlocked) return false; // No blocked tiles if callback not provided
+
+      const testItem = { ...item, position: newPosition };
+      const occupiedPositions = getItemOccupiedPositions(testItem);
+
+      for (const pos of occupiedPositions) {
+        // Check bounds first
+        if (pos.x < 0 || pos.y < 0 || pos.x >= gridSize.width || pos.y >= gridSize.height) {
+          continue; // Out of bounds positions are handled separately
+        }
+        if (isCellBlocked(pos.x, pos.y)) {
+          return true;
+        }
+      }
+
+      return false;
+    },
+    [isCellBlocked, gridSize]
+  );
+
+  // Check if position is within grid bounds
+  const isPositionWithinBounds = useCallback(
+    (item: DraggableItem, newPosition: GridPosition) => {
+      const testItem = { ...item, position: newPosition };
+      const occupiedPositions = getItemOccupiedPositions(testItem);
+
+      for (const pos of occupiedPositions) {
+        if (pos.x < 0 || pos.y < 0 || pos.x >= gridSize.width || pos.y >= gridSize.height) {
+          return false;
+        }
+      }
+
+      return true;
+    },
+    [gridSize]
+  );
+
+  // Get IDs of items that would be overlapped by placing the item at the given position
+  // Note: We check directly against items list instead of tileGrid because tileGrid
+  // only stores one occupyingItemId per cell, so overlaps would be missed
+  // Takes itemsList as parameter to avoid dependency on items state (prevents loops)
+  const getOverlappingItemIds = useCallback(
+    (
+      item: DraggableItem,
+      newPosition: GridPosition,
+      excludeItemId: string | undefined,
+      itemsList: DraggableItem[]
+    ): string[] => {
+      console.log(
+        `[getOverlappingItemIds] START - placing item=${item.id} at (${newPosition.x}, ${newPosition.y}), excluding=${excludeItemId}`
+      );
+      console.log(
+        `[getOverlappingItemIds] itemsList has ${itemsList.length} items: [${itemsList.map((i) => i.id).join(', ')}]`
+      );
+
+      const testItem = { ...item, position: newPosition };
+      const testPositions = getItemOccupiedPositions(testItem);
+      const overlappingIds = new Set<string>();
+
+      console.log(`[getOverlappingItemIds] testPositions: ${JSON.stringify(testPositions)}`);
+
+      // Check each item in the grid for overlaps
+      for (const otherItem of itemsList) {
+        // Skip the item being placed
+        if (otherItem.id === excludeItemId) continue;
+
+        // Get positions occupied by this other item
+        const otherPositions = getItemOccupiedPositions(otherItem);
+
+        // Check if any of the test positions overlap with this item's positions
+        for (const testPos of testPositions) {
+          for (const otherPos of otherPositions) {
+            if (testPos.x === otherPos.x && testPos.y === otherPos.y) {
+              console.log(
+                `[getOverlappingItemIds] OVERLAP FOUND: item=${otherItem.id} at (${otherPos.x}, ${otherPos.y})`
+              );
+              overlappingIds.add(otherItem.id);
+              break; // Found overlap with this item, move to next item
+            }
+          }
+          if (overlappingIds.has(otherItem.id)) break; // Already found overlap
+        }
+      }
+
+      const result = Array.from(overlappingIds);
+      console.log(
+        `[getOverlappingItemIds] END - returning overlapping IDs: [${result.join(', ')}]`
+      );
+      return result;
+    },
+    []
+  );
+
   // Tap-to-drag methods
   const activateTapDrag = useCallback(
     (itemId: string) => {
@@ -391,57 +625,183 @@ function GridProvider({
   }, [tapDragActiveItemId, tapDragOriginalPosition]);
 
   const placeTapDragItem = useCallback(() => {
-    if (!tapDragActiveItemId) return;
+    console.log(`[placeTapDragItem] START - tapDragActiveItemId=${tapDragActiveItemId}`);
+    console.log(
+      `[placeTapDragItem] Current items: [${items.map((i) => `${i.id}@(${i.position.x},${i.position.y})`).join(', ')}]`
+    );
+
+    if (!tapDragActiveItemId) {
+      console.log(`[placeTapDragItem] EARLY EXIT - no tapDragActiveItemId`);
+      return;
+    }
 
     const item = items.find((i) => i.id === tapDragActiveItemId);
     if (!item) {
+      console.log(`[placeTapDragItem] EARLY EXIT - item not found, deactivating`);
       deactivateTapDrag();
       return;
     }
 
-    // Check if current position is valid
-    const isValid = isPositionValid(item, item.position, item.id);
+    console.log(
+      `[placeTapDragItem] Placing item=${item.id} at (${item.position.x}, ${item.position.y})`
+    );
 
-    if (isValid) {
-      // Check if the piece actually moved from its original position
-      const didMove =
-        !tapDragOriginalPosition ||
-        item.position.x !== tapDragOriginalPosition.x ||
-        item.position.y !== tapDragOriginalPosition.y;
-
-      // Position is valid, finalize the placement
-      setTapDragActiveItemId(null);
-      setTapDragOriginalPosition(null);
-      setDraggedItemId(null);
-      setGrabOffset(null);
-      setDragPreview(null);
-
-      // If the piece moved, explicitly call onLayoutChange
-      // This is needed because when selecting another piece immediately after,
-      // React batches the state updates and the effect condition fails
-      if (didMove && onLayoutChange) {
-        const layout = tileGrid.map((row) => row.map((cell) => cell.occupyingItemId || null));
-        onLayoutChange(layout);
-      }
-    } else {
-      // Position is invalid, reset to original position
+    // Check if position is out of bounds
+    const withinBounds = isPositionWithinBounds(item, item.position);
+    console.log(`[placeTapDragItem] withinBounds=${withinBounds}`);
+    if (!withinBounds) {
+      console.log(`[placeTapDragItem] Out of bounds - handling reset`);
+      // Out of bounds - handle based on where piece came from
       if (tapDragOriginalPosition) {
+        // Piece was on board - reset to original position
+        console.log(
+          `[placeTapDragItem] Resetting to original position: (${tapDragOriginalPosition.x}, ${tapDragOriginalPosition.y})`
+        );
         setItems((prev) =>
           prev.map((i) =>
             i.id === tapDragActiveItemId ? { ...i, position: tapDragOriginalPosition } : i
           )
         );
+      } else {
+        // Piece came from tray - remove it
+        console.log(`[placeTapDragItem] Removing item (came from tray)`);
+        setItems((prev) => prev.filter((i) => i.id !== tapDragActiveItemId));
+        setTapDragActiveItemId(null);
+        setTapDragOriginalPosition(null);
+        setDraggedItemId(null);
+        setGrabOffset(null);
+        setDragPreview(null);
       }
-      // Stay in tap drag mode so user can try again
+      return;
     }
+
+    // Check if position is on a blocked tile (e.g., black tile)
+    const isOnBlockedTile = isPositionOnBlockedTile(item, item.position);
+    console.log(`[placeTapDragItem] isOnBlockedTile=${isOnBlockedTile}`);
+    if (isOnBlockedTile) {
+      console.log(`[placeTapDragItem] On blocked tile - handling reset`);
+      // Blocked tile - return piece to tray, don't affect overlapping pieces
+      if (tapDragOriginalPosition) {
+        // Piece was on board - reset to original position
+        console.log(
+          `[placeTapDragItem] Resetting to original position: (${tapDragOriginalPosition.x}, ${tapDragOriginalPosition.y})`
+        );
+        setItems((prev) =>
+          prev.map((i) =>
+            i.id === tapDragActiveItemId ? { ...i, position: tapDragOriginalPosition } : i
+          )
+        );
+      } else {
+        // Piece came from tray - remove it
+        console.log(`[placeTapDragItem] Removing item (came from tray)`);
+        setItems((prev) => prev.filter((i) => i.id !== tapDragActiveItemId));
+        setTapDragActiveItemId(null);
+        setTapDragOriginalPosition(null);
+        setDraggedItemId(null);
+        setGrabOffset(null);
+        setDragPreview(null);
+      }
+      return;
+    }
+
+    // Check for overlapping pieces
+    console.log(`[placeTapDragItem] Checking for overlapping pieces...`);
+    const overlappingIds = getOverlappingItemIds(item, item.position, item.id, items);
+    console.log(`[placeTapDragItem] overlappingIds: [${overlappingIds.join(', ')}]`);
+
+    // Check if the piece actually moved from its original position
+    const didMove =
+      !tapDragOriginalPosition ||
+      item.position.x !== tapDragOriginalPosition.x ||
+      item.position.y !== tapDragOriginalPosition.y;
+    console.log(
+      `[placeTapDragItem] didMove=${didMove}, tapDragOriginalPosition=${tapDragOriginalPosition ? `(${tapDragOriginalPosition.x},${tapDragOriginalPosition.y})` : 'null'}`
+    );
+
+    // Position is valid (not on blocked tile), place the piece
+    // If there are overlapping pieces, remove them and notify parent
+    if (overlappingIds.length > 0) {
+      console.log(`[placeTapDragItem] Removing overlapping pieces: ${overlappingIds.join(', ')}`);
+      console.log(`[placeTapDragItem] Setting skipLayoutChangeEffectRef=true`);
+      // Set flag to skip the effect while we handle this ourselves
+      skipLayoutChangeEffectRef.current = true;
+      setItems((prev) => {
+        const newItems = prev.filter((i) => !overlappingIds.includes(i.id));
+        console.log(
+          `[placeTapDragItem] setItems filter: ${prev.length} -> ${newItems.length} items`
+        );
+        console.log(
+          `[placeTapDragItem] New items after filter: [${newItems.map((i) => i.id).join(', ')}]`
+        );
+        return newItems;
+      });
+      // Notify parent about removed pieces
+      console.log(`[placeTapDragItem] Calling onPiecesRemoved with [${overlappingIds.join(', ')}]`);
+      onPiecesRemoved?.(overlappingIds);
+    }
+
+    // Position is valid, finalize the placement
+    console.log(`[placeTapDragItem] Finalizing placement - clearing tap drag state`);
+    setTapDragActiveItemId(null);
+    setTapDragOriginalPosition(null);
+    setDraggedItemId(null);
+    setGrabOffset(null);
+    setDragPreview(null);
+
+    // Call onLayoutChange with the correct layout
+    if ((didMove || overlappingIds.length > 0) && onLayoutChange) {
+      console.log(`[placeTapDragItem] Building layout for onLayoutChange...`);
+      // Build layout manually, excluding removed overlapping pieces
+      const layout: (string | null)[][] = [];
+      for (let y = 0; y < gridSize.height; y++) {
+        const row: (string | null)[] = [];
+        for (let x = 0; x < gridSize.width; x++) {
+          row[x] = null;
+        }
+        layout[y] = row;
+      }
+
+      // Fill in items that are NOT being removed
+      for (const gridItem of items) {
+        if (overlappingIds.includes(gridItem.id)) continue; // Skip removed pieces
+
+        const occupiedPositions = getItemOccupiedPositions(gridItem);
+        for (const pos of occupiedPositions) {
+          if (pos.y >= 0 && pos.y < gridSize.height && pos.x >= 0 && pos.x < gridSize.width) {
+            layout[pos.y]![pos.x] = gridItem.id;
+          }
+        }
+      }
+
+      console.log(`[placeTapDragItem] Calling onLayoutChange`);
+      onLayoutChange(layout);
+
+      // Clear the skip flag after a short delay to allow state to settle
+      if (overlappingIds.length > 0) {
+        console.log(`[placeTapDragItem] Scheduling skipLayoutChangeEffectRef=false in 100ms`);
+        setTimeout(() => {
+          console.log(`[placeTapDragItem] Setting skipLayoutChangeEffectRef=false (from timeout)`);
+          skipLayoutChangeEffectRef.current = false;
+        }, 100);
+      }
+    } else {
+      console.log(
+        `[placeTapDragItem] Skipping onLayoutChange - didMove=${didMove}, overlappingIds.length=${overlappingIds.length}, onLayoutChange=${!!onLayoutChange}`
+      );
+    }
+
+    console.log(`[placeTapDragItem] END`);
   }, [
     tapDragActiveItemId,
     tapDragOriginalPosition,
     items,
-    isPositionValid,
+    isPositionWithinBounds,
+    isPositionOnBlockedTile,
     deactivateTapDrag,
     onLayoutChange,
-    tileGrid,
+    onPiecesRemoved,
+    gridSize,
+    getOverlappingItemIds,
   ]);
 
   // Utility function to get coordinates from global mouse or touch events
@@ -644,8 +1004,14 @@ function GridProvider({
               y: cellY - grabOffset.y,
             };
 
-            // Always show drag preview, but mark it as invalid if position is not valid
-            const isValid = isPositionValid(draggedItem, previewPosition, draggedItem.id);
+            // Position is valid if:
+            // 1. Within bounds
+            // 2. Not on a blocked tile
+            // Note: Overlapping pieces are OK - they will be removed on placement
+            const withinBounds = isPositionWithinBounds(draggedItem, previewPosition);
+            const isOnBlockedTile = isPositionOnBlockedTile(draggedItem, previewPosition);
+            const isValid = withinBounds && !isOnBlockedTile;
+
             setDragPreview({
               item: draggedItem,
               position: previewPosition,
@@ -667,7 +1033,8 @@ function GridProvider({
       gridSize,
       currentHoveredCell,
       items,
-      isPositionValid,
+      isPositionWithinBounds,
+      isPositionOnBlockedTile,
       getGlobalEventCoordinates,
     ]
   );
@@ -675,9 +1042,19 @@ function GridProvider({
   // Global pointer up handler for drop
   const handleGlobalPointerUp = useCallback(
     (e: MouseEvent | TouchEvent) => {
+      console.log(
+        `[handleGlobalPointerUp] START - draggedItemId=${draggedItemId}, tapDragActiveItemId=${tapDragActiveItemId}`
+      );
+      console.log(
+        `[handleGlobalPointerUp] Current items: [${items.map((i) => `${i.id}@(${i.position.x},${i.position.y})`).join(', ')}]`
+      );
+
       const currentDraggedItemId = draggedItemId;
 
       if (!currentDraggedItemId || !gridBounds || !grabOffset) {
+        console.log(
+          `[handleGlobalPointerUp] EARLY EXIT - missing state: draggedItemId=${currentDraggedItemId}, gridBounds=${!!gridBounds}, grabOffset=${!!grabOffset}`
+        );
         return;
       }
 
@@ -692,10 +1069,12 @@ function GridProvider({
       const cellY = Math.floor(pointerY / (cellSize.height + spacing));
 
       // Check if pointer is within grid bounds
-      const isWithinBounds =
+      const isPointerWithinBounds =
         cellX >= 0 && cellX < gridSize.width && cellY >= 0 && cellY < gridSize.height;
 
-      if (isWithinBounds) {
+      let placedValidly = false;
+
+      if (isPointerWithinBounds) {
         const draggedItem = items.find((item) => item.id === currentDraggedItemId);
 
         if (!draggedItem) {
@@ -707,41 +1086,143 @@ function GridProvider({
           y: cellY - grabOffset.y,
         };
 
-        // Validate drop position
-        const isValid = isPositionValid(draggedItem, dropPosition, draggedItem.id);
+        // Check if drop position is within bounds
+        const withinBounds = isPositionWithinBounds(draggedItem, dropPosition);
 
-        if (isValid) {
-          moveItem(currentDraggedItemId, dropPosition);
+        if (!withinBounds) {
+          // Out of bounds - handle based on where piece came from
+          if (tapDragActiveItemId === currentDraggedItemId && !tapDragOriginalPosition) {
+            placedValidly = false;
+          } else if (tapDragOriginalPosition) {
+            setItems((prev) =>
+              prev.map((item) =>
+                item.id === currentDraggedItemId
+                  ? { ...item, position: tapDragOriginalPosition }
+                  : item
+              )
+            );
+          }
+        } else {
+          // Check if drop position is on a blocked tile (e.g., black tile)
+          const isOnBlockedTile = isPositionOnBlockedTile(draggedItem, dropPosition);
 
-          // Check for auto-complete in tap-to-drag mode:
-          // If piece is dropped at a position that would complete the puzzle, auto-finalize
-          if (tapDragActiveItemId && shouldAutoCompleteRef.current) {
-            const previewLayout = buildPreviewLayout(draggedItem.id, dropPosition);
-            if (shouldAutoCompleteRef.current(previewLayout)) {
-              console.log('[AutoComplete] Puzzle complete after drop, auto-finalizing placement');
-              // Clear tap-drag state to finalize the placement
-              setTapDragActiveItemId(null);
-              setTapDragOriginalPosition(null);
-              // Clean up drag state
-              setDraggedItemId(null);
-              setGrabOffset(null);
-              setDragPreview(null);
-              setCurrentHoveredCell(null);
-              // Trigger layout change callback
-              if (onLayoutChange) {
-                onLayoutChange(previewLayout);
+          if (isOnBlockedTile) {
+            // Blocked tile - return piece to tray, don't affect overlapping pieces
+            console.log('[handleGlobalPointerUp] Drop on blocked tile, returning piece');
+            if (tapDragActiveItemId === currentDraggedItemId && !tapDragOriginalPosition) {
+              placedValidly = false;
+            } else if (tapDragOriginalPosition) {
+              setItems((prev) =>
+                prev.map((item) =>
+                  item.id === currentDraggedItemId
+                    ? { ...item, position: tapDragOriginalPosition }
+                    : item
+                )
+              );
+            }
+          } else {
+            // Not on blocked tile - position is valid for placement
+            // Move the piece to the drop position
+            moveItem(currentDraggedItemId, dropPosition);
+            placedValidly = true;
+
+            // In tap-to-drag mode, DON'T remove overlapping pieces during drag
+            // They will be removed when the piece is actually PLACED (via placeTapDragItem)
+            // Only remove overlapping pieces immediately in hold-to-drag mode
+            console.log(
+              `[handleGlobalPointerUp] Checking overlap removal - tapDragActiveItemId=${tapDragActiveItemId}`
+            );
+            if (!tapDragActiveItemId) {
+              console.log(`[handleGlobalPointerUp] In hold-to-drag mode, checking for overlaps...`);
+              const overlappingIds = getOverlappingItemIds(
+                draggedItem,
+                dropPosition,
+                draggedItem.id,
+                items
+              );
+
+              if (overlappingIds.length > 0) {
+                console.log(
+                  `[handleGlobalPointerUp] Removing overlapping pieces: ${overlappingIds.join(', ')}`
+                );
+                setItems((prev) => {
+                  const newItems = prev.filter((item) => !overlappingIds.includes(item.id));
+                  console.log(
+                    `[handleGlobalPointerUp] setItems filter: ${prev.length} -> ${newItems.length} items`
+                  );
+                  return newItems;
+                });
+                // Notify parent about removed pieces
+                console.log(
+                  `[handleGlobalPointerUp] Calling onPiecesRemoved with [${overlappingIds.join(', ')}]`
+                );
+                onPiecesRemoved?.(overlappingIds);
+              } else {
+                console.log(`[handleGlobalPointerUp] No overlapping pieces found`);
               }
-              return; // Early return since we've handled everything
+            } else {
+              console.log(
+                `[handleGlobalPointerUp] In tap-to-drag mode, skipping overlap removal (will be done on placement)`
+              );
+            }
+
+            // Check for auto-complete in tap-to-drag mode:
+            // If piece is dropped at a position that would complete the puzzle, auto-finalize
+            if (tapDragActiveItemId && shouldAutoCompleteRef.current) {
+              const previewLayout = buildPreviewLayout(draggedItem.id, dropPosition);
+              if (shouldAutoCompleteRef.current(previewLayout)) {
+                console.log('[AutoComplete] Puzzle complete after drop, auto-finalizing placement');
+                // Clear tap-drag state to finalize the placement
+                setTapDragActiveItemId(null);
+                setTapDragOriginalPosition(null);
+                // Clean up drag state
+                setDraggedItemId(null);
+                setGrabOffset(null);
+                setDragPreview(null);
+                setCurrentHoveredCell(null);
+                // Mark as valid placement
+                externalDragWasPlacedValidlyRef.current = true;
+                // Trigger layout change callback
+                if (onLayoutChange) {
+                  onLayoutChange(previewLayout);
+                }
+                return; // Early return since we've handled everything
+              }
             }
           }
         }
+      } else {
+        // Dropped outside grid bounds
+        if (tapDragActiveItemId === currentDraggedItemId && !tapDragOriginalPosition) {
+          // Piece came from tray - will be removed by GridContent effect
+          placedValidly = false;
+        } else if (tapDragOriginalPosition) {
+          // Piece was on board - reset to original position
+          setItems((prev) =>
+            prev.map((item) =>
+              item.id === currentDraggedItemId
+                ? { ...item, position: tapDragOriginalPosition }
+                : item
+            )
+          );
+        }
       }
+
+      // Mark whether the drop was valid (for external drag tracking)
+      externalDragWasPlacedValidlyRef.current = placedValidly;
 
       // Clean up drag state
       setDraggedItemId(null);
       setGrabOffset(null);
       setDragPreview(null);
       setCurrentHoveredCell(null);
+
+      // Set flag to suppress click events immediately after drag ends
+      // This prevents mouseup from triggering a click that auto-places the piece
+      justFinishedDragRef.current = true;
+      setTimeout(() => {
+        justFinishedDragRef.current = false;
+      }, 100); // 100ms should be enough to suppress the click
     },
     [
       draggedItemId,
@@ -751,12 +1232,16 @@ function GridProvider({
       spacing,
       gridSize,
       items,
-      isPositionValid,
+      isPositionWithinBounds,
+      isPositionOnBlockedTile,
+      getOverlappingItemIds,
       moveItem,
       getGlobalEventCoordinates,
       tapDragActiveItemId,
+      tapDragOriginalPosition,
       buildPreviewLayout,
       onLayoutChange,
+      onPiecesRemoved,
     ]
   );
 
@@ -836,6 +1321,85 @@ function GridProvider({
     [tileGrid]
   );
 
+  // Get grid bounds (for external drag calculations)
+  const getGridBounds = useCallback(() => gridBounds, [gridBounds]);
+
+  // Start external drag - allows starting a drag from outside the grid (e.g., piece tray modal)
+  const startExternalDrag = useCallback(
+    (
+      itemData: Omit<DraggableItem, 'id'>,
+      pointerPosition: { clientX: number; clientY: number }
+    ) => {
+      const currentGridBounds = gridBounds;
+      if (!currentGridBounds) {
+        console.warn('[startExternalDrag] Grid bounds not available');
+        return;
+      }
+
+      // Generate ID for the new item
+      const newItemId = itemData.shape.name || generateItemId(gridId, items.length);
+
+      // Calculate initial grid position based on pointer position
+      const pointerX = pointerPosition.clientX - currentGridBounds.left;
+      const pointerY = pointerPosition.clientY - currentGridBounds.top;
+
+      // Convert to grid coordinates, centering the piece on the pointer
+      const cellX = Math.floor(pointerX / (cellSize.width + spacing));
+      const cellY = Math.floor(pointerY / (cellSize.height + spacing));
+
+      // Offset to center the piece shape on the pointer
+      const centerOffsetX = Math.floor(itemData.shape.width / 2);
+      const centerOffsetY = Math.floor(itemData.shape.height / 2);
+
+      const initialPosition = {
+        x: Math.max(0, Math.min(cellX - centerOffsetX, gridSize.width - itemData.shape.width)),
+        y: Math.max(0, Math.min(cellY - centerOffsetY, gridSize.height - itemData.shape.height)),
+      };
+
+      // Create the new item
+      const newItem: DraggableItem = {
+        ...itemData,
+        id: newItemId,
+        position: initialPosition,
+      };
+
+      // Add item to the grid
+      setItems((prev) => [...prev, newItem]);
+
+      // Calculate grab offset (where on the piece the user "grabbed" it)
+      const grabOffsetX = Math.min(centerOffsetX, itemData.shape.width - 1);
+      const grabOffsetY = Math.min(centerOffsetY, itemData.shape.height - 1);
+
+      // Set up drag state
+      setGrabOffset({ x: grabOffsetX, y: grabOffsetY });
+      setDraggedItemId(newItemId);
+
+      // Set initial pointer position for auto-scroll
+      setInitialPointerPosition(pointerPosition);
+
+      // In tap-to-drag mode, also activate tap drag
+      if (dragMode === 'tap-to-drag') {
+        setTapDragActiveItemId(newItemId);
+        setTapDragOriginalPosition(null); // No original position - item is new
+      }
+
+      console.log(
+        `[startExternalDrag] Started drag for item=${newItemId} at position`,
+        initialPosition
+      );
+    },
+    [
+      gridBounds,
+      gridId,
+      items.length,
+      cellSize,
+      spacing,
+      gridSize,
+      dragMode,
+      setInitialPointerPosition,
+    ]
+  );
+
   const contextValue = useMemo(
     () => ({
       gridId,
@@ -852,6 +1416,7 @@ function GridProvider({
       currentHoveredCell,
       tapDragActiveItemId,
       tapDragOriginalPosition,
+      overlappingPieceIds,
       setItems,
       addItem,
       removeItem,
@@ -867,6 +1432,11 @@ function GridProvider({
       deactivateTapDrag,
       placeTapDragItem,
       shouldAutoComplete: shouldAutoComplete || null,
+      startExternalDrag,
+      getGridBounds,
+      externalDragWasPlacedValidlyRef,
+      isCellBlocked: isCellBlocked || null,
+      justFinishedDragRef,
     }),
     [
       gridId,
@@ -883,6 +1453,8 @@ function GridProvider({
       currentHoveredCell,
       tapDragActiveItemId,
       tapDragOriginalPosition,
+      overlappingPieceIds,
+      justFinishedDragRef,
       addItem,
       removeItem,
       moveItem,
@@ -897,6 +1469,10 @@ function GridProvider({
       deactivateTapDrag,
       placeTapDragItem,
       shouldAutoComplete,
+      startExternalDrag,
+      getGridBounds,
+      externalDragWasPlacedValidlyRef,
+      isCellBlocked,
     ]
   );
 
@@ -1014,6 +1590,8 @@ const DraggableItemComponent = React.memo(
       setInitialPointerPosition,
       dragMode,
       tapDragActiveItemId,
+      tapDragOriginalPosition,
+      overlappingPieceIds,
       activateTapDrag,
       placeTapDragItem,
     } = useGrid();
@@ -1024,6 +1602,10 @@ const DraggableItemComponent = React.memo(
 
     // Check if this item is the one being tap-dragged
     const isTapDragActive = tapDragActiveItemId === item.id;
+    // Check if this piece came from the tray (no original position on board)
+    const isFromTray = isTapDragActive && tapDragOriginalPosition === null;
+    // Check if this piece is being overlapped by the currently dragging piece
+    const isBeingOverlapped = overlappingPieceIds.includes(item.id);
 
     const boundingBox = useMemo(() => getItemBoundingBox(item), [item]);
 
@@ -1216,7 +1798,7 @@ const DraggableItemComponent = React.memo(
         });
         document.dispatchEvent(globalMouseUpEvent);
       },
-      [item, onDragEnd, getEventCoordinates]
+      [item, onDragEnd, getEventCoordinates, isTapDragActive]
     );
 
     const handleMouseLeave = useCallback(() => {
@@ -1270,7 +1852,16 @@ const DraggableItemComponent = React.memo(
           return;
         }
 
-        // If another piece is active, place it first then activate this one
+        // If another piece is active and this piece is being overlapped,
+        // don't auto-place - user should use "Place" button to confirm
+        if (tapDragActiveItemId && isBeingOverlapped) {
+          console.log(
+            `[Click] Ignoring - this piece is being overlapped, user must click "Place" to confirm`
+          );
+          return;
+        }
+
+        // If another piece is active (and not overlapping this piece), place it first then activate this one
         if (tapDragActiveItemId) {
           console.log(`[Click] Placing current piece and activating item=${item.id}`);
           placeTapDragItem();
@@ -1287,6 +1878,7 @@ const DraggableItemComponent = React.memo(
         dragMode,
         isTapDragActive,
         tapDragActiveItemId,
+        isBeingOverlapped,
         cellSize,
         spacing,
         activateTapDrag,
@@ -1359,7 +1951,10 @@ const DraggableItemComponent = React.memo(
                 'flex justify-center items-center overflow-y-hidden',
                 'border border-border dark:border-transparent',
                 // Hide piece when actively dragging in tap-drag mode
-                isDragging && isTapDragActive ? 'opacity-0' : 'opacity-100',
+                // Also hide piece from tray entirely (no original position to show)
+                (isDragging && isTapDragActive) || isFromTray ? 'opacity-0' : 'opacity-100',
+                // Show red pulse when this piece is being overlapped by dragging piece
+                isBeingOverlapped && 'animate-pulse-red ring-2 ring-red-500',
                 item.className || defaultClassName || ''
               )}
               style={cellStyle}
@@ -1388,6 +1983,8 @@ const DraggableItemComponent = React.memo(
       spacing,
       isDragging,
       isTapDragActive,
+      isFromTray,
+      isBeingOverlapped,
       isDisabled,
       defaultClassName,
       dragMode,
@@ -1648,9 +2245,21 @@ const PiecesBelowIndicator = React.memo(
 
 PiecesBelowIndicator.displayName = 'PiecesBelowIndicator';
 
-// Tap-to-Drag Mode Banner - shows at bottom when in tap-drag mode
-const TapDragBanner = React.memo(
-  ({ isVisible, onPlace }: { isVisible: boolean; onPlace: () => void }) => {
+// Bottom Banner - shows either "Open Piece Tray" or "Drag Mode" based on state
+const BottomBanner = React.memo(
+  ({
+    isVisible,
+    isDragMode,
+    onPlace,
+    onOpenTray,
+    unplacedPieceCount,
+  }: {
+    isVisible: boolean;
+    isDragMode: boolean;
+    onPlace: () => void;
+    onOpenTray?: () => void;
+    unplacedPieceCount: number;
+  }) => {
     return (
       <div
         className={cn(
@@ -1673,53 +2282,58 @@ const TapDragBanner = React.memo(
             isVisible ? 'opacity-100' : 'opacity-0'
           )}
         >
-          <div className="flex flex-col">
-            <span className="text-sm font-bold text-foreground">Drag Mode</span>
-            <span className="text-xs text-muted-foreground">
-              Moves don&apos;t count until you place it
-            </span>
-          </div>
-          <button
-            onClick={onPlace}
-            className={cn(
-              'px-4 py-2 font-bold rounded-md bg-foreground text-background',
-              'transition-all duration-150',
-              'hover:bg-foreground/90 active:scale-95',
-              isVisible ? 'opacity-100' : 'opacity-0'
-            )}
-          >
-            Place
-          </button>
+          {isDragMode ? (
+            // Drag Mode state
+            <>
+              <div className="flex flex-col">
+                <span className="text-sm font-bold text-foreground">Drag Mode</span>
+                <span className="text-xs text-muted-foreground">
+                  Moves don&apos;t count until you place it
+                </span>
+              </div>
+              <button
+                onClick={onPlace}
+                className={cn(
+                  'px-4 py-2 font-bold rounded-md bg-foreground text-background',
+                  'transition-all duration-150',
+                  'hover:bg-foreground/90 active:scale-95'
+                )}
+              >
+                Place
+              </button>
+            </>
+          ) : (
+            // Piece Selection state
+            <>
+              <div className="flex flex-col">
+                <span className="text-sm font-bold text-foreground">
+                  Tap a piece to enter drag mode
+                </span>
+                <span className="text-xs text-muted-foreground">
+                  {unplacedPieceCount} piece{unplacedPieceCount !== 1 ? 's' : ''} remaining
+                </span>
+              </div>
+              {onOpenTray && (
+                <button
+                  onClick={onOpenTray}
+                  className={cn(
+                    'px-4 py-2 font-bold rounded-md bg-foreground text-background',
+                    'transition-all duration-150',
+                    'hover:bg-foreground/90 active:scale-95'
+                  )}
+                >
+                  See Pieces
+                </button>
+              )}
+            </>
+          )}
         </div>
       </div>
     );
   }
 );
 
-TapDragBanner.displayName = 'TapDragBanner';
-
-// Tap Hint Pill - shows when no piece is active to guide the user
-const TapHintPill = React.memo(({ isVisible }: { isVisible: boolean }) => {
-  return (
-    <div
-      className={cn(
-        'fixed left-1/2 -translate-x-1/2 z-[9999]',
-        'px-4 py-2 rounded-md',
-        'border backdrop-blur-sm bg-muted/90 border-border',
-        'text-sm font-medium text-muted-foreground',
-        'transition-all duration-300 ease-out',
-        isVisible ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-4 pointer-events-none'
-      )}
-      style={{
-        bottom: '4rem',
-      }}
-    >
-      Tap a piece to drag it
-    </div>
-  );
-});
-
-TapHintPill.displayName = 'TapHintPill';
+BottomBanner.displayName = 'BottomBanner';
 
 // Main Grid component
 type GridProps = {
@@ -1745,31 +2359,50 @@ type GridProps = {
   shouldAutoComplete?: (previewLayout: (string | null)[][]) => boolean;
   // Optional callback when drag state changes (piece selected/deselected in tap-to-drag mode)
   onDragStateChange?: (isActive: boolean) => void;
-  // Hide the "Tap a piece to drag it" hint pill
-  hideHintPill?: boolean;
+  // Hide the bottom banner
+  hideBanner?: boolean;
+  // Callback when an external drag results in an invalid drop (piece should return to tray)
+  onExternalDragInvalid?: (itemId: string) => void;
+  // Callback to open the piece tray modal
+  onOpenTray?: () => void;
+  // Number of unplaced pieces (for display in banner)
+  unplacedPieceCount?: number;
+  // Callback to check if a cell is blocked (e.g., black tiles that pieces cannot be placed on)
+  // When placing on a blocked cell, the dragging piece returns to tray without affecting other pieces
+  isCellBlocked?: (x: number, y: number) => boolean;
+  // Callback when overlapping pieces are removed (sent back to tray)
+  onPiecesRemoved?: (pieceIds: string[]) => void;
 };
 
-function Grid({
-  gridSize,
-  cellSize,
-  initialItems = [],
-  onItemMove: _onItemMove,
-  onItemAdd: _onItemAdd,
-  onItemRemove: _onItemRemove,
-  onLayoutChange,
-  className = '',
-  children,
-  disabled = false,
-  dragMode = 'tap-to-drag',
-  getBoardTileStyle,
-  getBoardTileClassName,
-  getTileDraggingClassName,
-  defaultBoardTileClassName,
-  defaultItemClassName,
-  shouldAutoComplete,
-  onDragStateChange,
-  hideHintPill = false,
-}: GridProps) {
+const Grid = forwardRef<GridRef, GridProps>(function Grid(
+  {
+    gridSize,
+    cellSize,
+    initialItems = [],
+    onItemMove: _onItemMove,
+    onItemAdd: _onItemAdd,
+    onItemRemove: _onItemRemove,
+    onLayoutChange,
+    className = '',
+    children,
+    disabled = false,
+    dragMode = 'tap-to-drag',
+    getBoardTileStyle,
+    getBoardTileClassName,
+    getTileDraggingClassName,
+    defaultBoardTileClassName,
+    defaultItemClassName,
+    shouldAutoComplete,
+    onDragStateChange,
+    hideBanner = false,
+    onExternalDragInvalid,
+    onOpenTray,
+    unplacedPieceCount = 0,
+    isCellBlocked,
+    onPiecesRemoved,
+  },
+  ref
+) {
   return (
     <GridProvider
       gridSize={gridSize}
@@ -1780,42 +2413,60 @@ function Grid({
       dragMode={dragMode}
       shouldAutoComplete={shouldAutoComplete}
       onDragStateChange={onDragStateChange}
+      isCellBlocked={isCellBlocked}
+      onPiecesRemoved={onPiecesRemoved}
     >
       <GridContent
+        ref={ref}
         className={className}
         getBoardTileStyle={getBoardTileStyle}
         getBoardTileClassName={getBoardTileClassName}
         getTileDraggingClassName={getTileDraggingClassName}
         defaultBoardTileClassName={defaultBoardTileClassName}
         defaultItemClassName={defaultItemClassName}
-        hideHintPill={hideHintPill}
+        hideBanner={hideBanner}
+        onExternalDragInvalid={onExternalDragInvalid}
+        onOpenTray={onOpenTray}
+        unplacedPieceCount={unplacedPieceCount}
       >
         {children}
       </GridContent>
     </GridProvider>
   );
-}
+});
 
 // Internal Grid component that has access to context
-function GridContent({
-  className,
-  children,
-  getBoardTileStyle,
-  getBoardTileClassName,
-  getTileDraggingClassName,
-  defaultBoardTileClassName,
-  defaultItemClassName,
-  hideHintPill = false,
-}: {
-  className: string;
-  children: ReactNode;
-  getBoardTileStyle?: (x: number, y: number) => React.CSSProperties | undefined;
-  getBoardTileClassName?: (x: number, y: number) => string | undefined;
-  getTileDraggingClassName?: (piece: DraggableItem, valid: boolean) => string | undefined;
-  defaultBoardTileClassName?: string;
-  defaultItemClassName?: string;
-  hideHintPill?: boolean;
-}) {
+const GridContent = forwardRef<
+  GridRef,
+  {
+    className: string;
+    children: ReactNode;
+    getBoardTileStyle?: (x: number, y: number) => React.CSSProperties | undefined;
+    getBoardTileClassName?: (x: number, y: number) => string | undefined;
+    getTileDraggingClassName?: (piece: DraggableItem, valid: boolean) => string | undefined;
+    defaultBoardTileClassName?: string;
+    defaultItemClassName?: string;
+    hideBanner?: boolean;
+    onExternalDragInvalid?: (itemId: string) => void;
+    onOpenTray?: () => void;
+    unplacedPieceCount?: number;
+  }
+>(function GridContent(
+  {
+    className,
+    children,
+    getBoardTileStyle,
+    getBoardTileClassName,
+    getTileDraggingClassName,
+    defaultBoardTileClassName,
+    defaultItemClassName,
+    hideBanner = false,
+    onExternalDragInvalid,
+    onOpenTray,
+    unplacedPieceCount = 0,
+  },
+  ref
+) {
   const {
     items,
     gridSize,
@@ -1830,24 +2481,91 @@ function GridContent({
     setGrabOffset,
     setGridBounds,
     tapDragActiveItemId,
+    tapDragOriginalPosition,
     placeTapDragItem,
+    deactivateTapDrag,
+    startExternalDrag,
+    addItem,
+    removeItem,
+    externalDragWasPlacedValidlyRef,
+    isCellBlocked,
+    justFinishedDragRef,
   } = useGrid();
+
+  // Expose methods via ref for external control
+  useImperativeHandle(
+    ref,
+    () => ({
+      startExternalDrag,
+      addItem: (item: Omit<DraggableItem, 'id'>) => {
+        const newId = item.shape.name || `external-${Date.now()}`;
+        addItem(item);
+        return newId;
+      },
+      removeItem,
+      getItems: () => items,
+    }),
+    [startExternalDrag, addItem, removeItem, items]
+  );
+
+  // Track external drag items to handle invalid drops
+  const externalDragItemRef = useRef<string | null>(null);
+  // Track if the external drag item came from tray (no original position)
+  const externalDragFromTrayRef = useRef<boolean>(false);
+
+  // When an external drag starts, track the item
+  useEffect(() => {
+    if (draggedItemId && !externalDragItemRef.current) {
+      // Check if this is a newly added item (from external source like tray)
+      const item = items.find((i) => i.id === draggedItemId);
+      if (item) {
+        externalDragItemRef.current = draggedItemId;
+        externalDragWasPlacedValidlyRef.current = false;
+        // Track if this came from tray (no original position in tap drag)
+        externalDragFromTrayRef.current =
+          tapDragActiveItemId === draggedItemId && !tapDragOriginalPosition;
+      }
+    } else if (!draggedItemId && externalDragItemRef.current) {
+      // Drag ended - check if the placement was valid
+      const itemId = externalDragItemRef.current;
+      const item = items.find((i) => i.id === itemId);
+      const wasFromTray = externalDragFromTrayRef.current;
+
+      if (item && onExternalDragInvalid) {
+        // Check if the drop was placed validly (tracked by handleGlobalPointerUp)
+        const wasPlacedValidly = externalDragWasPlacedValidlyRef.current;
+
+        // For external drags from tray, remove if the drop target was invalid
+        // This ensures pieces return to tray when dropped on invalid spots
+        if (!wasPlacedValidly && wasFromTray) {
+          console.log(`[ExternalDrag] Invalid drop for ${itemId}, returning to tray`);
+          onExternalDragInvalid(itemId);
+          removeItem(itemId);
+          // Also clean up tap drag state since piece is being removed
+          deactivateTapDrag();
+        }
+      }
+
+      externalDragItemRef.current = null;
+      externalDragWasPlacedValidlyRef.current = false;
+      externalDragFromTrayRef.current = false;
+    }
+  }, [
+    draggedItemId,
+    items,
+    onExternalDragInvalid,
+    removeItem,
+    tapDragActiveItemId,
+    tapDragOriginalPosition,
+    deactivateTapDrag,
+    externalDragWasPlacedValidlyRef,
+  ]);
 
   const gridRef = React.useRef<HTMLDivElement>(null);
 
   // Track scroll position to hide indicators when at top/bottom
   const [canScrollUp, setCanScrollUp] = useState(false);
   const [canScrollDown, setCanScrollDown] = useState(true);
-
-  // Track if user has ever tapped a piece (to hide hint pill permanently)
-  const [hasEverTappedPiece, setHasEverTappedPiece] = useState(false);
-
-  // Set hasEverTappedPiece when a piece is first activated
-  React.useEffect(() => {
-    if (tapDragActiveItemId && !hasEverTappedPiece) {
-      setHasEverTappedPiece(true);
-    }
-  }, [tapDragActiveItemId, hasEverTappedPiece]);
 
   // Track if pieces are below the viewport (80%+ hidden)
   const [hasPiecesBelow, setHasPiecesBelow] = useState(false);
@@ -2019,19 +2737,13 @@ function GridContent({
         onClick={scrollToLowestPiece}
       />
 
-      {/* Tap-to-Drag banner - shows when in tap-drag mode */}
-      <TapDragBanner isVisible={!!tapDragActiveItemId} onPlace={placeTapDragItem} />
-
-      {/* Tap hint pill - shows when in tap-to-drag mode and no piece is active, hides after first tap or when disabled */}
-      <TapHintPill
-        isVisible={
-          !disabled &&
-          !hideHintPill &&
-          !hasEverTappedPiece &&
-          dragMode === 'tap-to-drag' &&
-          !tapDragActiveItemId &&
-          !draggedItemId
-        }
+      {/* Bottom Banner - swaps between "Open Piece Tray" and "Drag Mode" */}
+      <BottomBanner
+        isVisible={!disabled && !hideBanner && dragMode === 'tap-to-drag' && unplacedPieceCount > 0}
+        isDragMode={!!tapDragActiveItemId}
+        onPlace={placeTapDragItem}
+        onOpenTray={onOpenTray}
+        unplacedPieceCount={unplacedPieceCount}
       />
 
       <div className={cn('inline-block', className)}>
@@ -2056,6 +2768,13 @@ function GridContent({
           onClick={(e) => {
             // If there's an active tap-drag piece, clicking on empty space (not a piece) should place it
             if (!tapDragActiveItemId) return;
+
+            // Suppress clicks that happen immediately after a drag ends
+            // This prevents mouseup from triggering a click that auto-places the piece
+            if (justFinishedDragRef.current) {
+              console.log(`[GridContainer Click] Suppressing click - just finished dragging`);
+              return;
+            }
 
             // Check if the click was on a draggable item (piece)
             // We traverse up the DOM to see if any parent has the draggable-item data attribute
@@ -2096,7 +2815,7 @@ function GridContent({
             />
           ))}
 
-          {/* Drag preview */}
+          {/* Drag preview - shows when actively dragging */}
           {dragPreview && (
             <DragPreviewComponent
               item={dragPreview.item}
@@ -2109,13 +2828,55 @@ function GridContent({
             />
           )}
 
+          {/* Static preview - shows when in tap-drag mode but NOT actively dragging */}
+          {tapDragActiveItemId &&
+            !draggedItemId &&
+            (() => {
+              const activeItem = items.find((i) => i.id === tapDragActiveItemId);
+              if (!activeItem) return null;
+
+              // Check if current position is valid (within bounds and not on blocked tile)
+              const withinBounds =
+                activeItem.position.x >= 0 &&
+                activeItem.position.y >= 0 &&
+                activeItem.position.x + activeItem.shape.width <= gridSize.width &&
+                activeItem.position.y + activeItem.shape.height <= gridSize.height;
+
+              // Check blocked tiles using the callback if provided
+              let isOnBlockedTile = false;
+              if (isCellBlocked) {
+                for (const cell of activeItem.shape.cells) {
+                  const cellX = activeItem.position.x + cell.x;
+                  const cellY = activeItem.position.y + cell.y;
+                  if (isCellBlocked(cellX, cellY)) {
+                    isOnBlockedTile = true;
+                    break;
+                  }
+                }
+              }
+
+              const isValid = withinBounds && !isOnBlockedTile;
+
+              return (
+                <DragPreviewComponent
+                  item={activeItem}
+                  position={activeItem.position}
+                  isValid={isValid}
+                  cellSize={cellSize}
+                  spacing={spacing}
+                  getTileDraggingClassName={getTileDraggingClassName}
+                  defaultClassName={defaultItemClassName}
+                />
+              );
+            })()}
+
           {/* Custom children (for additional content) */}
           {children}
         </div>
       </div>
     </>
   );
-}
+});
 
 export { Grid };
 export type { DragMode } from '../../hooks/useDragMode';
