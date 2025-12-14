@@ -252,6 +252,9 @@ export const LetteredPage = ({
   // Grid ref for external drag
   const gridRef = useRef<GridRef>(null);
 
+  // Track which piece is being dragged from the tray (hide immediately when drag starts)
+  const [pieceDraggingFromTray, setPieceDraggingFromTray] = useState<string | null>(null);
+
   // Compute unplaced pieces (pieces not yet placed on the grid)
   const unplacedPieces = useMemo(() => {
     if (!gameData) return [];
@@ -936,6 +939,9 @@ export const LetteredPage = ({
         return;
       }
 
+      // Immediately hide the piece in the tray
+      setPieceDraggingFromTray(pieceId);
+
       // Convert piece to draggable item format
       const draggableItem = convertPieceToDraggableItem(piece, (p) =>
         getPieceTileClass(p, 'text-2xl font-bold')
@@ -956,18 +962,27 @@ export const LetteredPage = ({
     console.log(
       `[handleExternalDragInvalid] Piece ${itemId} dropped in invalid position, returning to tray`
     );
-    toast.error('Invalid placement', {
-      description: 'The piece could not be placed there. Try again.',
-      duration: 2000,
-    });
+    // Clear the dragging state so piece reappears in tray immediately
+    setPieceDraggingFromTray(null);
+  }, []);
+
+  // Handle invalid placement attempt (user tried to place piece on blocked tile)
+  const handleInvalidPlacement = useCallback((itemId: string) => {
+    console.log(
+      `[handleInvalidPlacement] Piece ${itemId} cannot be placed on blocked tile, returning to tray`
+    );
+    // Toast removed - visual feedback from invalid animation is sufficient
   }, []);
 
   const pieceTileDraggingClass = (_piece: DraggableItem, valid: boolean) => {
-    const baseClass = 'border-2 border-dashed opacity-80 transition-colors';
     if (valid) {
-      return cn(baseClass, 'bg-accent/20 border-primary');
+      return cn(
+        'border-2 border-dashed opacity-80 transition-colors',
+        'bg-accent/20 border-primary'
+      );
     } else {
-      return cn(baseClass, 'bg-destructive/20 border-destructive');
+      // Invalid styling - piece turns red with breathing opacity animation
+      return cn('border-2 border-solid', '!bg-red-500 border-red-600', 'animate-invalid-breathe');
     }
   };
 
@@ -995,6 +1010,14 @@ export const LetteredPage = ({
     // (They are already removed from the Grid's items state)
     if (gameStateManagerRef.current) {
       gameStateManagerRef.current.removePieces(pieceIds);
+    }
+  }, []);
+
+  // Handle when a piece enters or leaves the grid bounds during drag
+  const handleDragOverGridChange = useCallback((pieceId: string | null) => {
+    // When drag ends (null), clear the dragging from tray state
+    if (pieceId === null) {
+      setPieceDraggingFromTray(null);
     }
   }, []);
 
@@ -1265,9 +1288,11 @@ export const LetteredPage = ({
           shouldAutoComplete={checkPuzzleComplete}
           hideBanner={uiState.showGameOverModal || showInstructions}
           onExternalDragInvalid={handleExternalDragInvalid}
+          onInvalidPlacement={handleInvalidPlacement}
           unplacedPieceCount={unplacedPieces.length}
           isCellBlocked={isCellBlocked}
           onPiecesRemoved={handlePiecesRemoved}
+          onDragOverGridChange={handleDragOverGridChange}
         />
       </div>
 
@@ -1280,6 +1305,7 @@ export const LetteredPage = ({
           onPieceDragStart={handlePieceDragStart}
           getPieceClassName={(piece) => getPieceTileClass(piece, 'text-2xl font-bold')}
           disabled={gameComplete}
+          hiddenPieceIds={pieceDraggingFromTray ? [pieceDraggingFromTray] : []}
         />
       </div>
       {/* Confetti Animation */}

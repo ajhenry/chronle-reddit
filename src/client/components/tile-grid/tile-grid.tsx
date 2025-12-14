@@ -169,6 +169,8 @@ type GridContextType = {
   tapDragOriginalPosition: GridPosition | null; // Original position before tap-to-drag started
   // IDs of pieces that would be overlapped by the current drag preview
   overlappingPieceIds: string[];
+  // IDs of pieces that are currently in invalid positions (on blocked tiles)
+  invalidPositionItemIds: string[];
   // Ref to check if a drag just finished (to suppress post-drag click events)
   justFinishedDragRef: React.MutableRefObject<boolean>;
   setItems: (items: DraggableItem[]) => void;
@@ -229,6 +231,7 @@ type GridProviderProps = {
   onDragStateChange?: (isActive: boolean) => void;
   isCellBlocked?: (x: number, y: number) => boolean;
   onPiecesRemoved?: (pieceIds: string[]) => void;
+  onInvalidPlacement?: (itemId: string) => void;
 };
 
 function GridProvider({
@@ -243,6 +246,7 @@ function GridProvider({
   onDragStateChange,
   isCellBlocked,
   onPiecesRemoved,
+  onInvalidPlacement,
 }: GridProviderProps) {
   const spacing = gridSize.spacing ?? 0;
   const gridId = useMemo(() => generateGridId(), []);
@@ -341,6 +345,30 @@ function GridProvider({
 
     return [];
   }, [dragPreview, tapDragActiveItemId, draggedItemId, items]);
+
+  // Compute invalid position item IDs - pieces that are currently on blocked tiles
+  // This is used to show error styling on pieces in invalid positions
+  const invalidPositionItemIds = useMemo(() => {
+    if (!isCellBlocked) return [];
+
+    const invalid: string[] = [];
+
+    // Check the active tap-drag item if it exists and is not being actively dragged
+    if (tapDragActiveItemId && !draggedItemId) {
+      const activeItem = items.find((i) => i.id === tapDragActiveItemId);
+      if (activeItem) {
+        const occupiedPositions = getItemOccupiedPositions(activeItem);
+        for (const pos of occupiedPositions) {
+          if (pos.x >= 0 && pos.y >= 0 && isCellBlocked(pos.x, pos.y)) {
+            invalid.push(tapDragActiveItemId);
+            break;
+          }
+        }
+      }
+    }
+
+    return invalid;
+  }, [tapDragActiveItemId, draggedItemId, items, isCellBlocked]);
 
   // Store shouldAutoComplete in a ref to avoid stale closures
   const shouldAutoCompleteRef = useRef(shouldAutoComplete);
@@ -680,6 +708,8 @@ function GridProvider({
     console.log(`[placeTapDragItem] isOnBlockedTile=${isOnBlockedTile}`);
     if (isOnBlockedTile) {
       console.log(`[placeTapDragItem] On blocked tile - handling reset`);
+      // Notify parent about invalid placement attempt (for showing toast)
+      onInvalidPlacement?.(tapDragActiveItemId);
       // Blocked tile - return piece to tray, don't affect overlapping pieces
       if (tapDragOriginalPosition) {
         // Piece was on board - reset to original position
@@ -695,12 +725,13 @@ function GridProvider({
         // Piece came from tray - remove it
         console.log(`[placeTapDragItem] Removing item (came from tray)`);
         setItems((prev) => prev.filter((i) => i.id !== tapDragActiveItemId));
-        setTapDragActiveItemId(null);
-        setTapDragOriginalPosition(null);
-        setDraggedItemId(null);
-        setGrabOffset(null);
-        setDragPreview(null);
       }
+      // Clear tap drag state
+      setTapDragActiveItemId(null);
+      setTapDragOriginalPosition(null);
+      setDraggedItemId(null);
+      setGrabOffset(null);
+      setDragPreview(null);
       return;
     }
 
@@ -800,6 +831,7 @@ function GridProvider({
     deactivateTapDrag,
     onLayoutChange,
     onPiecesRemoved,
+    onInvalidPlacement,
     gridSize,
     getOverlappingItemIds,
   ]);
@@ -1106,12 +1138,15 @@ function GridProvider({
           // Check if drop position is on a blocked tile (e.g., black tile)
           const isOnBlockedTile = isPositionOnBlockedTile(draggedItem, dropPosition);
 
-          if (isOnBlockedTile) {
-            // Blocked tile - return piece to tray, don't affect overlapping pieces
-            console.log('[handleGlobalPointerUp] Drop on blocked tile, returning piece');
-            if (tapDragActiveItemId === currentDraggedItemId && !tapDragOriginalPosition) {
-              placedValidly = false;
-            } else if (tapDragOriginalPosition) {
+          // In tap-to-drag mode, allow dropping on blocked tiles - they will show error styling
+          // and the toast will appear when user tries to PLACE the piece
+          // In hold-to-drag mode, blocked tiles still prevent placement
+          if (isOnBlockedTile && !tapDragActiveItemId) {
+            // Hold-to-drag mode: Blocked tile - return piece to original position
+            console.log(
+              '[handleGlobalPointerUp] Drop on blocked tile in hold-to-drag mode, returning piece'
+            );
+            if (tapDragOriginalPosition) {
               setItems((prev) =>
                 prev.map((item) =>
                   item.id === currentDraggedItemId
@@ -1120,11 +1155,18 @@ function GridProvider({
                 )
               );
             }
+            placedValidly = false;
           } else {
-            // Not on blocked tile - position is valid for placement
+            // Valid position OR tap-to-drag mode allows dropping on blocked tiles
             // Move the piece to the drop position
             moveItem(currentDraggedItemId, dropPosition);
             placedValidly = true;
+
+            if (isOnBlockedTile) {
+              console.log(
+                '[handleGlobalPointerUp] Drop on blocked tile in tap-to-drag mode, piece will show error styling'
+              );
+            }
 
             // In tap-to-drag mode, DON'T remove overlapping pieces during drag
             // They will be removed when the piece is actually PLACED (via placeTapDragItem)
@@ -1336,6 +1378,14 @@ function GridProvider({
         return;
       }
 
+      // If there's an active tap-drag item, place it first to count the move correctly
+      if (tapDragActiveItemId) {
+        console.log(
+          `[startExternalDrag] Placing active piece ${tapDragActiveItemId} before starting new drag`
+        );
+        placeTapDragItem();
+      }
+
       // Generate ID for the new item
       const newItemId = itemData.shape.name || generateItemId(gridId, items.length);
 
@@ -1397,6 +1447,8 @@ function GridProvider({
       gridSize,
       dragMode,
       setInitialPointerPosition,
+      tapDragActiveItemId,
+      placeTapDragItem,
     ]
   );
 
@@ -1417,6 +1469,7 @@ function GridProvider({
       tapDragActiveItemId,
       tapDragOriginalPosition,
       overlappingPieceIds,
+      invalidPositionItemIds,
       setItems,
       addItem,
       removeItem,
@@ -1454,6 +1507,7 @@ function GridProvider({
       tapDragActiveItemId,
       tapDragOriginalPosition,
       overlappingPieceIds,
+      invalidPositionItemIds,
       justFinishedDragRef,
       addItem,
       removeItem,
@@ -1592,6 +1646,7 @@ const DraggableItemComponent = React.memo(
       tapDragActiveItemId,
       tapDragOriginalPosition,
       overlappingPieceIds,
+      invalidPositionItemIds,
       activateTapDrag,
       placeTapDragItem,
     } = useGrid();
@@ -1606,6 +1661,8 @@ const DraggableItemComponent = React.memo(
     const isFromTray = isTapDragActive && tapDragOriginalPosition === null;
     // Check if this piece is being overlapped by the currently dragging piece
     const isBeingOverlapped = overlappingPieceIds.includes(item.id);
+    // Check if this piece is in an invalid position (on blocked tile)
+    const isInInvalidPosition = invalidPositionItemIds.includes(item.id);
 
     const boundingBox = useMemo(() => getItemBoundingBox(item), [item]);
 
@@ -1953,8 +2010,9 @@ const DraggableItemComponent = React.memo(
                 // Hide piece when actively dragging in tap-drag mode
                 // Also hide piece from tray entirely (no original position to show)
                 (isDragging && isTapDragActive) || isFromTray ? 'opacity-0' : 'opacity-100',
-                // Show red pulse when this piece is being overlapped by dragging piece
-                isBeingOverlapped && 'animate-pulse-red ring-2 ring-red-500',
+                // Show red breathing when this piece is being overlapped by dragging piece
+                // or when in an invalid position (on blocked tile)
+                (isBeingOverlapped || isInInvalidPosition) && 'animate-pulse-red',
                 item.className || defaultClassName || ''
               )}
               style={cellStyle}
@@ -1985,6 +2043,7 @@ const DraggableItemComponent = React.memo(
       isTapDragActive,
       isFromTray,
       isBeingOverlapped,
+      isInInvalidPosition,
       isDisabled,
       defaultClassName,
       dragMode,
@@ -2185,77 +2244,19 @@ const ScrollZoneIndicator = React.memo(
 
 ScrollZoneIndicator.displayName = 'ScrollZoneIndicator';
 
-// Pieces Below Indicator - shows when pieces are below the viewport
-const PiecesBelowIndicator = React.memo(
-  ({ isVisible, onClick }: { isVisible: boolean; onClick: () => void }) => {
-    return (
-      <div
-        className={cn(
-          'fixed right-0 bottom-0 left-0 z-[9998]',
-          'flex justify-center items-center',
-          'border-t bg-black/80 border-white/30',
-          'overflow-hidden transition-all duration-200 ease-out cursor-pointer',
-          'hover:bg-black/90'
-        )}
-        style={{
-          height: isVisible ? '40px' : '0',
-          pointerEvents: isVisible ? 'auto' : 'none',
-        }}
-        onClick={onClick}
-      >
-        <span
-          className={cn(
-            'flex gap-2 items-center text-sm font-medium tracking-wide text-white/70',
-            'transition-opacity duration-150 delay-75',
-            isVisible ? 'opacity-100' : 'opacity-0'
-          )}
-        >
-          <svg
-            xmlns="http://www.w3.org/2000/svg"
-            width="16"
-            height="16"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="2"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-          >
-            <path d="m6 9 6 6 6-6" />
-          </svg>
-          Pieces Below
-          <svg
-            xmlns="http://www.w3.org/2000/svg"
-            width="16"
-            height="16"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="2"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-          >
-            <path d="m6 9 6 6 6-6" />
-          </svg>
-        </span>
-      </div>
-    );
-  }
-);
-
-PiecesBelowIndicator.displayName = 'PiecesBelowIndicator';
-
 // Bottom Banner - shows drag mode controls when a piece is being dragged
 const BottomBanner = React.memo(
   ({
     isVisible,
     isDragMode,
     onPlace,
+    onRemove,
     unplacedPieceCount,
   }: {
     isVisible: boolean;
     isDragMode: boolean;
     onPlace: () => void;
+    onRemove: () => void;
     unplacedPieceCount: number;
   }) => {
     // Only show banner when in drag mode (piece is being dragged)
@@ -2289,16 +2290,29 @@ const BottomBanner = React.memo(
               {unplacedPieceCount} piece{unplacedPieceCount !== 1 ? 's' : ''} remaining
             </span>
           </div>
-          <button
-            onClick={onPlace}
-            className={cn(
-              'px-4 py-2 font-bold rounded-md bg-foreground text-background',
-              'transition-all duration-150',
-              'hover:bg-foreground/90 active:scale-95'
-            )}
-          >
-            Place
-          </button>
+          <div className="flex gap-2">
+            <button
+              onClick={onRemove}
+              className={cn(
+                'px-4 py-2 font-bold rounded-md',
+                'bg-muted text-foreground border border-border',
+                'transition-all duration-150',
+                'hover:bg-muted/80 active:scale-95'
+              )}
+            >
+              Remove
+            </button>
+            <button
+              onClick={onPlace}
+              className={cn(
+                'px-4 py-2 font-bold rounded-md bg-foreground text-background',
+                'transition-all duration-150',
+                'hover:bg-foreground/90 active:scale-95'
+              )}
+            >
+              Place
+            </button>
+          </div>
         </div>
       </div>
     );
@@ -2342,6 +2356,11 @@ type GridProps = {
   isCellBlocked?: (x: number, y: number) => boolean;
   // Callback when overlapping pieces are removed (sent back to tray)
   onPiecesRemoved?: (pieceIds: string[]) => void;
+  // Callback when user tries to place a piece in an invalid position (on blocked tile)
+  onInvalidPlacement?: (itemId: string) => void;
+  // Callback when a piece enters or leaves the grid bounds during drag
+  // Useful for hiding the piece placeholder in the tray when dragging over the grid
+  onDragOverGridChange?: (pieceId: string | null) => void;
 };
 
 const Grid = forwardRef<GridRef, GridProps>(function Grid(
@@ -2369,6 +2388,8 @@ const Grid = forwardRef<GridRef, GridProps>(function Grid(
     unplacedPieceCount = 0,
     isCellBlocked,
     onPiecesRemoved,
+    onInvalidPlacement,
+    onDragOverGridChange,
   },
   ref
 ) {
@@ -2382,6 +2403,7 @@ const Grid = forwardRef<GridRef, GridProps>(function Grid(
       dragMode={dragMode}
       shouldAutoComplete={shouldAutoComplete}
       onDragStateChange={onDragStateChange}
+      onInvalidPlacement={onInvalidPlacement}
       isCellBlocked={isCellBlocked}
       onPiecesRemoved={onPiecesRemoved}
     >
@@ -2396,6 +2418,8 @@ const Grid = forwardRef<GridRef, GridProps>(function Grid(
         hideBanner={hideBanner}
         onExternalDragInvalid={onExternalDragInvalid}
         unplacedPieceCount={unplacedPieceCount}
+        onDragOverGridChange={onDragOverGridChange}
+        onPiecesRemoved={onPiecesRemoved}
       >
         {children}
       </GridContent>
@@ -2417,6 +2441,8 @@ const GridContent = forwardRef<
     hideBanner?: boolean;
     onExternalDragInvalid?: (itemId: string) => void;
     unplacedPieceCount?: number;
+    onDragOverGridChange?: (pieceId: string | null) => void;
+    onPiecesRemoved?: (pieceIds: string[]) => void;
   }
 >(function GridContent(
   {
@@ -2430,6 +2456,8 @@ const GridContent = forwardRef<
     hideBanner = false,
     onExternalDragInvalid,
     unplacedPieceCount = 0,
+    onDragOverGridChange,
+    onPiecesRemoved,
   },
   ref
 ) {
@@ -2527,72 +2555,26 @@ const GridContent = forwardRef<
     externalDragWasPlacedValidlyRef,
   ]);
 
+  // Track when a piece enters/leaves grid bounds during drag
+  // This is used to hide the placeholder in the tray when dragging over the grid
+  const prevDragOverGridRef = useRef<string | null>(null);
+  useEffect(() => {
+    // Determine if a piece is currently over the grid
+    // A piece is "over the grid" when there's a drag preview (calculated during pointer move)
+    const pieceOverGrid = dragPreview ? dragPreview.item.id : null;
+
+    // Only call the callback if the state changed
+    if (pieceOverGrid !== prevDragOverGridRef.current) {
+      prevDragOverGridRef.current = pieceOverGrid;
+      onDragOverGridChange?.(pieceOverGrid);
+    }
+  }, [dragPreview, onDragOverGridChange]);
+
   const gridRef = React.useRef<HTMLDivElement>(null);
 
   // Track scroll position to hide indicators when at top/bottom
   const [canScrollUp, setCanScrollUp] = useState(false);
   const [canScrollDown, setCanScrollDown] = useState(true);
-
-  // Track if pieces are below the viewport (80%+ hidden)
-  const [hasPiecesBelow, setHasPiecesBelow] = useState(false);
-  const lowestPieceBottomRef = useRef<number>(0);
-
-  // Check if any piece is 80%+ below the viewport
-  const checkPiecesBelow = useCallback(() => {
-    if (!gridRef.current || items.length === 0) {
-      setHasPiecesBelow(false);
-      return;
-    }
-
-    const gridRect = gridRef.current.getBoundingClientRect();
-    const viewportBottom = window.innerHeight;
-    let anyPieceBelow = false;
-    let lowestBottom = 0;
-
-    items.forEach((item) => {
-      // Calculate item's dimensions and position
-      const itemHeight = item.shape.height * cellSize.height + (item.shape.height - 1) * spacing;
-      const itemTop = item.position.y * (cellSize.height + spacing);
-      const itemBottom = itemTop + itemHeight;
-
-      // Convert to viewport position
-      const itemTopOnScreen = gridRect.top + itemTop;
-      const itemBottomOnScreen = gridRect.top + itemBottom;
-
-      // Calculate how much of the item is visible
-      const visibleTop = Math.max(0, itemTopOnScreen);
-      const visibleBottom = Math.min(viewportBottom, itemBottomOnScreen);
-      const visibleHeight = Math.max(0, visibleBottom - visibleTop);
-      const visibilityRatio = visibleHeight / itemHeight;
-
-      // If less than 20% is visible (80%+ is hidden) and it's below viewport
-      if (visibilityRatio < 0.2 && itemTopOnScreen > viewportBottom * 0.5) {
-        anyPieceBelow = true;
-      }
-
-      // Track lowest piece bottom for scrolling
-      const itemBottomOnPage = gridRect.top + window.scrollY + itemBottom;
-      if (itemBottomOnPage > lowestBottom) {
-        lowestBottom = itemBottomOnPage;
-      }
-    });
-
-    lowestPieceBottomRef.current = lowestBottom;
-    setHasPiecesBelow(anyPieceBelow);
-  }, [items, cellSize, spacing]);
-
-  // Scroll to the lowest piece
-  const scrollToLowestPiece = useCallback(() => {
-    const lowestBottom = lowestPieceBottomRef.current;
-    if (lowestBottom > 0) {
-      // Scroll so the lowest piece is visible with some padding
-      const targetScroll = lowestBottom - window.innerHeight + 60;
-      window.scrollTo({
-        top: Math.max(0, targetScroll),
-        behavior: 'smooth',
-      });
-    }
-  }, []);
 
   // Capture grid bounds when component mounts or resizes
   React.useEffect(() => {
@@ -2617,9 +2599,6 @@ const GridContent = forwardRef<
       const clientHeight = window.innerHeight;
       const maxScroll = scrollHeight - clientHeight;
       setCanScrollDown(scrollTop < maxScroll - 5); // Small threshold
-
-      // Check for pieces below viewport
-      checkPiecesBelow();
     };
 
     // Initial check
@@ -2637,7 +2616,7 @@ const GridContent = forwardRef<
       document.removeEventListener('scroll', updateScrollState);
       window.removeEventListener('resize', updateScrollState);
     };
-  }, [setGridBounds, checkPiecesBelow]);
+  }, [setGridBounds]);
 
   const handleDragStart = useCallback(
     (item: DraggableItem, initialGrabOffset?: GridPosition) => {
@@ -2684,6 +2663,22 @@ const GridContent = forwardRef<
     [gridSize, cellSize, spacing]
   );
 
+  // Handle removing the currently active piece (returns it to tray)
+  const handleRemovePiece = useCallback(() => {
+    if (!tapDragActiveItemId) return;
+
+    console.log(`[handleRemovePiece] Removing piece ${tapDragActiveItemId}`);
+
+    // Remove the piece from the grid
+    removeItem(tapDragActiveItemId);
+
+    // Notify parent about the removed piece
+    onPiecesRemoved?.([tapDragActiveItemId]);
+
+    // Deactivate tap drag mode
+    deactivateTapDrag();
+  }, [tapDragActiveItemId, removeItem, onPiecesRemoved, deactivateTapDrag]);
+
   return (
     <>
       {/* Scroll zone indicators - animate in/out when dragging, hide when at scroll limits */}
@@ -2697,17 +2692,12 @@ const GridContent = forwardRef<
         isVisible={(!!draggedItemId || !!tapDragActiveItemId) && canScrollDown}
       />
 
-      {/* Pieces below indicator - shows when pieces are 80%+ below viewport, hidden during drag and tap-drag */}
-      <PiecesBelowIndicator
-        isVisible={hasPiecesBelow && !draggedItemId && !tapDragActiveItemId}
-        onClick={scrollToLowestPiece}
-      />
-
       {/* Bottom Banner - shows drag mode controls when dragging */}
       <BottomBanner
         isVisible={!disabled && !hideBanner && dragMode === 'tap-to-drag' && unplacedPieceCount > 0}
         isDragMode={!!tapDragActiveItemId}
         onPlace={placeTapDragItem}
+        onRemove={handleRemovePiece}
         unplacedPieceCount={unplacedPieceCount}
       />
 

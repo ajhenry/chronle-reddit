@@ -1,9 +1,14 @@
-import React, { useMemo, useCallback, useRef } from 'react';
+import React, { useMemo, useCallback, useRef, useState, useEffect } from 'react';
 import { cn } from '../lib/utils';
 import { LetterPiece as LetterPieceType, GridPosition } from '../../shared/types/api';
+import { ChevronLeft, ChevronRight } from 'lucide-react';
 
-// Threshold in pixels for vertical drag to trigger piece pickup
-const VERTICAL_DRAG_THRESHOLD = 20;
+// Threshold in pixels for upward movement to trigger piece pickup
+const DRAG_THRESHOLD = 20;
+// Maximum angle from vertical (in degrees) that still counts as a drag gesture
+// 60 degrees means horizontal movement can be up to ~1.73x the vertical movement
+const MAX_DRAG_ANGLE_DEGREES = 60;
+const MAX_DRAG_ANGLE_TAN = Math.tan((MAX_DRAG_ANGLE_DEGREES * Math.PI) / 180); // ~1.73
 
 interface PieceTrayProps {
   pieces: LetterPieceType[];
@@ -12,6 +17,8 @@ interface PieceTrayProps {
   onPieceDragStart: (pieceId: string, touchPosition: { clientX: number; clientY: number }) => void;
   getPieceClassName?: (piece: LetterPieceType) => string | undefined;
   disabled?: boolean;
+  // IDs of pieces that should be hidden (e.g., when being dragged over the grid)
+  hiddenPieceIds?: string[];
 }
 
 interface TrayPieceProps {
@@ -34,6 +41,8 @@ const TrayPiece: React.FC<TrayPieceProps> = ({
   // Track touch state for gesture detection
   const touchStartRef = useRef<{ x: number; y: number; id: number } | null>(null);
   const hasDragStartedRef = useRef(false);
+  // Track if user is in scroll mode (horizontal movement detected first)
+  const scrollModeRef = useRef(false);
 
   // Calculate the grid dimensions for displaying the piece
   const { pieceGrid, width, height } = useMemo(() => {
@@ -67,6 +76,33 @@ const TrayPiece: React.FC<TrayPieceProps> = ({
     };
   }, [piece.shape, piece.letters]);
 
+  // Check if a touch/click target is on an actual letter cell (not dead zone)
+  const isValidDragTarget = useCallback((target: EventTarget | null): boolean => {
+    if (!target || !(target instanceof HTMLElement)) return false;
+    // Walk up the DOM tree to find if we're on a valid drag target
+    let element: HTMLElement | null = target;
+    while (element) {
+      // Allow drag from letter cells
+      if (element.dataset.hasLetter === 'true') {
+        return true;
+      }
+      // Allow drag from the grid wrapper (gaps between cells)
+      if (element.dataset.pieceGrid === 'true') {
+        return true;
+      }
+      // Block drag from empty cells (dead zones)
+      if (element.dataset.hasLetter === 'false') {
+        return false;
+      }
+      // Stop at the piece container
+      if (element.dataset.pieceContainer === 'true') {
+        return false;
+      }
+      element = element.parentElement;
+    }
+    return false;
+  }, []);
+
   const handleTouchStart = useCallback(
     (e: React.TouchEvent) => {
       if (disabled) return;
@@ -74,14 +110,18 @@ const TrayPiece: React.FC<TrayPieceProps> = ({
       const touch = e.touches[0];
       if (!touch) return;
 
+      // Only track touch if it started on a valid letter cell
+      if (!isValidDragTarget(e.target)) return;
+
       touchStartRef.current = {
         x: touch.clientX,
         y: touch.clientY,
         id: touch.identifier,
       };
       hasDragStartedRef.current = false;
+      scrollModeRef.current = false;
     },
-    [disabled]
+    [disabled, isValidDragTarget]
   );
 
   const handleTouchMove = useCallback(
@@ -91,11 +131,24 @@ const TrayPiece: React.FC<TrayPieceProps> = ({
       const touch = Array.from(e.touches).find((t) => t.identifier === touchStartRef.current?.id);
       if (!touch) return;
 
+      const deltaX = Math.abs(touch.clientX - touchStartRef.current.x);
       const deltaY = touch.clientY - touchStartRef.current.y;
+      const absDeltaY = Math.abs(deltaY);
 
-      // Check if vertical upward movement exceeds threshold
-      // (horizontal movement is handled by native scroll via touch-action: pan-x)
-      if (deltaY < -VERTICAL_DRAG_THRESHOLD) {
+      // Calculate if the gesture is within the allowed drag angle (60 degrees from vertical)
+      // If horizontal movement is greater than tan(60) * vertical movement, it's a scroll gesture
+      const isWithinDragAngle = absDeltaY > 0 && deltaX / absDeltaY <= MAX_DRAG_ANGLE_TAN;
+
+      // Lock into scroll mode if movement is too horizontal (outside drag angle cone)
+      if (!scrollModeRef.current && absDeltaY > 5 && !isWithinDragAngle) {
+        scrollModeRef.current = true;
+      }
+
+      // Trigger drag if:
+      // 1. NOT in scroll mode
+      // 2. Upward movement exceeds threshold (negative deltaY)
+      // 3. Gesture is within the allowed drag angle
+      if (!scrollModeRef.current && deltaY < -DRAG_THRESHOLD && isWithinDragAngle) {
         // Upward drag detected - start piece drag
         hasDragStartedRef.current = true;
         e.preventDefault();
@@ -109,8 +162,7 @@ const TrayPiece: React.FC<TrayPieceProps> = ({
         // Reset touch state
         touchStartRef.current = null;
       }
-      // If horizontal movement is dominant, let native scroll handle it
-      // (don't prevent default)
+      // If in scroll mode, let native scroll handle it (don't prevent default)
     },
     [disabled, onDragStart, piece.id]
   );
@@ -118,17 +170,22 @@ const TrayPiece: React.FC<TrayPieceProps> = ({
   const handleTouchEnd = useCallback(() => {
     touchStartRef.current = null;
     hasDragStartedRef.current = false;
+    scrollModeRef.current = false;
   }, []);
 
   const handleTouchCancel = useCallback(() => {
     touchStartRef.current = null;
     hasDragStartedRef.current = false;
+    scrollModeRef.current = false;
   }, []);
 
   // Mouse support for desktop
   const handleMouseDown = useCallback(
     (e: React.MouseEvent) => {
       if (disabled) return;
+
+      // Only allow drag if click was on a valid letter cell (not dead zone)
+      if (!isValidDragTarget(e.target)) return;
 
       e.preventDefault();
       e.stopPropagation();
@@ -139,7 +196,7 @@ const TrayPiece: React.FC<TrayPieceProps> = ({
         clientY: e.clientY,
       });
     },
-    [disabled, onDragStart, piece.id]
+    [disabled, onDragStart, piece.id, isValidDragTarget]
   );
 
   // Calculate piece dimensions
@@ -163,6 +220,7 @@ const TrayPiece: React.FC<TrayPieceProps> = ({
       onTouchEnd={handleTouchEnd}
       onTouchCancel={handleTouchCancel}
       onMouseDown={handleMouseDown}
+      data-piece-container="true"
     >
       <div
         className="grid h-full"
@@ -171,6 +229,7 @@ const TrayPiece: React.FC<TrayPieceProps> = ({
           gridTemplateRows: `repeat(${height}, ${cellSize.height}px)`,
           gap: cellSpacing,
         }}
+        data-piece-grid="true"
       >
         {pieceGrid.map((row, rowIndex) =>
           row.map((letter, colIndex) => (
@@ -186,6 +245,7 @@ const TrayPiece: React.FC<TrayPieceProps> = ({
               style={{
                 backgroundColor: letter ? piece.color : 'transparent',
               }}
+              data-has-letter={letter ? 'true' : 'false'}
             >
               {letter || ''}
             </div>
@@ -203,7 +263,19 @@ export const PieceTray: React.FC<PieceTrayProps> = ({
   onPieceDragStart,
   getPieceClassName,
   disabled = false,
+  hiddenPieceIds = [],
 }) => {
+  // Refs for scroll container and piece elements
+  const scrollContainerRef = useRef<HTMLDivElement>(null);
+  const pieceRefs = useRef<Map<string, HTMLDivElement>>(new Map());
+
+  // Track current focused piece index for navigation
+  const [focusedIndex, setFocusedIndex] = useState(0);
+
+  // Track if we can scroll in each direction
+  const [canScrollLeft, setCanScrollLeft] = useState(false);
+  const [canScrollRight, setCanScrollRight] = useState(false);
+
   // Calculate the height of the tallest piece
   const trayHeight = useMemo(() => {
     if (pieces.length === 0) return 0;
@@ -222,6 +294,159 @@ export const PieceTray: React.FC<PieceTrayProps> = ({
     return maxHeight * cellSize.height + (maxHeight - 1) * cellSpacing;
   }, [pieces, cellSize.height, cellSpacing]);
 
+  // Update scroll button visibility based on scroll position
+  const updateScrollButtons = useCallback(() => {
+    const container = scrollContainerRef.current;
+    if (!container) return;
+
+    const { scrollLeft, scrollWidth, clientWidth } = container;
+    setCanScrollLeft(scrollLeft > 5);
+    setCanScrollRight(scrollLeft < scrollWidth - clientWidth - 5);
+  }, []);
+
+  // Update scroll buttons on mount and when pieces change
+  useEffect(() => {
+    updateScrollButtons();
+
+    const container = scrollContainerRef.current;
+    if (container) {
+      container.addEventListener('scroll', updateScrollButtons, { passive: true });
+      window.addEventListener('resize', updateScrollButtons, { passive: true });
+
+      return () => {
+        container.removeEventListener('scroll', updateScrollButtons);
+        window.removeEventListener('resize', updateScrollButtons);
+      };
+    }
+  }, [updateScrollButtons, pieces]);
+
+  // Reset focused index when pieces change
+  useEffect(() => {
+    if (focusedIndex >= pieces.length) {
+      setFocusedIndex(Math.max(0, pieces.length - 1));
+    }
+  }, [pieces.length, focusedIndex]);
+
+  // Ref to track ongoing scroll animation
+  const scrollAnimationRef = useRef<number | null>(null);
+
+  // Custom smooth scroll with faster duration
+  const smoothScrollTo = useCallback(
+    (container: HTMLElement, targetScrollLeft: number, duration: number = 150) => {
+      // Cancel any ongoing animation
+      if (scrollAnimationRef.current) {
+        cancelAnimationFrame(scrollAnimationRef.current);
+      }
+
+      const start = container.scrollLeft;
+      const delta = targetScrollLeft - start;
+      const startTime = performance.now();
+
+      const animate = (currentTime: number) => {
+        const elapsed = currentTime - startTime;
+        const progress = Math.min(elapsed / duration, 1);
+        // Ease-out cubic for smooth deceleration
+        const eased = 1 - Math.pow(1 - progress, 3);
+        container.scrollLeft = start + delta * eased;
+
+        if (progress < 1) {
+          scrollAnimationRef.current = requestAnimationFrame(animate);
+        } else {
+          scrollAnimationRef.current = null;
+        }
+      };
+
+      scrollAnimationRef.current = requestAnimationFrame(animate);
+    },
+    []
+  );
+
+  // Bounce animation when at scroll limits
+  const bounceAtLimit = useCallback((container: HTMLElement, direction: 'left' | 'right') => {
+    const bounceDistance = 12;
+    const bounceDuration = 100;
+
+    // Determine bounce direction
+    const currentScroll = container.scrollLeft;
+    const bounceTarget =
+      direction === 'left' ? currentScroll - bounceDistance : currentScroll + bounceDistance;
+
+    // First phase: bounce outward
+    const startTime = performance.now();
+    const animateBounce = (currentTime: number) => {
+      const elapsed = currentTime - startTime;
+
+      if (elapsed < bounceDuration) {
+        // Bounce out
+        const progress = elapsed / bounceDuration;
+        const eased = Math.sin(progress * Math.PI); // Smooth up and down
+        const offset = (bounceTarget - currentScroll) * eased;
+        container.scrollLeft = currentScroll + offset;
+        requestAnimationFrame(animateBounce);
+      } else {
+        // Return to original position
+        container.scrollLeft = currentScroll;
+      }
+    };
+
+    requestAnimationFrame(animateBounce);
+  }, []);
+
+  // Scroll to center a specific piece
+  const scrollToPiece = useCallback(
+    (index: number, isAtBound: boolean = false, boundDirection?: 'left' | 'right') => {
+      const container = scrollContainerRef.current;
+      const piece = pieces[index];
+      if (!container || !piece) return;
+
+      const pieceElement = pieceRefs.current.get(piece.id);
+      if (!pieceElement) return;
+
+      // Calculate scroll position to center the piece
+      const containerRect = container.getBoundingClientRect();
+      const pieceRect = pieceElement.getBoundingClientRect();
+
+      const pieceCenter = pieceRect.left + pieceRect.width / 2;
+      const containerCenter = containerRect.left + containerRect.width / 2;
+      const scrollOffset = pieceCenter - containerCenter;
+      const targetScrollLeft = container.scrollLeft + scrollOffset;
+
+      // If at bound, show bounce effect
+      if (isAtBound && boundDirection) {
+        bounceAtLimit(container, boundDirection);
+      } else {
+        // Fast smooth scroll (150ms)
+        smoothScrollTo(container, targetScrollLeft, 150);
+      }
+
+      setFocusedIndex(index);
+    },
+    [pieces, smoothScrollTo, bounceAtLimit]
+  );
+
+  // Navigate to previous piece
+  const handlePrevious = useCallback(() => {
+    const isAtStart = focusedIndex === 0;
+    const newIndex = Math.max(0, focusedIndex - 1);
+    scrollToPiece(newIndex, isAtStart, 'left');
+  }, [focusedIndex, scrollToPiece]);
+
+  // Navigate to next piece
+  const handleNext = useCallback(() => {
+    const isAtEnd = focusedIndex === pieces.length - 1;
+    const newIndex = Math.min(pieces.length - 1, focusedIndex + 1);
+    scrollToPiece(newIndex, isAtEnd, 'right');
+  }, [focusedIndex, pieces.length, scrollToPiece]);
+
+  // Register piece ref
+  const setPieceRef = useCallback((pieceId: string, element: HTMLDivElement | null) => {
+    if (element) {
+      pieceRefs.current.set(pieceId, element);
+    } else {
+      pieceRefs.current.delete(pieceId);
+    }
+  }, []);
+
   // Don't render if no pieces
   if (pieces.length === 0) {
     return null;
@@ -229,37 +454,96 @@ export const PieceTray: React.FC<PieceTrayProps> = ({
 
   return (
     <div
-      className={cn(
-        'w-full overflow-x-auto overflow-y-hidden',
-        'transition-all duration-300 ease-out'
-      )}
+      className={cn('flex flex-col items-center w-full', 'transition-all duration-300 ease-out')}
       style={{
-        height: trayHeight,
         // Add padding for visual breathing room
         paddingTop: 16,
         paddingBottom: 8,
       }}
     >
+      {/* Scrollable tray container */}
       <div
-        className={cn('flex items-center gap-4', 'h-full', 'transition-all duration-300 ease-out')}
+        ref={scrollContainerRef}
+        className={cn('overflow-x-auto overflow-y-hidden', 'transition-all duration-300 ease-out')}
         style={{
-          // Ensure pieces are left-aligned
-          justifyContent: 'flex-start',
-          minWidth: 'min-content',
+          height: trayHeight,
+          maxWidth: '100%',
         }}
       >
-        {pieces.map((piece) => (
-          <TrayPiece
-            key={piece.id}
-            piece={piece}
-            cellSize={cellSize}
-            cellSpacing={cellSpacing}
-            onDragStart={onPieceDragStart}
-            className={getPieceClassName?.(piece)}
-            disabled={disabled}
-          />
-        ))}
+        <div
+          className={cn(
+            'flex items-center gap-4',
+            'h-full',
+            'transition-all duration-300 ease-out'
+          )}
+          style={{
+            // Ensure pieces are left-aligned within the scrollable container
+            justifyContent: 'flex-start',
+            minWidth: 'min-content',
+          }}
+        >
+          {pieces.map((piece) => {
+            const isHidden = hiddenPieceIds.includes(piece.id);
+            return (
+              <div
+                key={piece.id}
+                ref={(el) => setPieceRef(piece.id, el)}
+                style={{
+                  // Use visibility to hide piece but maintain layout space
+                  visibility: isHidden ? 'hidden' : 'visible',
+                }}
+              >
+                <TrayPiece
+                  piece={piece}
+                  cellSize={cellSize}
+                  cellSpacing={cellSpacing}
+                  onDragStart={onPieceDragStart}
+                  className={getPieceClassName?.(piece)}
+                  disabled={disabled}
+                />
+              </div>
+            );
+          })}
+        </div>
       </div>
+
+      {/* Navigation buttons */}
+      {pieces.length > 1 && (
+        <div className="flex gap-4 mt-3">
+          <button
+            type="button"
+            onClick={handlePrevious}
+            disabled={!canScrollLeft}
+            className={cn(
+              'flex items-center justify-center',
+              'w-10 h-10 rounded-full',
+              'bg-muted/50 hover:bg-muted',
+              'border border-border',
+              'transition-all duration-200',
+              'disabled:opacity-30 disabled:cursor-not-allowed'
+            )}
+            aria-label="Previous piece"
+          >
+            <ChevronLeft className="w-5 h-5" />
+          </button>
+          <button
+            type="button"
+            onClick={handleNext}
+            disabled={!canScrollRight}
+            className={cn(
+              'flex items-center justify-center',
+              'w-10 h-10 rounded-full',
+              'bg-muted/50 hover:bg-muted',
+              'border border-border',
+              'transition-all duration-200',
+              'disabled:opacity-30 disabled:cursor-not-allowed'
+            )}
+            aria-label="Next piece"
+          >
+            <ChevronRight className="w-5 h-5" />
+          </button>
+        </div>
+      )}
     </div>
   );
 };
