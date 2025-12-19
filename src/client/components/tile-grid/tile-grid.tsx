@@ -691,7 +691,7 @@ const ScrollZoneIndicator = React.memo(
         <span
           className={cn(
             'text-sm font-medium tracking-wide text-white/50',
-            'opacity-0 transition-opacity delay-75 duration-150'
+            'opacity-0 transition-opacity duration-150 delay-75'
           )}
         >
           Drag Here to Scroll
@@ -723,9 +723,9 @@ const BottomBanner = React.memo(
     return (
       <div
         className={cn(
-          'fixed bottom-0 left-0 right-0 z-[9998]',
+          'fixed right-0 bottom-0 left-0 z-[9998]',
           'flex flex-col',
-          'bg-muted/95 backdrop-blur-sm',
+          'backdrop-blur-sm bg-muted/95',
           'overflow-hidden transition-all duration-300 ease-out'
         )}
         style={{
@@ -736,8 +736,8 @@ const BottomBanner = React.memo(
       >
         <div
           className={cn(
-            'flex flex-1 items-center justify-between px-4',
-            'transition-opacity delay-100 duration-200',
+            'flex flex-1 justify-between items-center px-4',
+            'transition-opacity duration-200 delay-100',
             showBanner ? 'opacity-100' : 'opacity-0'
           )}
         >
@@ -751,7 +751,7 @@ const BottomBanner = React.memo(
             <button
               onClick={onRemove}
               className={cn(
-                'rounded-md px-4 py-2 font-bold',
+                'px-4 py-2 font-bold rounded-md',
                 'border border-border bg-muted text-foreground',
                 'transition-all duration-150',
                 'hover:bg-muted/80 active:scale-95'
@@ -762,7 +762,7 @@ const BottomBanner = React.memo(
             <button
               onClick={onPlace}
               className={cn(
-                'rounded-md bg-foreground px-4 py-2 font-bold text-background',
+                'px-4 py-2 font-bold rounded-md bg-foreground text-background',
                 'transition-all duration-150',
                 'hover:bg-foreground/90 active:scale-95'
               )}
@@ -1492,7 +1492,7 @@ const GridContent = forwardRef<
         >
           <div
             className={cn(
-              'pointer-events-none absolute inset-0 z-[500] bg-background/50',
+              'absolute inset-0 pointer-events-none z-[500] bg-background/50',
               'transition-opacity duration-200 ease-out',
               tapDragActiveItemId ? 'opacity-100' : 'opacity-0'
             )}
