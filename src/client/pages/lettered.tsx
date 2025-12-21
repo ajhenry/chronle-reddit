@@ -989,8 +989,9 @@ export const LetteredPage = ({
     console.log(
       `[handleExternalDragInvalid] Piece ${itemId} dropped in invalid position, returning to tray`
     );
-    // Clear the dragging state so piece reappears in tray immediately
-    setPieceDraggingFromTray(null);
+    // Only clear the dragging state if it matches the invalidated piece
+    // This prevents clearing a NEW piece's drag when an OLD piece is cancelled
+    setPieceDraggingFromTray((current) => (current === itemId ? null : current));
   }, []);
 
   // Handle invalid placement attempt (user tried to place piece on blocked tile)
@@ -1329,7 +1330,7 @@ export const LetteredPage = ({
       {/* Piece Tray */}
       <div className="flex justify-center mt-4">
         <PieceTray
-          pieces={unplacedPieces}
+          pieces={gameData?.pieces ?? []}
           cellSize={responsiveCellSize}
           cellSpacing={responsiveCellSpacing}
           onPieceDragStart={handlePieceDragStart}
@@ -1337,7 +1338,12 @@ export const LetteredPage = ({
           onPieceDragEnd={handlePieceDragEnd}
           getPieceClassName={(piece) => getPieceTileClass(piece, 'text-2xl font-bold')}
           disabled={gameComplete}
-          hiddenPieceIds={pieceDraggingFromTray ? [pieceDraggingFromTray] : []}
+          hiddenPieceIds={[
+            // Hide placed pieces (use .keys() since placedPieces is a Map)
+            ...Array.from(placedPieces.keys()),
+            // Hide piece currently being dragged
+            ...(pieceDraggingFromTray ? [pieceDraggingFromTray] : []),
+          ]}
         />
       </div>
       {/* Confetti Animation */}

@@ -56,6 +56,7 @@ export interface GridStoreConfig {
   isCellBlocked?: ((x: number, y: number) => boolean) | null;
   onPiecesRemoved?: ((pieceIds: string[]) => void) | null;
   onInvalidPlacement?: ((itemId: string) => void) | null;
+  onExternalDragInvalid?: ((itemId: string) => void) | null;
 }
 
 // The full store state and actions
@@ -115,6 +116,7 @@ export interface GridStore {
     isCellBlocked: ((x: number, y: number) => boolean) | null;
     onPiecesRemoved: ((pieceIds: string[]) => void) | null;
     onInvalidPlacement: ((itemId: string) => void) | null;
+    onExternalDragInvalid: ((itemId: string) => void) | null;
   };
 
   // Internal action to recompute derived state
@@ -381,6 +383,7 @@ export const createGridStore = (config: GridStoreConfig) => {
       isCellBlocked: config.isCellBlocked || null,
       onPiecesRemoved: config.onPiecesRemoved || null,
       onInvalidPlacement: config.onInvalidPlacement || null,
+      onExternalDragInvalid: config.onExternalDragInvalid || null,
     },
 
     // Internal action to recompute derived state
@@ -579,7 +582,7 @@ export const createGridStore = (config: GridStoreConfig) => {
             ),
           }));
         } else {
-          // Remove item (came from tray)
+          // Remove item (came from tray) - notify so tray can show it again
           set((s) => ({
             items: s.items.filter((i) => i.id !== tapDragActiveItemId),
             tapDragActiveItemId: null,
@@ -588,6 +591,7 @@ export const createGridStore = (config: GridStoreConfig) => {
             grabOffset: null,
             dragPreview: null,
           }));
+          callbacks.onPiecesRemoved?.([tapDragActiveItemId]);
         }
         callbacks.onDragStateChange?.(false);
         return;
@@ -604,9 +608,11 @@ export const createGridStore = (config: GridStoreConfig) => {
             ),
           }));
         } else {
+          // Remove item (came from tray) - notify so tray can show it again
           set((s) => ({
             items: s.items.filter((i) => i.id !== tapDragActiveItemId),
           }));
+          callbacks.onPiecesRemoved?.([tapDragActiveItemId]);
         }
         set({
           tapDragActiveItemId: null,
@@ -702,6 +708,28 @@ export const createGridStore = (config: GridStoreConfig) => {
       // If there's an active tap-drag item, place it first
       if (state.tapDragActiveItemId) {
         get().placeTapDragItem();
+      }
+
+      // If there's an active cursor preview (previous drag that didn't complete),
+      // cancel it first
+      if (state.cursorPreview) {
+        const prevItemId = state.cursorPreview.itemId;
+        set({
+          cursorPreview: null,
+          cursorPosition: null,
+          isDragging: false,
+        });
+        // Notify that previous drag was invalid (piece returns to tray)
+        state.callbacks.onExternalDragInvalid?.(prevItemId);
+      }
+
+      // If there's an active dragged item on the grid (not tap-drag), clear it
+      if (state.draggedItemId && !state.tapDragActiveItemId) {
+        set({
+          draggedItemId: null,
+          grabOffset: null,
+          dragPreview: null,
+        });
       }
 
       const newItemId = itemData.shape.name || generateItemId(state.gridId, items.length);

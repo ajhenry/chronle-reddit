@@ -69,6 +69,7 @@ interface GridProviderProps {
   isCellBlocked?: (x: number, y: number) => boolean;
   onPiecesRemoved?: (pieceIds: string[]) => void;
   onInvalidPlacement?: (itemId: string) => void;
+  onExternalDragInvalid?: (itemId: string) => void;
 }
 
 function GridProvider({
@@ -84,6 +85,7 @@ function GridProvider({
   isCellBlocked,
   onPiecesRemoved,
   onInvalidPlacement,
+  onExternalDragInvalid,
 }: GridProviderProps) {
   const spacing = gridSize.spacing ?? 0;
 
@@ -110,6 +112,7 @@ function GridProvider({
       isCellBlocked,
       onPiecesRemoved,
       onInvalidPlacement,
+      onExternalDragInvalid,
     });
   }
 
@@ -122,6 +125,7 @@ function GridProvider({
       isCellBlocked: isCellBlocked || null,
       onPiecesRemoved: onPiecesRemoved || null,
       onInvalidPlacement: onInvalidPlacement || null,
+      onExternalDragInvalid: onExternalDragInvalid || null,
     });
   }, [
     onLayoutChange,
@@ -130,6 +134,7 @@ function GridProvider({
     isCellBlocked,
     onPiecesRemoved,
     onInvalidPlacement,
+    onExternalDragInvalid,
   ]);
 
   // Handle layout changes via subscription
@@ -974,6 +979,7 @@ const Grid = forwardRef<GridRef, GridProps>(function Grid(
       onInvalidPlacement={onInvalidPlacement}
       isCellBlocked={isCellBlocked}
       onPiecesRemoved={onPiecesRemoved}
+      onExternalDragInvalid={onExternalDragInvalid}
     >
       <GridContent
         ref={ref}
