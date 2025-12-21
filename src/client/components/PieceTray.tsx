@@ -43,6 +43,8 @@ const TrayPiece: React.FC<TrayPieceProps> = ({
   const hasDragStartedRef = useRef(false);
   // Track if user is in scroll mode (horizontal movement detected first)
   const scrollModeRef = useRef(false);
+  // Track if mouse is over a valid drag target (for cursor)
+  const [isOverValidTarget, setIsOverValidTarget] = useState(false);
 
   // Calculate the grid dimensions for displaying the piece
   const { pieceGrid, width, height } = useMemo(() => {
@@ -199,6 +201,24 @@ const TrayPiece: React.FC<TrayPieceProps> = ({
     [disabled, onDragStart, piece.id, isValidDragTarget]
   );
 
+  // Track mouse position to update cursor based on whether we're over a valid target
+  const handleMouseMove = useCallback(
+    (e: React.MouseEvent) => {
+      if (disabled) {
+        setIsOverValidTarget(false);
+        return;
+      }
+      const isValid = isValidDragTarget(e.target);
+      setIsOverValidTarget(isValid);
+    },
+    [disabled, isValidDragTarget]
+  );
+
+  // Reset cursor state when mouse leaves the piece
+  const handleMouseLeave = useCallback(() => {
+    setIsOverValidTarget(false);
+  }, []);
+
   // Calculate piece dimensions
   const pieceWidthPx = width * cellSize.width + (width - 1) * cellSpacing;
   const pieceHeightPx = height * cellSize.height + (height - 1) * cellSpacing;
@@ -208,7 +228,9 @@ const TrayPiece: React.FC<TrayPieceProps> = ({
       className={cn(
         'flex-shrink-0 select-none',
         'transition-all duration-300 ease-out',
-        disabled ? 'opacity-50 cursor-not-allowed' : 'cursor-grab active:cursor-grabbing'
+        disabled ? 'opacity-50 cursor-not-allowed' : '',
+        // Only show grab cursor when over a valid drag target (letter cells)
+        !disabled && isOverValidTarget ? 'cursor-grab' : 'cursor-default'
       )}
       style={{
         width: pieceWidthPx,
@@ -220,6 +242,8 @@ const TrayPiece: React.FC<TrayPieceProps> = ({
       onTouchEnd={handleTouchEnd}
       onTouchCancel={handleTouchCancel}
       onMouseDown={handleMouseDown}
+      onMouseMove={handleMouseMove}
+      onMouseLeave={handleMouseLeave}
       data-piece-container="true"
     >
       <div
@@ -236,11 +260,11 @@ const TrayPiece: React.FC<TrayPieceProps> = ({
             <div
               key={`${rowIndex}-${colIndex}`}
               className={cn(
-                'flex items-center justify-center',
-                'text-xl sm:text-2xl font-bold',
+                'flex justify-center items-center',
+                'text-xl font-bold sm:text-2xl',
                 'border border-border',
                 'transition-all duration-300',
-                letter ? className : 'border-transparent bg-transparent'
+                letter ? className : 'bg-transparent border-transparent'
               )}
               style={{
                 backgroundColor: letter ? piece.color : 'transparent',
@@ -276,7 +300,7 @@ export const PieceTray: React.FC<PieceTrayProps> = ({
   const [canScrollLeft, setCanScrollLeft] = useState(false);
   const [canScrollRight, setCanScrollRight] = useState(false);
 
-  // Calculate the height of the tallest piece
+  // Calculate the height of the tallest piece (with padding for borders)
   const trayHeight = useMemo(() => {
     if (pieces.length === 0) return 0;
 
@@ -290,8 +314,9 @@ export const PieceTray: React.FC<PieceTrayProps> = ({
       }
     }
 
-    // Convert to pixels
-    return maxHeight * cellSize.height + (maxHeight - 1) * cellSpacing;
+    // Convert to pixels and add vertical padding for borders
+    const TRAY_VERTICAL_PADDING = 8;
+    return maxHeight * cellSize.height + (maxHeight - 1) * cellSpacing + TRAY_VERTICAL_PADDING;
   }, [pieces, cellSize.height, cellSpacing]);
 
   // Update scroll button visibility based on scroll position
@@ -472,7 +497,7 @@ export const PieceTray: React.FC<PieceTrayProps> = ({
       >
         <div
           className={cn(
-            'flex items-center gap-4',
+            'flex gap-4 items-center',
             'h-full',
             'transition-all duration-300 ease-out'
           )}
@@ -482,17 +507,10 @@ export const PieceTray: React.FC<PieceTrayProps> = ({
             minWidth: 'min-content',
           }}
         >
-          {pieces.map((piece) => {
-            const isHidden = hiddenPieceIds.includes(piece.id);
-            return (
-              <div
-                key={piece.id}
-                ref={(el) => setPieceRef(piece.id, el)}
-                style={{
-                  // Use visibility to hide piece but maintain layout space
-                  visibility: isHidden ? 'hidden' : 'visible',
-                }}
-              >
+          {pieces
+            .filter((piece) => !hiddenPieceIds.includes(piece.id))
+            .map((piece) => (
+              <div key={piece.id} ref={(el) => setPieceRef(piece.id, el)}>
                 <TrayPiece
                   piece={piece}
                   cellSize={cellSize}
@@ -502,8 +520,7 @@ export const PieceTray: React.FC<PieceTrayProps> = ({
                   disabled={disabled}
                 />
               </div>
-            );
-          })}
+            ))}
         </div>
       </div>
 
@@ -515,7 +532,7 @@ export const PieceTray: React.FC<PieceTrayProps> = ({
             onClick={handlePrevious}
             disabled={!canScrollLeft}
             className={cn(
-              'flex items-center justify-center',
+              'flex justify-center items-center',
               'w-10 h-10 rounded-full',
               'bg-muted/50 hover:bg-muted',
               'border border-border',
@@ -531,7 +548,7 @@ export const PieceTray: React.FC<PieceTrayProps> = ({
             onClick={handleNext}
             disabled={!canScrollRight}
             className={cn(
-              'flex items-center justify-center',
+              'flex justify-center items-center',
               'w-10 h-10 rounded-full',
               'bg-muted/50 hover:bg-muted',
               'border border-border',

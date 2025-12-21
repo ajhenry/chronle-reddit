@@ -615,7 +615,7 @@ export const createGridStore = (config: GridStoreConfig) => {
     // External drag
     startExternalDrag: (itemData, pointerPosition) => {
       const state = get();
-      const { gridBounds, cellSize, spacing, gridSize, dragMode, items } = state;
+      const { gridBounds, cellSize, spacing, gridSize, dragMode, items, callbacks } = state;
 
       if (!gridBounds) return;
 
@@ -648,12 +648,39 @@ export const createGridStore = (config: GridStoreConfig) => {
       const grabOffsetX = Math.min(centerOffsetX, itemData.shape.width - 1);
       const grabOffsetY = Math.min(centerOffsetY, itemData.shape.height - 1);
 
+      // Check if the initial position is valid (within bounds and not on blocked tiles)
+      const withinBounds =
+        initialPosition.x >= 0 &&
+        initialPosition.y >= 0 &&
+        initialPosition.x + itemData.shape.width <= gridSize.width &&
+        initialPosition.y + itemData.shape.height <= gridSize.height;
+
+      let isOnBlockedTile = false;
+      if (callbacks.isCellBlocked) {
+        for (const cell of itemData.shape.cells) {
+          const cellPosX = initialPosition.x + cell.x;
+          const cellPosY = initialPosition.y + cell.y;
+          if (callbacks.isCellBlocked(cellPosX, cellPosY)) {
+            isOnBlockedTile = true;
+            break;
+          }
+        }
+      }
+
+      const isValid = withinBounds && !isOnBlockedTile;
+
       set((s) => ({
         items: [...s.items, newItem],
         grabOffset: { x: grabOffsetX, y: grabOffsetY },
         draggedItemId: newItemId,
         tapDragActiveItemId: dragMode === 'tap-to-drag' ? newItemId : null,
         tapDragOriginalPosition: null,
+        // Set drag preview immediately for visual feedback
+        dragPreview: {
+          item: newItem,
+          position: initialPosition,
+          isValid,
+        },
       }));
 
       if (dragMode === 'tap-to-drag') {

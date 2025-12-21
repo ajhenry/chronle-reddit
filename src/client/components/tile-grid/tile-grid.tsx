@@ -10,7 +10,7 @@ import React, {
 } from 'react';
 import { StoreApi } from 'zustand';
 import { cn } from '../../lib/utils';
-import { isDevelopment } from '../../lib/dev-utils';
+import { isDevelopment, devFeatures } from '../../lib/dev-utils';
 import { DragMode } from '../../hooks/useDragMode';
 import {
   GridStoreContext,
@@ -494,7 +494,9 @@ const DraggableItemComponent = React.memo(
                 'border border-border dark:border-transparent',
                 (isDragging && isTapDragActive) || isFromTray ? 'opacity-0' : 'opacity-100',
                 (isBeingOverlapped || isInInvalidPosition) && 'animate-pulse-red',
-                item.className || defaultClassName || ''
+                // Only apply the piece color if it's not in an invalid state
+                !(isBeingOverlapped || isInInvalidPosition) &&
+                  (item.className || defaultClassName || '')
               )}
               style={cellStyle}
             >
@@ -502,7 +504,8 @@ const DraggableItemComponent = React.memo(
                 <div
                   className={cn(
                     'pointer-events-none p-1 text-center text-xs font-semibold text-primary-foreground',
-                    item.className
+                    // Only apply the piece color to text if it's not in an invalid state
+                    !(isBeingOverlapped || isInInvalidPosition) && item.className
                   )}
                 >
                   {cellContent}
@@ -561,6 +564,18 @@ const DraggableItemComponent = React.memo(
         data-tap-drag-active={isTapDragActive}
       >
         {shapeCells}
+        {devFeatures.showPieceBoundingBoxes && (
+          <div
+            className="absolute inset-0 border-2 border-red-500 border-dashed pointer-events-none"
+            style={{
+              zIndex: 10000,
+            }}
+          >
+            <div className="absolute left-0 -top-5 px-1 text-xs text-red-500 rounded bg-black/80">
+              {item.shape.name} ({boundingBox.width}x{boundingBox.height})
+            </div>
+          </div>
+        )}
       </div>
     );
   }
@@ -948,7 +963,14 @@ const GridContent = forwardRef<
       const item = items.find((i) => i.id === itemId);
       const wasFromTray = externalDragFromTrayRef.current;
 
-      if (item && onExternalDragInvalid) {
+      // In tap-to-drag mode, if tapDragActiveItemId is still set for this item,
+      // the user is still in the process of placing it - don't return to tray yet.
+      // The piece will be returned to tray only when:
+      // 1. User clicks "Remove" (which calls deactivateTapDrag)
+      // 2. User clicks "Place" on an invalid position (which calls deactivateTapDrag)
+      const isTapDragStillActive = tapDragActiveItemId === itemId;
+
+      if (item && onExternalDragInvalid && !isTapDragStillActive) {
         const wasPlacedValidly = store.getState().externalDragWasPlacedValidly;
 
         if (!wasPlacedValidly && wasFromTray) {
@@ -1225,6 +1247,11 @@ const GridContent = forwardRef<
 
       let placedValidly = false;
 
+      // In tap-to-drag mode, releasing the drag should keep the piece on the grid
+      // regardless of where the cursor is. The piece stays in tap-drag mode and
+      // validation only happens when user clicks "Place".
+      const isInTapDragMode = tapDragActiveItemId === currentDraggedItemId;
+
       if (isPointerWithinBounds) {
         const draggedItem = items.find((item) => item.id === currentDraggedItemId);
         if (!draggedItem) return;
@@ -1237,8 +1264,15 @@ const GridContent = forwardRef<
         const withinBounds = state.isPositionWithinBounds(draggedItem, dropPosition);
 
         if (!withinBounds) {
-          if (tapDragActiveItemId === currentDraggedItemId && !tapDragOriginalPosition) {
-            placedValidly = false;
+          if (isInTapDragMode) {
+            // In tap-to-drag mode, clamp the position to stay within bounds
+            const clampedPosition = {
+              x: Math.max(0, Math.min(dropPosition.x, gridSize.width - draggedItem.shape.width)),
+              y: Math.max(0, Math.min(dropPosition.y, gridSize.height - draggedItem.shape.height)),
+            };
+            store.getState().moveItem(currentDraggedItemId, clampedPosition);
+            // Keep piece on grid - validation happens on "Place"
+            placedValidly = true;
           } else if (tapDragOriginalPosition) {
             store
               .getState()
@@ -1253,7 +1287,8 @@ const GridContent = forwardRef<
         } else {
           const isOnBlockedTile = state.isPositionOnBlockedTile(draggedItem, dropPosition);
 
-          if (isOnBlockedTile && !tapDragActiveItemId) {
+          if (isOnBlockedTile && !isInTapDragMode) {
+            // Only return to original in non-tap-drag mode
             if (tapDragOriginalPosition) {
               store
                 .getState()
@@ -1267,10 +1302,11 @@ const GridContent = forwardRef<
             }
             placedValidly = false;
           } else {
+            // Position is valid OR we're in tap-drag mode (validation deferred to "Place")
             store.getState().moveItem(currentDraggedItemId, dropPosition);
             placedValidly = true;
 
-            if (!tapDragActiveItemId) {
+            if (!isInTapDragMode) {
               const overlappingIds = state.getOverlappingItemIds(
                 draggedItem,
                 dropPosition,
@@ -1285,7 +1321,7 @@ const GridContent = forwardRef<
               }
             }
 
-            if (tapDragActiveItemId && callbacks.shouldAutoComplete) {
+            if (isInTapDragMode && callbacks.shouldAutoComplete) {
               const previewLayout = state.buildPreviewLayout(draggedItem.id, dropPosition);
               if (callbacks.shouldAutoComplete(previewLayout)) {
                 store.setState({
@@ -1305,8 +1341,26 @@ const GridContent = forwardRef<
           }
         }
       } else {
-        if (tapDragActiveItemId === currentDraggedItemId && !tapDragOriginalPosition) {
-          placedValidly = false;
+        // Pointer is outside grid bounds
+        if (isInTapDragMode) {
+          // In tap-to-drag mode, keep piece on grid at a clamped position
+          const draggedItem = items.find((item) => item.id === currentDraggedItemId);
+          if (draggedItem) {
+            // Clamp position to stay within grid
+            const clampedPosition = {
+              x: Math.max(
+                0,
+                Math.min(draggedItem.position.x, gridSize.width - draggedItem.shape.width)
+              ),
+              y: Math.max(
+                0,
+                Math.min(draggedItem.position.y, gridSize.height - draggedItem.shape.height)
+              ),
+            };
+            store.getState().moveItem(currentDraggedItemId, clampedPosition);
+            // Keep piece on grid - validation happens on "Place"
+            placedValidly = true;
+          }
         } else if (tapDragOriginalPosition) {
           store
             .getState()
@@ -1320,15 +1374,15 @@ const GridContent = forwardRef<
         }
       }
 
-      store.getState().setExternalDragWasPlacedValidly(placedValidly);
+      // Combine state updates into a single call to avoid timing issues
       store.setState({
+        externalDragWasPlacedValidly: placedValidly,
         draggedItemId: null,
         grabOffset: null,
         dragPreview: null,
         currentHoveredCell: null,
+        justFinishedDrag: true,
       });
-
-      store.getState().setJustFinishedDrag(true);
       setTimeout(() => {
         store.getState().setJustFinishedDrag(false);
       }, 100);

@@ -38,6 +38,8 @@ export const devFeatures = {
   enableDebugLogging: isDevelopment(),
   showPerformanceMetrics: isDevelopment(),
   allowTestData: isDevelopment(),
+  /** Show red dashed bounding boxes around all pieces with dimensions and name */
+  showPieceBoundingBoxes: isDevelopment(),
 };
 
 /**

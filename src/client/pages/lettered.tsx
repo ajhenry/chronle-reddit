@@ -701,6 +701,10 @@ export const LetteredPage = ({
         return;
       }
 
+      // Clear the dragging from tray state - the piece is now placed on the grid
+      // (if it was placed successfully, it's no longer in unplacedPieces anyway)
+      setPieceDraggingFromTray(null);
+
       // Delegate all game logic to the game state manager
       const result = await gameStateManagerRef.current.updateFromLayout(layout);
       console.log(`[handleGridLayoutChange] updateFromLayout result:`, result);
@@ -909,20 +913,26 @@ export const LetteredPage = ({
     return cn(baseClass, 'bg-gray-200', theme === 'light' ? '!border-2 !border-gray-700' : '');
   };
 
-  const pieceTileClass = (piece: LetterPiece) => {
-    const baseClass = 'text-primary-foreground transition-all duration-500 overflow-hidden';
-    return cn(
-      baseClass,
-      !(gameStateManagerRef.current?.isGameComplete() || gameComplete)
-        ? piece.color
-        : 'bg-muted-foreground gold-shimmer-number'
-    );
-  };
+  const pieceTileClass = useCallback(
+    (piece: LetterPiece) => {
+      const baseClass = 'text-primary-foreground transition-all duration-500 overflow-hidden';
+      return cn(
+        baseClass,
+        !(gameStateManagerRef.current?.isGameComplete() || gameComplete)
+          ? piece.color
+          : 'bg-muted-foreground gold-shimmer-number'
+      );
+    },
+    [gameComplete]
+  );
 
   // Enhanced version that accepts additional classes
-  const getPieceTileClass = (piece: LetterPiece, additionalClassName?: string) => {
-    return cn(pieceTileClass(piece), additionalClassName);
-  };
+  const getPieceTileClass = useCallback(
+    (piece: LetterPiece, additionalClassName?: string) => {
+      return cn(pieceTileClass(piece), additionalClassName);
+    },
+    [pieceTileClass]
+  );
 
   // Handle piece drag start from tray
   const handlePieceDragStart = useCallback(
@@ -1014,11 +1024,14 @@ export const LetteredPage = ({
   }, []);
 
   // Handle when a piece enters or leaves the grid bounds during drag
-  const handleDragOverGridChange = useCallback((pieceId: string | null) => {
-    // When drag ends (null), clear the dragging from tray state
-    if (pieceId === null) {
-      setPieceDraggingFromTray(null);
-    }
+  // Note: We intentionally don't clear pieceDraggingFromTray here when pieceId is null.
+  // The piece will naturally disappear from the tray once it's placed (unplacedPieces updates),
+  // and if it's returned to tray, handleExternalDragInvalid clears it.
+  const handleDragOverGridChange = useCallback((_pieceId: string | null) => {
+    // Currently unused - piece visibility is handled by:
+    // 1. hiddenPieceIds prop (hides piece during drag)
+    // 2. unplacedPieces (piece removed after successful placement)
+    // 3. handleExternalDragInvalid (clears pieceDraggingFromTray on invalid drop)
   }, []);
 
   // Show error state (check before loading to show errors from context check early)
