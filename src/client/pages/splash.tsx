@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { requestExpandedMode } from '@devvit/web/client';
+import { requestExpandedMode, navigateTo } from '@devvit/web/client';
 import { apiFetch } from '../lib/utils';
 import type { SplashStatsResponse } from '../../shared/types/api';
 
@@ -212,6 +212,14 @@ export function Splash() {
         )}
 
         <PlayButton onClick={handlePlay} />
+
+        {/* Subscribe button */}
+        <button
+          onClick={() => navigateTo('https://www.reddit.com/r/lettered')}
+          className="mt-3 px-8 py-2 text-sm font-bold text-[#F7C846] bg-transparent border-2 border-[#F7C846] rounded cursor-pointer hover:bg-[#F7C846] hover:text-black transition-colors"
+        >
+          Subscribe
+        </button>
       </div>
 
       {/* Bottom section - Stats */}
