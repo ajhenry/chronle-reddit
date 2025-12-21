@@ -936,8 +936,12 @@ export const LetteredPage = ({
 
   // Handle piece drag start from tray
   const handlePieceDragStart = useCallback(
-    (pieceId: string, touchPosition: { clientX: number; clientY: number }) => {
-      console.log(`[handlePieceDragStart] START - pieceId=${pieceId}`);
+    (
+      pieceId: string,
+      touchPosition: { clientX: number; clientY: number },
+      grabOffset: { x: number; y: number }
+    ) => {
+      console.log(`[handlePieceDragStart] START - pieceId=${pieceId}, grabOffset=`, grabOffset);
       if (!gameData || !gridRef.current) {
         console.log(`[handlePieceDragStart] EARLY EXIT - no gameData or gridRef`);
         return;
@@ -960,12 +964,25 @@ export const LetteredPage = ({
         `[handlePieceDragStart] Created draggableItem with shape.name=${draggableItem.shape.name}`
       );
 
-      // Start external drag on the grid
-      gridRef.current.startExternalDrag(draggableItem, touchPosition);
-      console.log(`[handlePieceDragStart] Called startExternalDrag`);
+      // Start external drag on the grid with the grab offset from tray
+      gridRef.current.startExternalDrag(draggableItem, touchPosition, grabOffset);
+      console.log(`[handlePieceDragStart] Called startExternalDrag with grabOffset`);
     },
     [gameData, getPieceTileClass]
   );
+
+  // Handle piece drag move from tray (forwards touch position to update cursor preview)
+  // This is needed on mobile where global listeners may not be attached immediately
+  const handlePieceDragMove = useCallback((touchPosition: { clientX: number; clientY: number }) => {
+    if (!gridRef.current) return;
+    gridRef.current.updateCursorPosition(touchPosition);
+  }, []);
+
+  // Handle piece drag end from tray (touch ended before global listeners took over)
+  const handlePieceDragEnd = useCallback(() => {
+    if (!gridRef.current) return;
+    gridRef.current.cancelCursorPreview();
+  }, []);
 
   // Handle invalid drop from external drag (piece returns to tray)
   const handleExternalDragInvalid = useCallback((itemId: string) => {
@@ -1316,6 +1333,8 @@ export const LetteredPage = ({
           cellSize={responsiveCellSize}
           cellSpacing={responsiveCellSpacing}
           onPieceDragStart={handlePieceDragStart}
+          onPieceDragMove={handlePieceDragMove}
+          onPieceDragEnd={handlePieceDragEnd}
           getPieceClassName={(piece) => getPieceTileClass(piece, 'text-2xl font-bold')}
           disabled={gameComplete}
           hiddenPieceIds={pieceDraggingFromTray ? [pieceDraggingFromTray] : []}

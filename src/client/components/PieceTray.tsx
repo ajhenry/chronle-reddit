@@ -14,7 +14,16 @@ interface PieceTrayProps {
   pieces: LetterPieceType[];
   cellSize: { width: number; height: number };
   cellSpacing: number;
-  onPieceDragStart: (pieceId: string, touchPosition: { clientX: number; clientY: number }) => void;
+  onPieceDragStart: (
+    pieceId: string,
+    touchPosition: { clientX: number; clientY: number },
+    grabOffset: { x: number; y: number }
+  ) => void;
+  // Called on touchmove after drag starts - forwards touch position to update cursor preview
+  // This is needed because global listeners may not be attached yet on mobile
+  onPieceDragMove?: (touchPosition: { clientX: number; clientY: number }) => void;
+  // Called when touch ends after drag started
+  onPieceDragEnd?: () => void;
   getPieceClassName?: (piece: LetterPieceType) => string | undefined;
   disabled?: boolean;
   // IDs of pieces that should be hidden (e.g., when being dragged over the grid)
@@ -25,7 +34,13 @@ interface TrayPieceProps {
   piece: LetterPieceType;
   cellSize: { width: number; height: number };
   cellSpacing: number;
-  onDragStart: (pieceId: string, touchPosition: { clientX: number; clientY: number }) => void;
+  onDragStart: (
+    pieceId: string,
+    touchPosition: { clientX: number; clientY: number },
+    grabOffset: { x: number; y: number }
+  ) => void;
+  onDragMove?: (touchPosition: { clientX: number; clientY: number }) => void;
+  onDragEnd?: () => void;
   className?: string;
   disabled?: boolean;
 }
@@ -35,9 +50,13 @@ const TrayPiece: React.FC<TrayPieceProps> = ({
   cellSize,
   cellSpacing,
   onDragStart,
+  onDragMove,
+  onDragEnd,
   className,
   disabled = false,
 }) => {
+  // Ref to the piece container for calculating grab offset
+  const pieceContainerRef = useRef<HTMLDivElement>(null);
   // Track touch state for gesture detection
   const touchStartRef = useRef<{ x: number; y: number; id: number } | null>(null);
   const hasDragStartedRef = useRef(false);
@@ -45,6 +64,45 @@ const TrayPiece: React.FC<TrayPieceProps> = ({
   const scrollModeRef = useRef(false);
   // Track if mouse is over a valid drag target (for cursor)
   const [isOverValidTarget, setIsOverValidTarget] = useState(false);
+
+  // Calculate which cell was clicked/touched based on pointer position
+  const calculateGrabOffset = useCallback(
+    (clientX: number, clientY: number): { x: number; y: number } => {
+      if (!pieceContainerRef.current) {
+        // Fallback to center if ref not available
+        const minCol = Math.min(...piece.shape.map((pos) => pos.col));
+        const maxCol = Math.max(...piece.shape.map((pos) => pos.col));
+        const minRow = Math.min(...piece.shape.map((pos) => pos.row));
+        const maxRow = Math.max(...piece.shape.map((pos) => pos.row));
+        return {
+          x: Math.floor((maxCol - minCol + 1) / 2),
+          y: Math.floor((maxRow - minRow + 1) / 2),
+        };
+      }
+
+      const rect = pieceContainerRef.current.getBoundingClientRect();
+      const relativeX = clientX - rect.left;
+      const relativeY = clientY - rect.top;
+
+      // Calculate which cell was clicked
+      const cellX = Math.floor(relativeX / (cellSize.width + cellSpacing));
+      const cellY = Math.floor(relativeY / (cellSize.height + cellSpacing));
+
+      // Clamp to valid range
+      const minCol = Math.min(...piece.shape.map((pos) => pos.col));
+      const maxCol = Math.max(...piece.shape.map((pos) => pos.col));
+      const minRow = Math.min(...piece.shape.map((pos) => pos.row));
+      const maxRow = Math.max(...piece.shape.map((pos) => pos.row));
+      const width = maxCol - minCol + 1;
+      const height = maxRow - minRow + 1;
+
+      return {
+        x: Math.max(0, Math.min(cellX, width - 1)),
+        y: Math.max(0, Math.min(cellY, height - 1)),
+      };
+    },
+    [piece.shape, cellSize.width, cellSize.height, cellSpacing]
+  );
 
   // Calculate the grid dimensions for displaying the piece
   const { pieceGrid, width, height } = useMemo(() => {
@@ -128,7 +186,21 @@ const TrayPiece: React.FC<TrayPieceProps> = ({
 
   const handleTouchMove = useCallback(
     (e: React.TouchEvent) => {
-      if (disabled || !touchStartRef.current || hasDragStartedRef.current) return;
+      if (disabled) return;
+
+      // If drag already started, forward touch position to update cursor preview
+      // This bridges the gap before global listeners are attached
+      if (hasDragStartedRef.current && touchStartRef.current) {
+        const touch = Array.from(e.touches).find((t) => t.identifier === touchStartRef.current?.id);
+        if (touch) {
+          e.preventDefault();
+          e.stopPropagation();
+          onDragMove?.({ clientX: touch.clientX, clientY: touch.clientY });
+        }
+        return;
+      }
+
+      if (!touchStartRef.current) return;
 
       const touch = Array.from(e.touches).find((t) => t.identifier === touchStartRef.current?.id);
       if (!touch) return;
@@ -156,30 +228,45 @@ const TrayPiece: React.FC<TrayPieceProps> = ({
         e.preventDefault();
         e.stopPropagation();
 
-        onDragStart(piece.id, {
-          clientX: touch.clientX,
-          clientY: touch.clientY,
-        });
+        // Calculate grab offset from where the touch started (not current position)
+        const grabOffset = calculateGrabOffset(touchStartRef.current.x, touchStartRef.current.y);
 
-        // Reset touch state
-        touchStartRef.current = null;
+        onDragStart(
+          piece.id,
+          {
+            clientX: touch.clientX,
+            clientY: touch.clientY,
+          },
+          grabOffset
+        );
+
+        // Don't reset touchStartRef - we need to keep tracking the touch
+        // to forward subsequent events until global listeners take over
       }
       // If in scroll mode, let native scroll handle it (don't prevent default)
     },
-    [disabled, onDragStart, piece.id]
+    [disabled, onDragStart, onDragMove, piece.id, calculateGrabOffset]
   );
 
   const handleTouchEnd = useCallback(() => {
+    // If drag was started, notify that it ended
+    if (hasDragStartedRef.current) {
+      onDragEnd?.();
+    }
     touchStartRef.current = null;
     hasDragStartedRef.current = false;
     scrollModeRef.current = false;
-  }, []);
+  }, [onDragEnd]);
 
   const handleTouchCancel = useCallback(() => {
+    // If drag was started, notify that it ended
+    if (hasDragStartedRef.current) {
+      onDragEnd?.();
+    }
     touchStartRef.current = null;
     hasDragStartedRef.current = false;
     scrollModeRef.current = false;
-  }, []);
+  }, [onDragEnd]);
 
   // Mouse support for desktop
   const handleMouseDown = useCallback(
@@ -192,13 +279,20 @@ const TrayPiece: React.FC<TrayPieceProps> = ({
       e.preventDefault();
       e.stopPropagation();
 
+      // Calculate grab offset from click position
+      const grabOffset = calculateGrabOffset(e.clientX, e.clientY);
+
       // On desktop, immediately start drag on click
-      onDragStart(piece.id, {
-        clientX: e.clientX,
-        clientY: e.clientY,
-      });
+      onDragStart(
+        piece.id,
+        {
+          clientX: e.clientX,
+          clientY: e.clientY,
+        },
+        grabOffset
+      );
     },
-    [disabled, onDragStart, piece.id, isValidDragTarget]
+    [disabled, onDragStart, piece.id, isValidDragTarget, calculateGrabOffset]
   );
 
   // Track mouse position to update cursor based on whether we're over a valid target
@@ -225,6 +319,7 @@ const TrayPiece: React.FC<TrayPieceProps> = ({
 
   return (
     <div
+      ref={pieceContainerRef}
       className={cn(
         'flex-shrink-0 select-none',
         'transition-all duration-300 ease-out',
@@ -285,6 +380,8 @@ export const PieceTray: React.FC<PieceTrayProps> = ({
   cellSize,
   cellSpacing,
   onPieceDragStart,
+  onPieceDragMove,
+  onPieceDragEnd,
   getPieceClassName,
   disabled = false,
   hiddenPieceIds = [],
@@ -507,20 +604,34 @@ export const PieceTray: React.FC<PieceTrayProps> = ({
             minWidth: 'min-content',
           }}
         >
-          {pieces
-            .filter((piece) => !hiddenPieceIds.includes(piece.id))
-            .map((piece) => (
-              <div key={piece.id} ref={(el) => setPieceRef(piece.id, el)}>
+          {pieces.map((piece) => {
+            const isHidden = hiddenPieceIds.includes(piece.id);
+            return (
+              <div
+                key={piece.id}
+                ref={(el) => setPieceRef(piece.id, el)}
+                // Use CSS to hide instead of filtering from DOM
+                // This keeps touch handlers active during drag
+                style={{
+                  opacity: isHidden ? 0 : 1,
+                  width: isHidden ? 0 : 'auto',
+                  overflow: isHidden ? 'hidden' : 'visible',
+                  pointerEvents: isHidden ? 'none' : 'auto',
+                }}
+              >
                 <TrayPiece
                   piece={piece}
                   cellSize={cellSize}
                   cellSpacing={cellSpacing}
                   onDragStart={onPieceDragStart}
+                  onDragMove={onPieceDragMove}
+                  onDragEnd={onPieceDragEnd}
                   className={getPieceClassName?.(piece)}
                   disabled={disabled}
                 />
               </div>
-            ))}
+            );
+          })}
         </div>
       </div>
 

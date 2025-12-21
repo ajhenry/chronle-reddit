@@ -85,6 +85,14 @@ export interface GridStore {
   gridBounds: DOMRect | null;
   currentHoveredCell: GridPosition | null;
 
+  // Cursor Preview State (for dragging from external sources like tray)
+  cursorPreview: {
+    item: Omit<DraggableItem, 'id'>;
+    itemId: string;
+    grabOffset: GridPosition;
+  } | null;
+  cursorPosition: { clientX: number; clientY: number } | null;
+
   // Tap-Drag State
   tapDragActiveItemId: string | null;
   tapDragOriginalPosition: GridPosition | null;
@@ -127,6 +135,14 @@ export interface GridStore {
   setGridBounds: (bounds: DOMRect | null) => void;
   setCurrentHoveredCell: (cell: GridPosition | null) => void;
 
+  // Actions - Cursor Preview
+  setCursorPreview: (
+    preview: { item: Omit<DraggableItem, 'id'>; itemId: string; grabOffset: GridPosition } | null
+  ) => void;
+  setCursorPosition: (position: { clientX: number; clientY: number } | null) => void;
+  // Transition cursor preview item to grid when cursor enters grid bounds
+  transitionCursorPreviewToGrid: (gridPosition: GridPosition) => void;
+
   // Actions - Tap-Drag
   activateTapDrag: (itemId: string) => void;
   deactivateTapDrag: () => void;
@@ -148,7 +164,8 @@ export interface GridStore {
   // Actions - External Drag
   startExternalDrag: (
     itemData: Omit<DraggableItem, 'id'>,
-    pointerPosition: { clientX: number; clientY: number }
+    pointerPosition: { clientX: number; clientY: number },
+    grabOffset?: GridPosition
   ) => void;
 
   // Computed helpers (these use get() internally)
@@ -346,6 +363,8 @@ export const createGridStore = (config: GridStoreConfig) => {
     grabOffset: null,
     gridBounds: null,
     currentHoveredCell: null,
+    cursorPreview: null,
+    cursorPosition: null,
     tapDragActiveItemId: null,
     tapDragOriginalPosition: null,
     justFinishedDrag: false,
@@ -430,6 +449,69 @@ export const createGridStore = (config: GridStoreConfig) => {
     setGrabOffset: (offset) => set({ grabOffset: offset }),
     setGridBounds: (bounds) => set({ gridBounds: bounds }),
     setCurrentHoveredCell: (cell) => set({ currentHoveredCell: cell }),
+
+    // Cursor preview actions
+    setCursorPreview: (preview) => set({ cursorPreview: preview }),
+    setCursorPosition: (position) => set({ cursorPosition: position }),
+
+    // Transition cursor preview item to grid when cursor enters grid bounds
+    transitionCursorPreviewToGrid: (gridPosition) => {
+      const state = get();
+      const { cursorPreview, dragMode, callbacks } = state;
+
+      if (!cursorPreview) return;
+
+      const { item: itemData, itemId, grabOffset } = cursorPreview;
+
+      // Create the full item with position
+      const newItem: DraggableItem = {
+        ...itemData,
+        id: itemId,
+        position: gridPosition,
+      };
+
+      // Check if position is valid
+      const withinBounds =
+        gridPosition.x >= 0 &&
+        gridPosition.y >= 0 &&
+        gridPosition.x + itemData.shape.width <= state.gridSize.width &&
+        gridPosition.y + itemData.shape.height <= state.gridSize.height;
+
+      let isOnBlockedTile = false;
+      if (callbacks.isCellBlocked) {
+        for (const cell of itemData.shape.cells) {
+          const cellPosX = gridPosition.x + cell.x;
+          const cellPosY = gridPosition.y + cell.y;
+          if (callbacks.isCellBlocked(cellPosX, cellPosY)) {
+            isOnBlockedTile = true;
+            break;
+          }
+        }
+      }
+
+      const isValid = withinBounds && !isOnBlockedTile;
+
+      // Add item to grid and set up drag state
+      set((s) => ({
+        items: [...s.items, newItem],
+        cursorPreview: null,
+        grabOffset: grabOffset,
+        draggedItemId: itemId,
+        tapDragActiveItemId: dragMode === 'tap-to-drag' ? itemId : null,
+        tapDragOriginalPosition: null,
+        dragPreview: {
+          item: newItem,
+          position: gridPosition,
+          isValid,
+        },
+      }));
+
+      if (dragMode === 'tap-to-drag') {
+        callbacks.onDragStateChange?.(true);
+      }
+
+      get()._recomputeDerivedState();
+    },
 
     // Tap-drag actions
     activateTapDrag: (itemId) => {
@@ -613,11 +695,9 @@ export const createGridStore = (config: GridStoreConfig) => {
       })),
 
     // External drag
-    startExternalDrag: (itemData, pointerPosition) => {
+    startExternalDrag: (itemData, pointerPosition, grabOffset) => {
       const state = get();
-      const { gridBounds, cellSize, spacing, gridSize, dragMode, items, callbacks } = state;
-
-      if (!gridBounds) return;
+      const { gridBounds, cellSize, spacing, gridSize, dragMode, items } = state;
 
       // If there's an active tap-drag item, place it first
       if (state.tapDragActiveItemId) {
@@ -626,65 +706,107 @@ export const createGridStore = (config: GridStoreConfig) => {
 
       const newItemId = itemData.shape.name || generateItemId(state.gridId, items.length);
 
-      // Calculate initial grid position
-      const pointerX = pointerPosition.clientX - gridBounds.left;
-      const pointerY = pointerPosition.clientY - gridBounds.top;
-      const cellX = Math.floor(pointerX / (cellSize.width + spacing));
-      const cellY = Math.floor(pointerY / (cellSize.height + spacing));
-      const centerOffsetX = Math.floor(itemData.shape.width / 2);
-      const centerOffsetY = Math.floor(itemData.shape.height / 2);
-
-      const initialPosition = {
-        x: Math.max(0, Math.min(cellX - centerOffsetX, gridSize.width - itemData.shape.width)),
-        y: Math.max(0, Math.min(cellY - centerOffsetY, gridSize.height - itemData.shape.height)),
+      // Use provided grab offset or calculate center as fallback
+      const effectiveGrabOffset = grabOffset || {
+        x: Math.floor(itemData.shape.width / 2),
+        y: Math.floor(itemData.shape.height / 2),
       };
 
-      const newItem: DraggableItem = {
-        ...itemData,
-        id: newItemId,
-        position: initialPosition,
+      // Clamp grab offset to valid range
+      const clampedGrabOffset = {
+        x: Math.max(0, Math.min(effectiveGrabOffset.x, itemData.shape.width - 1)),
+        y: Math.max(0, Math.min(effectiveGrabOffset.y, itemData.shape.height - 1)),
       };
 
-      const grabOffsetX = Math.min(centerOffsetX, itemData.shape.width - 1);
-      const grabOffsetY = Math.min(centerOffsetY, itemData.shape.height - 1);
+      // Check if cursor is already within grid bounds
+      const isWithinGrid =
+        gridBounds &&
+        pointerPosition.clientX >= gridBounds.left &&
+        pointerPosition.clientX <= gridBounds.right &&
+        pointerPosition.clientY >= gridBounds.top &&
+        pointerPosition.clientY <= gridBounds.bottom;
 
-      // Check if the initial position is valid (within bounds and not on blocked tiles)
-      const withinBounds =
-        initialPosition.x >= 0 &&
-        initialPosition.y >= 0 &&
-        initialPosition.x + itemData.shape.width <= gridSize.width &&
-        initialPosition.y + itemData.shape.height <= gridSize.height;
+      if (isWithinGrid && gridBounds) {
+        // Cursor is already over the grid - add item directly
+        const pointerX = pointerPosition.clientX - gridBounds.left;
+        const pointerY = pointerPosition.clientY - gridBounds.top;
+        const cellX = Math.floor(pointerX / (cellSize.width + spacing));
+        const cellY = Math.floor(pointerY / (cellSize.height + spacing));
 
-      let isOnBlockedTile = false;
-      if (callbacks.isCellBlocked) {
-        for (const cell of itemData.shape.cells) {
-          const cellPosX = initialPosition.x + cell.x;
-          const cellPosY = initialPosition.y + cell.y;
-          if (callbacks.isCellBlocked(cellPosX, cellPosY)) {
-            isOnBlockedTile = true;
-            break;
+        const initialPosition = {
+          x: Math.max(
+            0,
+            Math.min(cellX - clampedGrabOffset.x, gridSize.width - itemData.shape.width)
+          ),
+          y: Math.max(
+            0,
+            Math.min(cellY - clampedGrabOffset.y, gridSize.height - itemData.shape.height)
+          ),
+        };
+
+        const newItem: DraggableItem = {
+          ...itemData,
+          id: newItemId,
+          position: initialPosition,
+        };
+
+        // Check if position is valid
+        const withinBounds =
+          initialPosition.x >= 0 &&
+          initialPosition.y >= 0 &&
+          initialPosition.x + itemData.shape.width <= gridSize.width &&
+          initialPosition.y + itemData.shape.height <= gridSize.height;
+
+        let isOnBlockedTile = false;
+        if (state.callbacks.isCellBlocked) {
+          for (const cell of itemData.shape.cells) {
+            const cellPosX = initialPosition.x + cell.x;
+            const cellPosY = initialPosition.y + cell.y;
+            if (state.callbacks.isCellBlocked(cellPosX, cellPosY)) {
+              isOnBlockedTile = true;
+              break;
+            }
           }
         }
-      }
 
-      const isValid = withinBounds && !isOnBlockedTile;
+        const isValid = withinBounds && !isOnBlockedTile;
 
-      set((s) => ({
-        items: [...s.items, newItem],
-        grabOffset: { x: grabOffsetX, y: grabOffsetY },
-        draggedItemId: newItemId,
-        tapDragActiveItemId: dragMode === 'tap-to-drag' ? newItemId : null,
-        tapDragOriginalPosition: null,
-        // Set drag preview immediately for visual feedback
-        dragPreview: {
-          item: newItem,
-          position: initialPosition,
-          isValid,
-        },
-      }));
+        set((s) => ({
+          items: [...s.items, newItem],
+          grabOffset: clampedGrabOffset,
+          draggedItemId: newItemId,
+          tapDragActiveItemId: dragMode === 'tap-to-drag' ? newItemId : null,
+          tapDragOriginalPosition: null,
+          dragPreview: {
+            item: newItem,
+            position: initialPosition,
+            isValid,
+          },
+          cursorPreview: null,
+          cursorPosition: null,
+        }));
 
-      if (dragMode === 'tap-to-drag') {
-        state.callbacks.onDragStateChange?.(true);
+        if (dragMode === 'tap-to-drag') {
+          state.callbacks.onDragStateChange?.(true);
+        }
+      } else {
+        // Cursor is outside grid - set up cursor preview
+        // Item will be added to grid when cursor enters grid bounds
+        set({
+          cursorPreview: {
+            item: itemData,
+            itemId: newItemId,
+            grabOffset: clampedGrabOffset,
+          },
+          cursorPosition: pointerPosition,
+          // Mark that we're in an external drag state (for auto-scroll etc)
+          isDragging: true,
+        });
+
+        // In tap-to-drag mode, notify that drag started even before entering grid
+        if (dragMode === 'tap-to-drag') {
+          state.callbacks.onDragStateChange?.(true);
+        }
       }
     },
 

@@ -43,8 +43,13 @@ const AUTO_SCROLL_CONFIG = {
 export interface GridRef {
   startExternalDrag: (
     item: Omit<DraggableItem, 'id'>,
-    pointerPosition: { clientX: number; clientY: number }
+    pointerPosition: { clientX: number; clientY: number },
+    grabOffset?: GridPosition
   ) => void;
+  // Update cursor position for cursor preview (bridges mobile touch event gap)
+  updateCursorPosition: (position: { clientX: number; clientY: number }) => void;
+  // Cancel cursor preview and return piece to tray
+  cancelCursorPreview: () => void;
   addItem: (item: Omit<DraggableItem, 'id'>) => string;
   removeItem: (itemId: string) => void;
   getItems: () => DraggableItem[];
@@ -685,6 +690,113 @@ const DragPreviewComponent = React.memo(
 
 DragPreviewComponent.displayName = 'DragPreview';
 
+// Cursor Preview Component - renders piece at fixed screen position following cursor
+const CursorPreviewComponent = React.memo(
+  ({
+    item,
+    cursorPosition,
+    grabOffset,
+    cellSize,
+    spacing,
+    defaultClassName,
+  }: {
+    item: Omit<DraggableItem, 'id'>;
+    cursorPosition: { clientX: number; clientY: number };
+    grabOffset: GridPosition;
+    cellSize: GridSize;
+    spacing: number;
+    defaultClassName?: string;
+  }) => {
+    const boundingBox = useMemo(
+      () => ({
+        width: item.shape.width,
+        height: item.shape.height,
+      }),
+      [item.shape.width, item.shape.height]
+    );
+
+    // Calculate the top-left position of the piece based on cursor and grab offset
+    const previewStyle = useMemo(() => {
+      // The grab offset tells us which cell the user grabbed
+      // We need to offset the piece so that cell is at the cursor position
+      const offsetX = grabOffset.x * (cellSize.width + spacing) + cellSize.width / 2;
+      const offsetY = grabOffset.y * (cellSize.height + spacing) + cellSize.height / 2;
+
+      return {
+        position: 'fixed' as const,
+        left: cursorPosition.clientX - offsetX,
+        top: cursorPosition.clientY - offsetY,
+        width: boundingBox.width * cellSize.width + (boundingBox.width - 1) * spacing,
+        height: boundingBox.height * cellSize.height + (boundingBox.height - 1) * spacing,
+        zIndex: 10000,
+        pointerEvents: 'none' as const,
+      };
+    }, [cursorPosition, grabOffset, boundingBox, cellSize, spacing]);
+
+    const previewCells = useMemo(() => {
+      const contentString = typeof item.content === 'string' ? item.content : '';
+      const shouldDistributeLetters =
+        contentString.length > 1 && item.shape.cells.length === contentString.length;
+
+      return item.shape.cells.map((cell, index) => {
+        const cellStyle: React.CSSProperties = {
+          position: 'absolute' as const,
+          left: cell.x * (cellSize.width + spacing),
+          top: cell.y * (cellSize.height + spacing),
+          width: cellSize.width,
+          height: cellSize.height,
+          zIndex: 10001,
+          ...item.style,
+          opacity: 1,
+        };
+
+        let cellContent = '';
+        if (shouldDistributeLetters && contentString[index]) {
+          cellContent = contentString[index];
+        } else if (index === 0) {
+          cellContent = contentString || item.content?.toString() || '';
+        }
+
+        return (
+          <div
+            key={`cursor-preview-cell-${index}`}
+            className={cn(
+              'flex items-center justify-center',
+              'border border-border dark:border-transparent',
+              item.className || defaultClassName || ''
+            )}
+            style={cellStyle}
+          >
+            {cellContent && (
+              <div
+                className={cn(
+                  'p-1 text-center text-xs font-semibold text-primary-foreground',
+                  item.className
+                    ?.split(' ')
+                    .filter(
+                      (cls) =>
+                        cls.startsWith('text-') ||
+                        cls.startsWith('font-') ||
+                        cls.startsWith('leading-') ||
+                        cls.startsWith('tracking-')
+                    )
+                    .join(' ') || ''
+                )}
+              >
+                {cellContent}
+              </div>
+            )}
+          </div>
+        );
+      });
+    }, [item, cellSize, spacing, defaultClassName]);
+
+    return <div style={previewStyle}>{previewCells}</div>;
+  }
+);
+
+CursorPreviewComponent.displayName = 'CursorPreview';
+
 // Scroll Zone Indicator Component
 const ScrollZoneIndicator = React.memo(
   ({ position, isVisible }: { position: 'top' | 'bottom'; isVisible: boolean }) => {
@@ -930,19 +1042,80 @@ const GridContent = forwardRef<
   const tapDragOriginalPosition = useGridStore((s) => s.tapDragOriginalPosition);
   const justFinishedDrag = useGridStore((s) => s.justFinishedDrag);
   const isCellBlocked = useGridStore((s) => s.callbacks.isCellBlocked);
+  const cursorPreview = useGridStore((s) => s.cursorPreview);
+  const cursorPosition = useGridStore((s) => s.cursorPosition);
 
   // Expose methods via ref
   useImperativeHandle(
     ref,
     () => ({
       startExternalDrag: store.getState().startExternalDrag,
+      updateCursorPosition: (position: { clientX: number; clientY: number }) => {
+        const state = store.getState();
+        if (!state.cursorPreview) return;
+
+        // Update cursor position
+        store.getState().setCursorPosition(position);
+
+        // Check if cursor has entered the grid bounds
+        const gridBounds = state.gridBounds;
+        if (gridBounds) {
+          const isWithinGrid =
+            position.clientX >= gridBounds.left &&
+            position.clientX <= gridBounds.right &&
+            position.clientY >= gridBounds.top &&
+            position.clientY <= gridBounds.bottom;
+
+          if (isWithinGrid) {
+            // Calculate grid position and transition to grid
+            const pointerX = position.clientX - gridBounds.left;
+            const pointerY = position.clientY - gridBounds.top;
+            const cellX = Math.floor(pointerX / (state.cellSize.width + state.spacing));
+            const cellY = Math.floor(pointerY / (state.cellSize.height + state.spacing));
+
+            const cursorPreview = state.cursorPreview;
+            const gridPosition = {
+              x: Math.max(
+                0,
+                Math.min(
+                  cellX - cursorPreview.grabOffset.x,
+                  state.gridSize.width - cursorPreview.item.shape.width
+                )
+              ),
+              y: Math.max(
+                0,
+                Math.min(
+                  cellY - cursorPreview.grabOffset.y,
+                  state.gridSize.height - cursorPreview.item.shape.height
+                )
+              ),
+            };
+
+            // Transition cursor preview to grid
+            store.getState().transitionCursorPreviewToGrid(gridPosition);
+          }
+        }
+      },
+      cancelCursorPreview: () => {
+        const state = store.getState();
+        if (state.cursorPreview) {
+          const itemId = state.cursorPreview.itemId;
+          store.setState({
+            cursorPreview: null,
+            cursorPosition: null,
+            isDragging: false,
+          });
+          state.callbacks.onDragStateChange?.(false);
+          onExternalDragInvalid?.(itemId);
+        }
+      },
       addItem: (itemData: Omit<DraggableItem, 'id'>) => {
         return store.getState().addItem(itemData);
       },
       removeItem: store.getState().removeItem,
       getItems: () => store.getState().items,
     }),
-    [store]
+    [store, onExternalDragInvalid]
   );
 
   // Track external drag items
@@ -963,14 +1136,17 @@ const GridContent = forwardRef<
       const item = items.find((i) => i.id === itemId);
       const wasFromTray = externalDragFromTrayRef.current;
 
-      // In tap-to-drag mode, if tapDragActiveItemId is still set for this item,
-      // the user is still in the process of placing it - don't return to tray yet.
-      // The piece will be returned to tray only when:
-      // 1. User clicks "Remove" (which calls deactivateTapDrag)
-      // 2. User clicks "Place" on an invalid position (which calls deactivateTapDrag)
+      // In tap-to-drag mode, pieces should NEVER automatically return to tray.
+      // They only return via explicit user action:
+      // 1. User clicks "Remove" button (which calls handleRemovePiece -> removeItem)
+      // 2. User clicks "Place" on an invalid position (which calls placeTapDragItem)
+      //
+      // Check if the piece is still in tap-drag mode (tapDragActiveItemId is set to this item)
       const isTapDragStillActive = tapDragActiveItemId === itemId;
 
-      if (item && onExternalDragInvalid && !isTapDragStillActive) {
+      // Only return to tray in hold-to-drag mode when placement failed
+      // In tap-to-drag mode, the piece stays on grid for user to adjust
+      if (item && onExternalDragInvalid && !isTapDragStillActive && dragMode === 'hold-to-drag') {
         const wasPlacedValidly = store.getState().externalDragWasPlacedValidly;
 
         if (!wasPlacedValidly && wasFromTray) {
@@ -991,6 +1167,7 @@ const GridContent = forwardRef<
     tapDragActiveItemId,
     tapDragOriginalPosition,
     store,
+    dragMode,
   ]);
 
   // Track drag over grid changes
@@ -1167,13 +1344,75 @@ const GridContent = forwardRef<
       const coords = getGlobalEventCoordinates(e);
       currentPointerPositionRef.current = coords;
 
+      const state = store.getState();
+      const {
+        draggedItemId,
+        gridBounds,
+        grabOffset,
+        cellSize,
+        spacing,
+        gridSize,
+        items,
+        cursorPreview,
+      } = state;
+
+      // Handle cursor preview (dragging from external source, not yet on grid)
+      // This must be checked BEFORE stopPropagation to ensure PieceTray can still
+      // forward events as backup if needed
+      if (cursorPreview) {
+        // Prevent default touch behavior (scrolling) but DON'T stopPropagation
+        // so PieceTray can still forward events as backup during the transition period
+        if (e.type.startsWith('touch')) {
+          e.preventDefault();
+        }
+
+        // Always update cursor position, even if gridBounds isn't available yet
+        store.getState().setCursorPosition(coords);
+
+        // Check if cursor has entered the grid bounds (only if gridBounds available)
+        if (gridBounds) {
+          const isWithinGrid =
+            coords.clientX >= gridBounds.left &&
+            coords.clientX <= gridBounds.right &&
+            coords.clientY >= gridBounds.top &&
+            coords.clientY <= gridBounds.bottom;
+
+          if (isWithinGrid) {
+            // Calculate grid position and transition to grid
+            const pointerX = coords.clientX - gridBounds.left;
+            const pointerY = coords.clientY - gridBounds.top;
+            const cellX = Math.floor(pointerX / (cellSize.width + spacing));
+            const cellY = Math.floor(pointerY / (cellSize.height + spacing));
+
+            const gridPosition = {
+              x: Math.max(
+                0,
+                Math.min(
+                  cellX - cursorPreview.grabOffset.x,
+                  gridSize.width - cursorPreview.item.shape.width
+                )
+              ),
+              y: Math.max(
+                0,
+                Math.min(
+                  cellY - cursorPreview.grabOffset.y,
+                  gridSize.height - cursorPreview.item.shape.height
+                )
+              ),
+            };
+
+            // Transition cursor preview to grid
+            store.getState().transitionCursorPreviewToGrid(gridPosition);
+          }
+        }
+        return;
+      }
+
+      // For regular grid dragging (not cursor preview), prevent touch defaults and stop propagation
       if (isDraggingRef.current && e.type.startsWith('touch')) {
         e.preventDefault();
         e.stopPropagation();
       }
-
-      const state = store.getState();
-      const { draggedItemId, gridBounds, grabOffset, cellSize, spacing, gridSize, items } = state;
 
       if (!draggedItemId || !gridBounds || !grabOffset) return;
 
@@ -1232,7 +1471,23 @@ const GridContent = forwardRef<
         tapDragActiveItemId,
         tapDragOriginalPosition,
         callbacks,
+        cursorPreview,
       } = state;
+
+      // Handle cursor preview (piece released before entering grid)
+      if (cursorPreview) {
+        // Cancel the cursor preview - piece returns to tray
+        const itemId = cursorPreview.itemId;
+        store.setState({
+          cursorPreview: null,
+          cursorPosition: null,
+          isDragging: false,
+        });
+        callbacks.onDragStateChange?.(false);
+        // Notify that the external drag was invalid (piece returns to tray)
+        onExternalDragInvalid?.(itemId);
+        return;
+      }
 
       if (!currentDraggedItemId || !gridBounds || !grabOffset) return;
 
@@ -1387,7 +1642,7 @@ const GridContent = forwardRef<
         store.getState().setJustFinishedDrag(false);
       }, 100);
     },
-    [store, getGlobalEventCoordinates]
+    [store, getGlobalEventCoordinates, onExternalDragInvalid]
   );
 
   // Keep refs for event handlers
@@ -1398,15 +1653,16 @@ const GridContent = forwardRef<
 
   // Auto-scroll effect
   useEffect(() => {
-    if (draggedItemId) {
+    if (draggedItemId || cursorPreview) {
       startAutoScroll();
       return () => stopAutoScroll();
     }
-  }, [draggedItemId, startAutoScroll, stopAutoScroll]);
+  }, [draggedItemId, cursorPreview, startAutoScroll, stopAutoScroll]);
 
   // Global event listeners
   useEffect(() => {
-    if (!draggedItemId) return;
+    // Activate listeners when dragging on grid OR when cursor preview is active
+    if (!draggedItemId && !cursorPreview) return;
 
     document.body.classList.add('dragging-active');
 
@@ -1429,7 +1685,7 @@ const GridContent = forwardRef<
         capture: true,
       } as EventListenerOptions);
     };
-  }, [draggedItemId]);
+  }, [draggedItemId, cursorPreview]);
 
   const handleDragStart = useCallback(
     (item: DraggableItem, initialGrabOffset?: GridPosition) => {
@@ -1519,20 +1775,32 @@ const GridContent = forwardRef<
     <>
       <ScrollZoneIndicator
         position="top"
-        isVisible={(!!draggedItemId || !!tapDragActiveItemId) && canScrollUp}
+        isVisible={(!!draggedItemId || !!tapDragActiveItemId || !!cursorPreview) && canScrollUp}
       />
       <ScrollZoneIndicator
         position="bottom"
-        isVisible={(!!draggedItemId || !!tapDragActiveItemId) && canScrollDown}
+        isVisible={(!!draggedItemId || !!tapDragActiveItemId || !!cursorPreview) && canScrollDown}
       />
 
       <BottomBanner
         isVisible={!disabled && !hideBanner && dragMode === 'tap-to-drag' && unplacedPieceCount > 0}
-        isDragMode={!!tapDragActiveItemId}
+        isDragMode={!!tapDragActiveItemId || !!cursorPreview}
         onPlace={handlePlacePiece}
         onRemove={handleRemovePiece}
         unplacedPieceCount={unplacedPieceCount}
       />
+
+      {/* Cursor preview - piece following cursor before entering grid */}
+      {cursorPreview && cursorPosition && (
+        <CursorPreviewComponent
+          item={cursorPreview.item}
+          cursorPosition={cursorPosition}
+          grabOffset={cursorPreview.grabOffset}
+          cellSize={cellSize}
+          spacing={spacing}
+          defaultClassName={defaultItemClassName}
+        />
+      )}
 
       <div className={cn('inline-block', className)}>
         <div
