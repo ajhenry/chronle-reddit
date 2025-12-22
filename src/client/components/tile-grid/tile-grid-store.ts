@@ -57,6 +57,12 @@ export interface GridStoreConfig {
   onPiecesRemoved?: ((pieceIds: string[]) => void) | null;
   onInvalidPlacement?: ((itemId: string) => void) | null;
   onExternalDragInvalid?: ((itemId: string) => void) | null;
+  // Called when cursor moves while dragging (for tray drop detection)
+  onDragMove?: ((position: { clientX: number; clientY: number }, itemId: string) => void) | null;
+  // Called when a piece is dropped outside the grid (potential tray drop)
+  onDragToTray?:
+    | ((itemId: string, position: { clientX: number; clientY: number }) => boolean)
+    | null;
 }
 
 // The full store state and actions
@@ -117,6 +123,10 @@ export interface GridStore {
     onPiecesRemoved: ((pieceIds: string[]) => void) | null;
     onInvalidPlacement: ((itemId: string) => void) | null;
     onExternalDragInvalid: ((itemId: string) => void) | null;
+    onDragMove: ((position: { clientX: number; clientY: number }, itemId: string) => void) | null;
+    onDragToTray:
+      | ((itemId: string, position: { clientX: number; clientY: number }) => boolean)
+      | null;
   };
 
   // Internal action to recompute derived state
@@ -278,6 +288,8 @@ const computeOverlappingPieceIds = (
 
     for (const otherItem of items) {
       if (otherItem.id === dragPreview.item.id) continue;
+      // Skip disabled items (anchor letters) - they can't be overlapped/removed
+      if (otherItem.disabled) continue;
       const otherPositions = getItemOccupiedPositions(otherItem);
       for (const testPos of testPositions) {
         for (const otherPos of otherPositions) {
@@ -300,6 +312,8 @@ const computeOverlappingPieceIds = (
 
       for (const otherItem of items) {
         if (otherItem.id === tapDragActiveItemId) continue;
+        // Skip disabled items (anchor letters) - they can't be overlapped/removed
+        if (otherItem.disabled) continue;
         const otherPositions = getItemOccupiedPositions(otherItem);
         for (const testPos of testPositions) {
           for (const otherPos of otherPositions) {
@@ -391,6 +405,8 @@ export const createGridStore = (config: GridStoreConfig) => {
       onPiecesRemoved: config.onPiecesRemoved || null,
       onInvalidPlacement: config.onInvalidPlacement || null,
       onExternalDragInvalid: config.onExternalDragInvalid || null,
+      onDragMove: config.onDragMove || null,
+      onDragToTray: config.onDragToTray || null,
     },
 
     // Internal action to recompute derived state

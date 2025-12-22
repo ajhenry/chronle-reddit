@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
+import { navigateTo } from '@devvit/web/client';
 import Confetti from 'react-confetti';
 import { GameLayout } from '../components/GameLayout';
 import { toast } from 'sonner';
@@ -19,7 +20,8 @@ import { LetteredDailyGameResponse, LetteredPostGameResponse } from '../../share
 import { useTheme } from 'src/components/theme-provider';
 import { InGameCustomButton } from 'src/components/InGameCustomButton';
 import { useDragMode } from '../hooks/useDragMode';
-import { PieceTray } from '../components/PieceTray';
+import { PieceTray, PieceTrayRef } from '../components/PieceTray';
+import { SidePieceTray, SidePieceTrayRef } from '../components/SidePieceTray';
 
 // API function to fetch a game by ID (works for both daily and custom games)
 const fetchGameById = async (gameId: string): Promise<LetteredDailyGameResponse> => {
@@ -252,14 +254,50 @@ export const LetteredPage = ({
   // Grid ref for external drag
   const gridRef = useRef<GridRef>(null);
 
+  // Tray refs for drop zone detection
+  const bottomTrayRef = useRef<PieceTrayRef>(null);
+  const leftTrayRef = useRef<SidePieceTrayRef>(null);
+  const rightTrayRef = useRef<SidePieceTrayRef>(null);
+
   // Track which piece is being dragged from the tray (hide immediately when drag starts)
   const [pieceDraggingFromTray, setPieceDraggingFromTray] = useState<string | null>(null);
 
+  // Track piece order for tray (allows reordering when pieces return to tray)
+  const [pieceOrder, setPieceOrder] = useState<string[]>([]);
+
   // Compute unplaced pieces (pieces not yet placed on the grid)
+  // Order unplaced pieces according to pieceOrder state
   const unplacedPieces = useMemo(() => {
     if (!gameData) return [];
-    return gameData.pieces.filter((piece) => !placedPieces.has(piece.id));
-  }, [gameData, placedPieces]);
+    const unplaced = gameData.pieces.filter((piece) => !placedPieces.has(piece.id));
+
+    // If pieceOrder is not initialized, return pieces in original order
+    if (pieceOrder.length === 0) return unplaced;
+
+    // Sort by pieceOrder, putting unknown pieces at the end
+    return [...unplaced].sort((a, b) => {
+      const indexA = pieceOrder.indexOf(a.id);
+      const indexB = pieceOrder.indexOf(b.id);
+      // If piece is not in order, put it at the end
+      const effectiveA = indexA === -1 ? Infinity : indexA;
+      const effectiveB = indexB === -1 ? Infinity : indexB;
+      return effectiveA - effectiveB;
+    });
+  }, [gameData, placedPieces, pieceOrder]);
+
+  // Check if we're on XL viewport for side trays layout
+  const isXLViewport = breakpoint === 'xl';
+
+  // Split pieces between left and right trays for XL viewport
+  const { leftTrayPieces, rightTrayPieces } = useMemo(() => {
+    if (!gameData) return { leftTrayPieces: [], rightTrayPieces: [] };
+    // Use unplacedPieces for side trays (already ordered)
+    const midpoint = Math.ceil(unplacedPieces.length / 2);
+    return {
+      leftTrayPieces: unplacedPieces.slice(0, midpoint),
+      rightTrayPieces: unplacedPieces.slice(midpoint),
+    };
+  }, [gameData]);
 
   // Check for post context and get gameId
   useEffect(() => {
@@ -373,6 +411,11 @@ export const LetteredPage = ({
       console.log('response', { response });
 
       setGameData(apiGameData);
+
+      // Initialize piece order from game data
+      if (apiGameData.pieces) {
+        setPieceOrder(apiGameData.pieces.map((p) => p.id));
+      }
 
       // Prepare session restoration data
       let gameStartTime: number | undefined;
@@ -761,6 +804,33 @@ export const LetteredPage = ({
     void navigate('/custom');
   };
 
+  // Create a random game and navigate to its Reddit post
+  const handlePlayAnother = async () => {
+    try {
+      const response = await apiFetch('/api/lettered/random', {
+        method: 'POST',
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to create random game');
+      }
+
+      const data = await response.json();
+      console.log('Created random game:', data);
+
+      // Navigate to the new Reddit post using Devvit's navigateTo
+      if (data.postPermalink) {
+        navigateTo(data.postPermalink);
+      } else {
+        // Fallback to navigating within the app
+        void navigate(`/game/${data.gameId}`);
+      }
+    } catch (error) {
+      console.error('Error creating random game:', error);
+      toast.error('Failed to create new game');
+    }
+  };
+
   const resetGame = () => {
     // void navigate(0);
   };
@@ -1079,6 +1149,73 @@ export const LetteredPage = ({
     // 3. handleExternalDragInvalid (clears pieceDraggingFromTray on invalid drop)
   }, []);
 
+  // Handle drag move - update tray preview for insertion indicator
+  const handleDragMove = useCallback(
+    (position: { clientX: number; clientY: number }, itemId: string) => {
+      // Update all tray refs with the current drag position
+      bottomTrayRef.current?.updateDragPreview(position.clientX, position.clientY, itemId);
+      leftTrayRef.current?.updateDragPreview(position.clientX, position.clientY, itemId);
+      rightTrayRef.current?.updateDragPreview(position.clientX, position.clientY, itemId);
+    },
+    []
+  );
+
+  // Handle piece dropped outside grid - check if it was dropped on a tray
+  const handleDragToTray = useCallback(
+    (itemId: string, position: { clientX: number; clientY: number }): boolean => {
+      // Check each tray to see if the drop was over it
+      const trays = [bottomTrayRef.current, leftTrayRef.current, rightTrayRef.current];
+
+      for (const tray of trays) {
+        if (!tray) continue;
+        const insertionIndex = tray.getInsertionIndex(position.clientX, position.clientY);
+        if (insertionIndex >= 0) {
+          console.log(`[handleDragToTray] Piece ${itemId} dropped to tray at index ${insertionIndex}`);
+
+          // Clear the drag preview
+          tray.clearDragPreview();
+
+          // Update piece order to insert at the specified position
+          setPieceOrder((currentOrder) => {
+            // Remove the piece from its current position if it exists
+            const newOrder = currentOrder.filter((id) => id !== itemId);
+            // Insert at the new position
+            newOrder.splice(insertionIndex, 0, itemId);
+            return newOrder;
+          });
+
+          // Clear dragging state
+          setPieceDraggingFromTray(null);
+
+          // Remove from placed pieces in game state
+          if (gameStateManagerRef.current) {
+            gameStateManagerRef.current.removePiece(itemId);
+          }
+
+          return true; // Drop was handled
+        }
+      }
+
+      // Clear all tray previews since drop wasn't on any tray
+      bottomTrayRef.current?.clearDragPreview();
+      leftTrayRef.current?.clearDragPreview();
+      rightTrayRef.current?.clearDragPreview();
+
+      return false; // Drop was not handled by any tray
+    },
+    []
+  );
+
+  // Handle piece dropped into tray (callback from PieceTray)
+  const handlePieceDroppedToTray = useCallback(
+    (pieceId: string, insertionIndex: number) => {
+      console.log(`[handlePieceDroppedToTray] Piece ${pieceId} inserted at index ${insertionIndex}`);
+      // The piece order update is already handled in handleDragToTray
+      // This callback is for additional side effects if needed
+    },
+    []
+  );
+
   // Show error state (check before loading to show errors from context check early)
   if (error) {
     return (
@@ -1291,14 +1428,24 @@ export const LetteredPage = ({
             </div>
             <div
               className={cn(
-                'flex flex-col gap-2 w-full sm:w-auto sm:flex-row',
+                'flex flex-col gap-2 w-full sm:w-auto sm:flex-row flex-wrap',
                 gameData.postType === 'daily' ? 'sm:flex-row' : 'sm:w-full'
               )}
             >
               <Button
+                onClick={() => void handlePlayAnother()}
+                className={cn(
+                  'w-full bg-[#F7C846] text-black hover:bg-[#E5B83D]',
+                  gameData.postType === 'daily' && 'sm:w-auto'
+                )}
+                type="button"
+              >
+                Play Another
+              </Button>
+              <Button
                 onClick={() => setUIState((prev) => ({ ...prev, showGameOverModal: true }))}
                 variant="outline"
-                className={cn('self-start w-full', gameData.postType === 'daily' && 'sm:w-auto')}
+                className={cn('w-full', gameData.postType === 'daily' && 'sm:w-auto')}
                 type="button"
               >
                 View Stats
@@ -1322,60 +1469,138 @@ export const LetteredPage = ({
       </div>
 
       {/* Game Content */}
-      <div className="flex justify-center">
-        <Grid
-          ref={gridRef}
-          key={`${gameComplete}`}
-          gridSize={{
-            width: gameData.grid[0]!.length || 8,
-            height: gameData.grid.length, // No scroll - grid is exactly the size of the phrase
-            spacing: responsiveCellSpacing,
-          }}
-          cellSize={responsiveCellSize}
-          initialItems={convertGridDataToItems({
-            grid: gameData.grid,
-            placedPieces: placedPieces,
-            pieces: gameData.pieces,
-            getTileClassName: (piece) => getPieceTileClass(piece, 'text-2xl font-bold'),
-          })}
-          onLayoutChange={handleGridLayoutChange}
-          defaultBoardTileClassName="bg-card hover:bg-accent transition-colors"
-          defaultItemClassName="bg-primary text-primary-foreground"
-          getBoardTileClassName={boardTileClass}
-          getTileDraggingClassName={pieceTileDraggingClass}
-          disabled={gameComplete}
-          dragMode={dragMode}
-          shouldAutoComplete={checkPuzzleComplete}
-          hideBanner={uiState.showGameOverModal || showInstructions}
-          onExternalDragInvalid={handleExternalDragInvalid}
-          onInvalidPlacement={handleInvalidPlacement}
-          unplacedPieceCount={unplacedPieces.length}
-          isCellBlocked={isCellBlocked}
-          onPiecesRemoved={handlePiecesRemoved}
-          onDragOverGridChange={handleDragOverGridChange}
-        />
-      </div>
+      {/* XL viewport: 3-column layout with side trays */}
+      {isXLViewport && !gameComplete ? (
+        <div className="flex justify-center items-start gap-6">
+          {/* Left Piece Tray */}
+          <div className="flex-shrink-0" style={{ maxHeight: 'calc(100vh - 300px)' }}>
+            <SidePieceTray
+              ref={leftTrayRef}
+              pieces={leftTrayPieces}
+              cellSize={responsiveCellSize}
+              cellSpacing={responsiveCellSpacing}
+              onPieceDragStart={handlePieceDragStart}
+              onPieceDragMove={handlePieceDragMove}
+              onPieceDragEnd={handlePieceDragEnd}
+              getPieceClassName={(piece) => getPieceTileClass(piece, 'text-2xl font-bold')}
+              disabled={gameComplete}
+              hiddenPieceIds={pieceDraggingFromTray ? [pieceDraggingFromTray] : []}
+              side="left"
+            />
+          </div>
 
-      {/* Piece Tray - hidden when game is complete */}
-      {!gameComplete && (
-        <div className="flex justify-center mt-4">
-          <PieceTray
-            pieces={gameData?.pieces ?? []}
-            cellSize={responsiveCellSize}
-            cellSpacing={responsiveCellSpacing}
-            onPieceDragStart={handlePieceDragStart}
-            onPieceDragMove={handlePieceDragMove}
-            onPieceDragEnd={handlePieceDragEnd}
-            getPieceClassName={(piece) => getPieceTileClass(piece, 'text-2xl font-bold')}
-            disabled={gameComplete}
-            hiddenPieceIds={[
-              // Hide placed pieces (use .keys() since placedPieces is a Map)
-              ...Array.from(placedPieces.keys()),
-              // Hide piece currently being dragged
-              ...(pieceDraggingFromTray ? [pieceDraggingFromTray] : []),
-            ]}
-          />
+          {/* Grid */}
+          <div className="flex-shrink-0">
+            <Grid
+              ref={gridRef}
+              key={`${gameComplete}`}
+              gridSize={{
+                width: gameData.grid[0]!.length || 8,
+                height: gameData.grid.length,
+                spacing: responsiveCellSpacing,
+              }}
+              cellSize={responsiveCellSize}
+              initialItems={convertGridDataToItems({
+                grid: gameData.grid,
+                placedPieces: placedPieces,
+                pieces: gameData.pieces,
+                getTileClassName: (piece) => getPieceTileClass(piece, 'text-2xl font-bold'),
+              })}
+              onLayoutChange={handleGridLayoutChange}
+              defaultBoardTileClassName="bg-card hover:bg-accent transition-colors"
+              defaultItemClassName="bg-primary text-primary-foreground"
+              getBoardTileClassName={boardTileClass}
+              getTileDraggingClassName={pieceTileDraggingClass}
+              disabled={gameComplete}
+              dragMode={dragMode}
+              shouldAutoComplete={checkPuzzleComplete}
+              hideBanner={uiState.showGameOverModal || showInstructions}
+              onExternalDragInvalid={handleExternalDragInvalid}
+              onInvalidPlacement={handleInvalidPlacement}
+              unplacedPieceCount={unplacedPieces.length}
+              isCellBlocked={isCellBlocked}
+              onPiecesRemoved={handlePiecesRemoved}
+              onDragOverGridChange={handleDragOverGridChange}
+              onDragMove={handleDragMove}
+              onDragToTray={handleDragToTray}
+            />
+          </div>
+
+          {/* Right Piece Tray */}
+          <div className="flex-shrink-0" style={{ maxHeight: 'calc(100vh - 300px)' }}>
+            <SidePieceTray
+              ref={rightTrayRef}
+              pieces={rightTrayPieces}
+              cellSize={responsiveCellSize}
+              cellSpacing={responsiveCellSpacing}
+              onPieceDragStart={handlePieceDragStart}
+              onPieceDragMove={handlePieceDragMove}
+              onPieceDragEnd={handlePieceDragEnd}
+              getPieceClassName={(piece) => getPieceTileClass(piece, 'text-2xl font-bold')}
+              disabled={gameComplete}
+              hiddenPieceIds={pieceDraggingFromTray ? [pieceDraggingFromTray] : []}
+              side="right"
+            />
+          </div>
         </div>
+      ) : (
+        <>
+          {/* Standard layout for smaller viewports or completed games */}
+          <div className="flex justify-center">
+            <Grid
+              ref={gridRef}
+              key={`${gameComplete}`}
+              gridSize={{
+                width: gameData.grid[0]!.length || 8,
+                height: gameData.grid.length,
+                spacing: responsiveCellSpacing,
+              }}
+              cellSize={responsiveCellSize}
+              initialItems={convertGridDataToItems({
+                grid: gameData.grid,
+                placedPieces: placedPieces,
+                pieces: gameData.pieces,
+                getTileClassName: (piece) => getPieceTileClass(piece, 'text-2xl font-bold'),
+              })}
+              onLayoutChange={handleGridLayoutChange}
+              defaultBoardTileClassName="bg-card hover:bg-accent transition-colors"
+              defaultItemClassName="bg-primary text-primary-foreground"
+              getBoardTileClassName={boardTileClass}
+              getTileDraggingClassName={pieceTileDraggingClass}
+              disabled={gameComplete}
+              dragMode={dragMode}
+              shouldAutoComplete={checkPuzzleComplete}
+              hideBanner={uiState.showGameOverModal || showInstructions}
+              onExternalDragInvalid={handleExternalDragInvalid}
+              onInvalidPlacement={handleInvalidPlacement}
+              unplacedPieceCount={unplacedPieces.length}
+              isCellBlocked={isCellBlocked}
+              onPiecesRemoved={handlePiecesRemoved}
+              onDragOverGridChange={handleDragOverGridChange}
+              onDragMove={handleDragMove}
+              onDragToTray={handleDragToTray}
+            />
+          </div>
+
+          {/* Piece Tray - hidden when game is complete */}
+          {!gameComplete && (
+            <div className="flex justify-center mt-4">
+              <PieceTray
+                ref={bottomTrayRef}
+                pieces={unplacedPieces}
+                cellSize={responsiveCellSize}
+                cellSpacing={responsiveCellSpacing}
+                onPieceDragStart={handlePieceDragStart}
+                onPieceDragMove={handlePieceDragMove}
+                onPieceDragEnd={handlePieceDragEnd}
+                getPieceClassName={(piece) => getPieceTileClass(piece, 'text-2xl font-bold')}
+                disabled={gameComplete}
+                hiddenPieceIds={pieceDraggingFromTray ? [pieceDraggingFromTray] : []}
+                onPieceDropped={handlePieceDroppedToTray}
+              />
+            </div>
+          )}
+        </>
       )}
       {/* Confetti Animation */}
       {uiState.showConfetti && (

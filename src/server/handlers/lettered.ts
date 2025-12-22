@@ -7,6 +7,7 @@ import {
   LetterPiece,
   GridCell,
   LetteredPostGameResponse,
+  LetteredGameData,
 } from '../../shared/types/api';
 import { ensureUserExistsAndGetId } from '../lib/user-helpers';
 import { getCurrentUTCTime, toUTCTimestamp } from '../lib/time';
@@ -27,7 +28,12 @@ import {
   hasUserCompletedGame,
 } from '../database/lettered';
 import { getRedisClient } from '../lib/redis-provider';
-import { RedisKeys, deserialize } from '../../shared/types/redis';
+import { RedisKeys, deserialize, serialize } from '../../shared/types/redis';
+import { LETTERED_PHRASES } from '../lib/phrase-lists';
+import { generateMockGame } from '../lib/lettered-game-generator';
+import { context } from '@devvit/web/server';
+import { reddit } from '../lib/reddit-provider';
+import { setPostToGameMapping } from '../database/redis';
 
 // Zod schema for validating the payload
 const gridPositionSchema = z.object({
@@ -720,6 +726,94 @@ router.get('/api/lettered/:gameId/postgame', async (req, res): Promise<void> => 
     res.status(500).json({
       status: 'error',
       message: 'Failed to get postgame results',
+    });
+  }
+});
+
+// POST /api/lettered/random - Creates a new random game from the phrase list and creates a Reddit post
+router.post('/api/lettered/random', async (_req, res): Promise<void> => {
+  try {
+    // Pick a random phrase from the list
+    const randomIndex = Math.floor(Math.random() * LETTERED_PHRASES.length);
+    const phraseData = LETTERED_PHRASES[randomIndex]!;
+
+    console.log(`Creating random game with phrase: "${phraseData.phrase}" from category: ${phraseData.category}`);
+
+    // Generate a new game using the server-side generator with a random seed
+    const seed = Math.floor(Math.random() * 1000000);
+    const gameData = generateMockGame(phraseData.category, phraseData.phrase, seed);
+
+    // Create a unique game ID for this random game
+    const gameId = `random-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+    const now = new Date().toISOString();
+
+    const randomGame: LetteredGameData = {
+      ...gameData,
+      id: gameId,
+      postType: 'custom', // Treat random games like custom games
+      createdAt: now,
+      updatedAt: now,
+    };
+
+    // Save to Redis
+    const redis = await getRedisClient();
+    await redis.set(RedisKeys.letteredGame.byId(gameId), serialize(randomGame));
+
+    // Get subreddit name from context
+    const { subredditName } = context;
+    if (!subredditName) {
+      res.status(500).json({
+        status: 'error',
+        message: 'Subreddit context not available',
+      });
+      return;
+    }
+
+    // Create Reddit post with the random game
+    const post = await reddit.submitCustomPost({
+      subredditName: subredditName,
+      title: `Lettered - ${phraseData.category}`,
+      splash: {
+        appDisplayName: 'Lettered',
+      },
+      webviewMetadata: {
+        gameId: gameId,
+        customGameId: gameId,
+        gameType: 'lettered',
+        postType: 'custom',
+        autoLaunch: true,
+        theme: phraseData.category,
+      },
+    });
+
+    console.log(`Created random lettered post: ${post.id}`);
+    console.log(`Post URL: ${post.url}`);
+
+    // Store mapping from post ID to game ID in Redis for context detection
+    await setPostToGameMapping(post.id, gameId);
+
+    console.log('Successfully created random lettered game with post:', {
+      gameId,
+      postId: post.id,
+      phrase: phraseData.phrase,
+      category: phraseData.category,
+      seed,
+      piecesCount: randomGame.pieces.length,
+    });
+
+    res.json({
+      status: 'success',
+      gameId,
+      postId: post.id,
+      postPermalink: `https://reddit.com/r/${subredditName}/comments/${post.id}`,
+      phrase: phraseData.phrase,
+      category: phraseData.category,
+    });
+  } catch (error) {
+    console.error('Error creating random game:', error);
+    res.status(500).json({
+      status: 'error',
+      message: error instanceof Error ? error.message : 'Failed to create random game',
     });
   }
 });

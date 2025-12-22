@@ -1,4 +1,12 @@
-import React, { useMemo, useCallback, useRef, useState, useEffect } from 'react';
+import React, {
+  useMemo,
+  useCallback,
+  useRef,
+  useState,
+  useEffect,
+  useImperativeHandle,
+  forwardRef,
+} from 'react';
 import { cn } from '../lib/utils';
 import { LetterPiece as LetterPieceType, GridPosition } from '../../shared/types/api';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
@@ -10,6 +18,22 @@ const DRAG_THRESHOLD = 20;
 // 60 degrees means horizontal movement can be up to ~1.73x the vertical movement
 const MAX_DRAG_ANGLE_DEGREES = 60;
 const MAX_DRAG_ANGLE_TAN = Math.tan((MAX_DRAG_ANGLE_DEGREES * Math.PI) / 180); // ~1.73
+
+// Gap size for insertion preview animation
+const INSERTION_GAP_SIZE = 60;
+
+// Ref type for PieceTray to expose bounds and drop handling
+export interface PieceTrayRef {
+  getBounds: () => DOMRect | null;
+  // Check if point is over the tray and return insertion index, or -1 if not over tray
+  getInsertionIndex: (clientX: number, clientY: number) => number;
+  // Update the drag preview position for insertion indicator
+  updateDragPreview: (clientX: number, clientY: number, pieceId: string) => void;
+  // Clear the drag preview
+  clearDragPreview: () => void;
+  // Handle drop at current preview position
+  handleDrop: () => { pieceId: string; insertionIndex: number } | null;
+}
 
 interface PieceTrayProps {
   pieces: LetterPieceType[];
@@ -29,6 +53,8 @@ interface PieceTrayProps {
   disabled?: boolean;
   // IDs of pieces that should be hidden (e.g., when being dragged over the grid)
   hiddenPieceIds?: string[];
+  // Called when a piece is dropped into the tray
+  onPieceDropped?: (pieceId: string, insertionIndex: number) => void;
 }
 
 interface TrayPieceProps {
@@ -168,7 +194,10 @@ const TrayPiece: React.FC<TrayPieceProps> = ({
     (e: React.TouchEvent) => {
       if (disabled) return;
 
-      const touch = e.touches[0];
+      // Use changedTouches to get the touch that triggered THIS event
+      // This is critical for multi-touch: e.touches[0] would return the first
+      // active touch which might be on a different piece
+      const touch = e.changedTouches[0];
       if (!touch) return;
 
       // Only track touch if it started on a valid letter cell
@@ -249,25 +278,48 @@ const TrayPiece: React.FC<TrayPieceProps> = ({
     [disabled, onDragStart, onDragMove, piece.id, calculateGrabOffset]
   );
 
-  const handleTouchEnd = useCallback(() => {
-    // If drag was started, notify that it ended
-    if (hasDragStartedRef.current) {
-      onDragEnd?.();
-    }
-    touchStartRef.current = null;
-    hasDragStartedRef.current = false;
-    scrollModeRef.current = false;
-  }, [onDragEnd]);
+  const handleTouchEnd = useCallback(
+    (e: React.TouchEvent) => {
+      // Only handle if the ended touch matches the one we're tracking
+      // This is critical for multi-touch: other touches ending shouldn't affect our drag
+      if (!touchStartRef.current) return;
 
-  const handleTouchCancel = useCallback(() => {
-    // If drag was started, notify that it ended
-    if (hasDragStartedRef.current) {
-      onDragEnd?.();
-    }
-    touchStartRef.current = null;
-    hasDragStartedRef.current = false;
-    scrollModeRef.current = false;
-  }, [onDragEnd]);
+      const endedTouch = Array.from(e.changedTouches).find(
+        (t) => t.identifier === touchStartRef.current?.id
+      );
+      if (!endedTouch) return;
+
+      // If drag was started, notify that it ended
+      if (hasDragStartedRef.current) {
+        onDragEnd?.();
+      }
+      touchStartRef.current = null;
+      hasDragStartedRef.current = false;
+      scrollModeRef.current = false;
+    },
+    [onDragEnd]
+  );
+
+  const handleTouchCancel = useCallback(
+    (e: React.TouchEvent) => {
+      // Only handle if the cancelled touch matches the one we're tracking
+      if (!touchStartRef.current) return;
+
+      const cancelledTouch = Array.from(e.changedTouches).find(
+        (t) => t.identifier === touchStartRef.current?.id
+      );
+      if (!cancelledTouch) return;
+
+      // If drag was started, notify that it ended
+      if (hasDragStartedRef.current) {
+        onDragEnd?.();
+      }
+      touchStartRef.current = null;
+      hasDragStartedRef.current = false;
+      scrollModeRef.current = false;
+    },
+    [onDragEnd]
+  );
 
   // Mouse support for desktop
   const handleMouseDown = useCallback(
@@ -348,6 +400,7 @@ const TrayPiece: React.FC<TrayPieceProps> = ({
           gridTemplateColumns: `repeat(${width}, ${cellSize.width}px)`,
           gridTemplateRows: `repeat(${height}, ${cellSize.height}px)`,
           gap: cellSpacing,
+          touchAction: 'none', // Prevent browser scroll when touching the piece grid
         }}
         data-piece-grid="true"
       >
@@ -364,6 +417,8 @@ const TrayPiece: React.FC<TrayPieceProps> = ({
               )}
               style={{
                 backgroundColor: letter ? piece.color : 'transparent',
+                // Prevent browser scroll when touching letter cells - we handle drag ourselves
+                touchAction: letter ? 'none' : undefined,
               }}
               data-has-letter={letter ? 'true' : 'false'}
             >
@@ -376,375 +431,524 @@ const TrayPiece: React.FC<TrayPieceProps> = ({
   );
 };
 
-export const PieceTray: React.FC<PieceTrayProps> = ({
-  pieces,
-  cellSize,
-  cellSpacing,
-  onPieceDragStart,
-  onPieceDragMove,
-  onPieceDragEnd,
-  getPieceClassName,
-  disabled = false,
-  hiddenPieceIds = [],
-}) => {
-  // Refs for scroll container and piece elements
-  const scrollContainerRef = useRef<HTMLDivElement>(null);
-  const pieceRefs = useRef<Map<string, HTMLDivElement>>(new Map());
-
-  // Track if we can scroll in each direction
-  const [canScrollLeft, setCanScrollLeft] = useState(false);
-  const [canScrollRight, setCanScrollRight] = useState(false);
-
-  // Get visible pieces (not hidden)
-  const visiblePieces = useMemo(() => {
-    return pieces.filter((piece) => !hiddenPieceIds.includes(piece.id));
-  }, [pieces, hiddenPieceIds]);
-
-  // Check if all visible pieces fit in view (no scrolling needed)
-  const allPiecesVisible = !canScrollLeft && !canScrollRight;
-
-  // Calculate the height of the tallest piece (with padding for borders)
-  const trayHeight = useMemo(() => {
-    if (pieces.length === 0) return 0;
-
-    let maxHeight = 0;
-    for (const piece of pieces) {
-      const minRow = Math.min(...piece.shape.map((pos: GridPosition) => pos.row));
-      const maxRow = Math.max(...piece.shape.map((pos: GridPosition) => pos.row));
-      const pieceHeight = maxRow - minRow + 1;
-      if (pieceHeight > maxHeight) {
-        maxHeight = pieceHeight;
-      }
-    }
-
-    // Convert to pixels and add vertical padding for borders and visual breathing room
-    const TRAY_VERTICAL_PADDING = 40;
-    return maxHeight * cellSize.height + (maxHeight - 1) * cellSpacing + TRAY_VERTICAL_PADDING;
-  }, [pieces, cellSize.height, cellSpacing]);
-
-  // Update scroll button visibility based on scroll position
-  const updateScrollButtons = useCallback(() => {
-    const container = scrollContainerRef.current;
-    if (!container) return;
-
-    const { scrollLeft, scrollWidth, clientWidth } = container;
-    setCanScrollLeft(scrollLeft > 5);
-    setCanScrollRight(scrollLeft < scrollWidth - clientWidth - 5);
-  }, []);
-
-  // Update scroll buttons on mount and when pieces change
-  useEffect(() => {
-    updateScrollButtons();
-
-    const container = scrollContainerRef.current;
-    if (container) {
-      container.addEventListener('scroll', updateScrollButtons, { passive: true });
-      window.addEventListener('resize', updateScrollButtons, { passive: true });
-
-      return () => {
-        container.removeEventListener('scroll', updateScrollButtons);
-        window.removeEventListener('resize', updateScrollButtons);
-      };
-    }
-  }, [updateScrollButtons, pieces, hiddenPieceIds]);
-
-  // Ref to track ongoing scroll animation
-  const scrollAnimationRef = useRef<number | null>(null);
-
-  // Custom smooth scroll with faster duration
-  const smoothScrollTo = useCallback(
-    (container: HTMLElement, targetScrollLeft: number, duration: number = 150) => {
-      // Cancel any ongoing animation
-      if (scrollAnimationRef.current) {
-        cancelAnimationFrame(scrollAnimationRef.current);
-      }
-
-      const start = container.scrollLeft;
-      const delta = targetScrollLeft - start;
-      const startTime = performance.now();
-
-      const animate = (currentTime: number) => {
-        const elapsed = currentTime - startTime;
-        const progress = Math.min(elapsed / duration, 1);
-        // Ease-out cubic for smooth deceleration
-        const eased = 1 - Math.pow(1 - progress, 3);
-        container.scrollLeft = start + delta * eased;
-
-        if (progress < 1) {
-          scrollAnimationRef.current = requestAnimationFrame(animate);
-        } else {
-          scrollAnimationRef.current = null;
-        }
-      };
-
-      scrollAnimationRef.current = requestAnimationFrame(animate);
+export const PieceTray = forwardRef<PieceTrayRef, PieceTrayProps>(
+  (
+    {
+      pieces,
+      cellSize,
+      cellSpacing,
+      onPieceDragStart,
+      onPieceDragMove,
+      onPieceDragEnd,
+      getPieceClassName,
+      disabled = false,
+      hiddenPieceIds = [],
+      onPieceDropped,
     },
-    []
-  );
+    ref
+  ) => {
+    // Refs for scroll container and piece elements
+    const scrollContainerRef = useRef<HTMLDivElement>(null);
+    const trayContainerRef = useRef<HTMLDivElement>(null);
+    const pieceRefs = useRef<Map<string, HTMLDivElement>>(new Map());
 
-  // Bounce animation when at scroll limits
-  const bounceAtLimit = useCallback((container: HTMLElement, direction: 'left' | 'right') => {
-    const bounceDistance = 12;
-    const bounceDuration = 100;
+    // Track if we can scroll in each direction
+    const [canScrollLeft, setCanScrollLeft] = useState(false);
+    const [canScrollRight, setCanScrollRight] = useState(false);
 
-    // Determine bounce direction
-    const currentScroll = container.scrollLeft;
-    const bounceTarget =
-      direction === 'left' ? currentScroll - bounceDistance : currentScroll + bounceDistance;
+    // Drag preview state for insertion indicator
+    const [dragPreview, setDragPreview] = useState<{
+      insertionIndex: number;
+      pieceId: string;
+    } | null>(null);
 
-    // First phase: bounce outward
-    const startTime = performance.now();
-    const animateBounce = (currentTime: number) => {
-      const elapsed = currentTime - startTime;
+    // Calculate insertion index based on cursor position
+    const calculateInsertionIndex = useCallback(
+      (clientX: number, clientY: number): number => {
+        const trayContainer = trayContainerRef.current;
+        if (!trayContainer) return -1;
 
-      if (elapsed < bounceDuration) {
-        // Bounce out
-        const progress = elapsed / bounceDuration;
-        const eased = Math.sin(progress * Math.PI); // Smooth up and down
-        const offset = (bounceTarget - currentScroll) * eased;
-        container.scrollLeft = currentScroll + offset;
-        requestAnimationFrame(animateBounce);
-      } else {
-        // Return to original position
-        container.scrollLeft = currentScroll;
+        const trayBounds = trayContainer.getBoundingClientRect();
+
+        // Check if point is within tray bounds (with some vertical tolerance)
+        const verticalTolerance = 20;
+        if (
+          clientX < trayBounds.left ||
+          clientX > trayBounds.right ||
+          clientY < trayBounds.top - verticalTolerance ||
+          clientY > trayBounds.bottom + verticalTolerance
+        ) {
+          return -1;
+        }
+
+        // Get visible pieces (not being dragged)
+        const visiblePieces = pieces.filter((p) => !hiddenPieceIds.includes(p.id));
+        if (visiblePieces.length === 0) return 0;
+
+        // Get piece positions and find insertion point
+        const piecePositions: { id: string; left: number; right: number; center: number }[] = [];
+        for (const piece of visiblePieces) {
+          const element = pieceRefs.current.get(piece.id);
+          if (element) {
+            const rect = element.getBoundingClientRect();
+            piecePositions.push({
+              id: piece.id,
+              left: rect.left,
+              right: rect.right,
+              center: rect.left + rect.width / 2,
+            });
+          }
+        }
+
+        // Sort by position
+        piecePositions.sort((a, b) => a.left - b.left);
+
+        // Find where to insert
+        for (let i = 0; i < piecePositions.length; i++) {
+          const pos = piecePositions[i];
+          if (pos && clientX < pos.center) {
+            // Find the original index of this piece
+            const originalIndex = pieces.findIndex((p) => p.id === pos.id);
+            return originalIndex >= 0 ? originalIndex : i;
+          }
+        }
+
+        // Insert at end
+        return pieces.length;
+      },
+      [pieces, hiddenPieceIds]
+    );
+
+    // Expose methods via ref
+    useImperativeHandle(
+      ref,
+      () => ({
+        getBounds: () => {
+          return trayContainerRef.current?.getBoundingClientRect() ?? null;
+        },
+
+        getInsertionIndex: (clientX: number, clientY: number) => {
+          return calculateInsertionIndex(clientX, clientY);
+        },
+
+        updateDragPreview: (clientX: number, clientY: number, pieceId: string) => {
+          const insertionIndex = calculateInsertionIndex(clientX, clientY);
+          if (insertionIndex >= 0) {
+            setDragPreview({ insertionIndex, pieceId });
+          } else {
+            setDragPreview(null);
+          }
+        },
+
+        clearDragPreview: () => {
+          setDragPreview(null);
+        },
+
+        handleDrop: () => {
+          if (!dragPreview) return null;
+          const result = {
+            pieceId: dragPreview.pieceId,
+            insertionIndex: dragPreview.insertionIndex,
+          };
+          setDragPreview(null);
+          onPieceDropped?.(result.pieceId, result.insertionIndex);
+          return result;
+        },
+      }),
+      [calculateInsertionIndex, dragPreview, onPieceDropped]
+    );
+
+    // Get visible pieces (not hidden)
+    const visiblePieces = useMemo(() => {
+      return pieces.filter((piece) => !hiddenPieceIds.includes(piece.id));
+    }, [pieces, hiddenPieceIds]);
+
+    // Check if all visible pieces fit in view (no scrolling needed)
+    const allPiecesVisible = !canScrollLeft && !canScrollRight;
+
+    // Calculate the height of the tallest piece (with padding for borders)
+    const trayHeight = useMemo(() => {
+      if (pieces.length === 0) return 0;
+
+      let maxHeight = 0;
+      for (const piece of pieces) {
+        const minRow = Math.min(...piece.shape.map((pos: GridPosition) => pos.row));
+        const maxRow = Math.max(...piece.shape.map((pos: GridPosition) => pos.row));
+        const pieceHeight = maxRow - minRow + 1;
+        if (pieceHeight > maxHeight) {
+          maxHeight = pieceHeight;
+        }
       }
-    };
 
-    requestAnimationFrame(animateBounce);
-  }, []);
+      // Convert to pixels and add vertical padding for borders and visual breathing room
+      const TRAY_VERTICAL_PADDING = 40;
+      return maxHeight * cellSize.height + (maxHeight - 1) * cellSpacing + TRAY_VERTICAL_PADDING;
+    }, [pieces, cellSize.height, cellSpacing]);
 
-  // Scroll to center a specific piece by ID
-  const scrollToPieceById = useCallback(
-    (pieceId: string) => {
+    // Update scroll button visibility based on scroll position
+    const updateScrollButtons = useCallback(() => {
       const container = scrollContainerRef.current;
       if (!container) return;
 
-      const pieceElement = pieceRefs.current.get(pieceId);
-      if (!pieceElement) return;
+      const { scrollLeft, scrollWidth, clientWidth } = container;
+      setCanScrollLeft(scrollLeft > 5);
+      setCanScrollRight(scrollLeft < scrollWidth - clientWidth - 5);
+    }, []);
 
-      // Calculate scroll position to center the piece
-      const containerRect = container.getBoundingClientRect();
-      const pieceRect = pieceElement.getBoundingClientRect();
+    // Update scroll buttons on mount and when pieces change
+    useEffect(() => {
+      updateScrollButtons();
 
-      const pieceCenter = pieceRect.left + pieceRect.width / 2;
-      const containerCenter = containerRect.left + containerRect.width / 2;
-      const scrollOffset = pieceCenter - containerCenter;
-      const targetScrollLeft = container.scrollLeft + scrollOffset;
-
-      // Fast smooth scroll (150ms)
-      smoothScrollTo(container, targetScrollLeft, 150);
-    },
-    [smoothScrollTo]
-  );
-
-  // Find the first visible piece to the left/right of current scroll position
-  const findNextVisiblePiece = useCallback(
-    (direction: 'left' | 'right'): string | null => {
       const container = scrollContainerRef.current;
-      if (!container || visiblePieces.length === 0) return null;
+      if (container) {
+        container.addEventListener('scroll', updateScrollButtons, { passive: true });
+        window.addEventListener('resize', updateScrollButtons, { passive: true });
 
-      const containerRect = container.getBoundingClientRect();
-      const containerCenter = containerRect.left + containerRect.width / 2;
-
-      // Get all visible piece positions
-      const piecePositions: { id: string; center: number }[] = [];
-      for (const piece of visiblePieces) {
-        const element = pieceRefs.current.get(piece.id);
-        if (element) {
-          const rect = element.getBoundingClientRect();
-          piecePositions.push({
-            id: piece.id,
-            center: rect.left + rect.width / 2,
-          });
-        }
+        return () => {
+          container.removeEventListener('scroll', updateScrollButtons);
+          window.removeEventListener('resize', updateScrollButtons);
+        };
       }
+    }, [updateScrollButtons, pieces, hiddenPieceIds]);
 
-      // Sort by position
-      piecePositions.sort((a, b) => a.center - b.center);
+    // Ref to track ongoing scroll animation
+    const scrollAnimationRef = useRef<number | null>(null);
 
-      if (direction === 'right') {
-        // Find the first piece whose center is to the right of container center
-        for (const pos of piecePositions) {
-          if (pos.center > containerCenter + 10) {
-            return pos.id;
+    // Custom smooth scroll with faster duration
+    const smoothScrollTo = useCallback(
+      (container: HTMLElement, targetScrollLeft: number, duration: number = 150) => {
+        // Cancel any ongoing animation
+        if (scrollAnimationRef.current) {
+          cancelAnimationFrame(scrollAnimationRef.current);
+        }
+
+        const start = container.scrollLeft;
+        const delta = targetScrollLeft - start;
+        const startTime = performance.now();
+
+        const animate = (currentTime: number) => {
+          const elapsed = currentTime - startTime;
+          const progress = Math.min(elapsed / duration, 1);
+          // Ease-out cubic for smooth deceleration
+          const eased = 1 - Math.pow(1 - progress, 3);
+          container.scrollLeft = start + delta * eased;
+
+          if (progress < 1) {
+            scrollAnimationRef.current = requestAnimationFrame(animate);
+          } else {
+            scrollAnimationRef.current = null;
+          }
+        };
+
+        scrollAnimationRef.current = requestAnimationFrame(animate);
+      },
+      []
+    );
+
+    // Bounce animation when at scroll limits
+    const bounceAtLimit = useCallback((container: HTMLElement, direction: 'left' | 'right') => {
+      const bounceDistance = 12;
+      const bounceDuration = 100;
+
+      // Determine bounce direction
+      const currentScroll = container.scrollLeft;
+      const bounceTarget =
+        direction === 'left' ? currentScroll - bounceDistance : currentScroll + bounceDistance;
+
+      // First phase: bounce outward
+      const startTime = performance.now();
+      const animateBounce = (currentTime: number) => {
+        const elapsed = currentTime - startTime;
+
+        if (elapsed < bounceDuration) {
+          // Bounce out
+          const progress = elapsed / bounceDuration;
+          const eased = Math.sin(progress * Math.PI); // Smooth up and down
+          const offset = (bounceTarget - currentScroll) * eased;
+          container.scrollLeft = currentScroll + offset;
+          requestAnimationFrame(animateBounce);
+        } else {
+          // Return to original position
+          container.scrollLeft = currentScroll;
+        }
+      };
+
+      requestAnimationFrame(animateBounce);
+    }, []);
+
+    // Scroll to center a specific piece by ID
+    const scrollToPieceById = useCallback(
+      (pieceId: string) => {
+        const container = scrollContainerRef.current;
+        if (!container) return;
+
+        const pieceElement = pieceRefs.current.get(pieceId);
+        if (!pieceElement) return;
+
+        // Calculate scroll position to center the piece
+        const containerRect = container.getBoundingClientRect();
+        const pieceRect = pieceElement.getBoundingClientRect();
+
+        const pieceCenter = pieceRect.left + pieceRect.width / 2;
+        const containerCenter = containerRect.left + containerRect.width / 2;
+        const scrollOffset = pieceCenter - containerCenter;
+        const targetScrollLeft = container.scrollLeft + scrollOffset;
+
+        // Fast smooth scroll (150ms)
+        smoothScrollTo(container, targetScrollLeft, 150);
+      },
+      [smoothScrollTo]
+    );
+
+    // Find the first visible piece to the left/right of current scroll position
+    const findNextVisiblePiece = useCallback(
+      (direction: 'left' | 'right'): string | null => {
+        const container = scrollContainerRef.current;
+        if (!container || visiblePieces.length === 0) return null;
+
+        const containerRect = container.getBoundingClientRect();
+        const containerCenter = containerRect.left + containerRect.width / 2;
+
+        // Get all visible piece positions
+        const piecePositions: { id: string; center: number }[] = [];
+        for (const piece of visiblePieces) {
+          const element = pieceRefs.current.get(piece.id);
+          if (element) {
+            const rect = element.getBoundingClientRect();
+            piecePositions.push({
+              id: piece.id,
+              center: rect.left + rect.width / 2,
+            });
           }
         }
-        // If none found, we're at the end
-        return null;
+
+        // Sort by position
+        piecePositions.sort((a, b) => a.center - b.center);
+
+        if (direction === 'right') {
+          // Find the first piece whose center is to the right of container center
+          for (const pos of piecePositions) {
+            if (pos.center > containerCenter + 10) {
+              return pos.id;
+            }
+          }
+          // If none found, we're at the end
+          return null;
+        } else {
+          // Find the last piece whose center is to the left of container center
+          for (let i = piecePositions.length - 1; i >= 0; i--) {
+            const pos = piecePositions[i];
+            if (pos && pos.center < containerCenter - 10) {
+              return pos.id;
+            }
+          }
+          // If none found, we're at the start
+          return null;
+        }
+      },
+      [visiblePieces]
+    );
+
+    // Navigate to previous visible piece
+    const handlePrevious = useCallback(() => {
+      const container = scrollContainerRef.current;
+      if (!container) return;
+
+      const nextPieceId = findNextVisiblePiece('left');
+      if (nextPieceId) {
+        scrollToPieceById(nextPieceId);
       } else {
-        // Find the last piece whose center is to the left of container center
-        for (let i = piecePositions.length - 1; i >= 0; i--) {
-          const pos = piecePositions[i];
-          if (pos && pos.center < containerCenter - 10) {
-            return pos.id;
-          }
-        }
-        // If none found, we're at the start
-        return null;
+        // Already at start, bounce
+        bounceAtLimit(container, 'left');
       }
-    },
-    [visiblePieces]
-  );
+    }, [findNextVisiblePiece, scrollToPieceById, bounceAtLimit]);
 
-  // Navigate to previous visible piece
-  const handlePrevious = useCallback(() => {
-    const container = scrollContainerRef.current;
-    if (!container) return;
+    // Navigate to next visible piece
+    const handleNext = useCallback(() => {
+      const container = scrollContainerRef.current;
+      if (!container) return;
 
-    const nextPieceId = findNextVisiblePiece('left');
-    if (nextPieceId) {
-      scrollToPieceById(nextPieceId);
-    } else {
-      // Already at start, bounce
-      bounceAtLimit(container, 'left');
+      const nextPieceId = findNextVisiblePiece('right');
+      if (nextPieceId) {
+        scrollToPieceById(nextPieceId);
+      } else {
+        // Already at end, bounce
+        bounceAtLimit(container, 'right');
+      }
+    }, [findNextVisiblePiece, scrollToPieceById, bounceAtLimit]);
+
+    // Register piece ref
+    const setPieceRef = useCallback((pieceId: string, element: HTMLDivElement | null) => {
+      if (element) {
+        pieceRefs.current.set(pieceId, element);
+      } else {
+        pieceRefs.current.delete(pieceId);
+      }
+    }, []);
+
+    // Don't render if no visible pieces and no drag preview
+    if (visiblePieces.length === 0 && !dragPreview) {
+      return null;
     }
-  }, [findNextVisiblePiece, scrollToPieceById, bounceAtLimit]);
 
-  // Navigate to next visible piece
-  const handleNext = useCallback(() => {
-    const container = scrollContainerRef.current;
-    if (!container) return;
-
-    const nextPieceId = findNextVisiblePiece('right');
-    if (nextPieceId) {
-      scrollToPieceById(nextPieceId);
-    } else {
-      // Already at end, bounce
-      bounceAtLimit(container, 'right');
-    }
-  }, [findNextVisiblePiece, scrollToPieceById, bounceAtLimit]);
-
-  // Register piece ref
-  const setPieceRef = useCallback((pieceId: string, element: HTMLDivElement | null) => {
-    if (element) {
-      pieceRefs.current.set(pieceId, element);
-    } else {
-      pieceRefs.current.delete(pieceId);
-    }
-  }, []);
-
-  // Don't render if no visible pieces
-  if (visiblePieces.length === 0) {
-    return null;
-  }
-
-  return (
-    <div
-      className={cn('flex flex-col items-center w-full', 'transition-all duration-300 ease-out')}
-      style={{
-        // Add padding for visual breathing room
-        paddingTop: 8,
-        paddingBottom: 16,
-      }}
-    >
-      {/* Scrollable tray container */}
+    return (
       <div
-        ref={scrollContainerRef}
+        ref={trayContainerRef}
         className={cn(
-          'overflow-x-auto overflow-y-hidden',
+          'flex flex-col items-center w-full',
           'transition-all duration-300 ease-out',
-          'scrollbar-themed'
+          // Highlight when dragging over
+          dragPreview ? 'bg-accent/10 rounded-lg' : ''
         )}
         style={{
-          height: trayHeight,
-          maxWidth: '100%',
+          // Add padding for visual breathing room
+          paddingTop: 8,
+          paddingBottom: 16,
         }}
+        data-tray-drop-zone="true"
       >
+        {/* Scrollable tray container */}
         <div
+          ref={scrollContainerRef}
           className={cn(
-            'flex gap-4 items-center',
-            'h-full',
-            'transition-all duration-300 ease-out'
+            'overflow-x-auto overflow-y-hidden',
+            'transition-all duration-300 ease-out',
+            'scrollbar-themed'
           )}
           style={{
-            // Ensure pieces are left-aligned within the scrollable container
-            justifyContent: 'flex-start',
-            minWidth: 'min-content',
+            height: trayHeight,
+            maxWidth: '100%',
           }}
         >
-          {pieces.map((piece) => {
-            const isHidden = hiddenPieceIds.includes(piece.id);
-            return (
+          <div
+            className={cn(
+              'flex gap-4 items-center',
+              'h-full',
+              'transition-all duration-300 ease-out'
+            )}
+            style={{
+              // Ensure pieces are left-aligned within the scrollable container
+              justifyContent: 'flex-start',
+              minWidth: 'min-content',
+            }}
+          >
+            {pieces.map((piece, index) => {
+              const isHidden = hiddenPieceIds.includes(piece.id);
+              // Show insertion gap before this piece if drag preview is at this index
+              const showInsertionGapBefore = dragPreview && dragPreview.insertionIndex === index;
+
+              return (
+                <React.Fragment key={piece.id}>
+                  {/* Insertion gap indicator */}
+                  {showInsertionGapBefore && (
+                    <div
+                      className="flex-shrink-0 transition-all duration-200 ease-out"
+                      style={{
+                        width: INSERTION_GAP_SIZE,
+                        height: '100%',
+                        background:
+                          'linear-gradient(90deg, transparent 45%, hsl(var(--primary) / 0.3) 50%, transparent 55%)',
+                        borderRadius: 4,
+                      }}
+                    />
+                  )}
+                  <div
+                    ref={(el) => setPieceRef(piece.id, el)}
+                    className="transition-all duration-200 ease-out"
+                    // Use CSS to hide instead of filtering from DOM
+                    // This keeps touch handlers active during drag
+                    style={{
+                      opacity: isHidden ? 0 : 1,
+                      width: isHidden ? 0 : 'auto',
+                      overflow: isHidden ? 'hidden' : 'visible',
+                      pointerEvents: isHidden ? 'none' : 'auto',
+                    }}
+                  >
+                    <TrayPiece
+                      piece={piece}
+                      cellSize={cellSize}
+                      cellSpacing={cellSpacing}
+                      onDragStart={onPieceDragStart}
+                      onDragMove={onPieceDragMove}
+                      onDragEnd={onPieceDragEnd}
+                      className={getPieceClassName?.(piece)}
+                      disabled={disabled}
+                    />
+                  </div>
+                </React.Fragment>
+              );
+            })}
+            {/* Insertion gap at end */}
+            {dragPreview && dragPreview.insertionIndex >= pieces.length && (
               <div
-                key={piece.id}
-                ref={(el) => setPieceRef(piece.id, el)}
-                // Use CSS to hide instead of filtering from DOM
-                // This keeps touch handlers active during drag
+                className="flex-shrink-0 transition-all duration-200 ease-out"
                 style={{
-                  opacity: isHidden ? 0 : 1,
-                  width: isHidden ? 0 : 'auto',
-                  overflow: isHidden ? 'hidden' : 'visible',
-                  pointerEvents: isHidden ? 'none' : 'auto',
+                  width: INSERTION_GAP_SIZE,
+                  height: '100%',
+                  background:
+                    'linear-gradient(90deg, transparent 45%, hsl(var(--primary) / 0.3) 50%, transparent 55%)',
+                  borderRadius: 4,
                 }}
-              >
-                <TrayPiece
-                  piece={piece}
-                  cellSize={cellSize}
-                  cellSpacing={cellSpacing}
-                  onDragStart={onPieceDragStart}
-                  onDragMove={onPieceDragMove}
-                  onDragEnd={onPieceDragEnd}
-                  className={getPieceClassName?.(piece)}
-                  disabled={disabled}
-                />
-              </div>
-            );
-          })}
+              />
+            )}
+          </div>
+        </div>
+
+        {/* Scroll indicator - hidden when all pieces visible but keeps layout space */}
+        <div
+          className={cn(
+            'flex gap-2 justify-center items-center mt-2 text-muted-foreground',
+            'transition-opacity duration-200',
+            allPiecesVisible ? 'opacity-0 pointer-events-none' : 'opacity-100'
+          )}
+        >
+          <ChevronLeft
+            className={cn(
+              'w-4 h-4 transition-opacity duration-200',
+              canScrollLeft ? 'opacity-100' : 'opacity-0'
+            )}
+          />
+          <span className="text-xs font-medium">More Pieces</span>
+          <ChevronRight
+            className={cn(
+              'w-4 h-4 transition-opacity duration-200',
+              canScrollRight ? 'opacity-100' : 'opacity-0'
+            )}
+          />
+        </div>
+
+        {/* Navigation buttons - hidden when all pieces visible but keeps layout space */}
+        <div
+          className={cn(
+            'flex gap-4 mt-2',
+            'transition-opacity duration-200',
+            allPiecesVisible ? 'opacity-0 pointer-events-none' : 'opacity-100'
+          )}
+        >
+          <Button
+            variant="outline"
+            size="icon"
+            onClick={handlePrevious}
+            disabled={!canScrollLeft}
+            aria-label="Previous piece"
+          >
+            <ChevronLeft className="w-5 h-5" />
+          </Button>
+          <Button
+            variant="outline"
+            size="icon"
+            onClick={handleNext}
+            disabled={!canScrollRight}
+            aria-label="Next piece"
+          >
+            <ChevronRight className="w-5 h-5" />
+          </Button>
         </div>
       </div>
+    );
+  }
+);
 
-      {/* Scroll indicator - hidden when all pieces visible but keeps layout space */}
-      <div
-        className={cn(
-          'flex gap-2 justify-center items-center mt-2 text-muted-foreground',
-          'transition-opacity duration-200',
-          allPiecesVisible ? 'opacity-0 pointer-events-none' : 'opacity-100'
-        )}
-      >
-        <ChevronLeft
-          className={cn(
-            'w-4 h-4 transition-opacity duration-200',
-            canScrollLeft ? 'opacity-100' : 'opacity-0'
-          )}
-        />
-        <span className="text-xs font-medium">More Pieces</span>
-        <ChevronRight
-          className={cn(
-            'w-4 h-4 transition-opacity duration-200',
-            canScrollRight ? 'opacity-100' : 'opacity-0'
-          )}
-        />
-      </div>
-
-      {/* Navigation buttons - hidden when all pieces visible but keeps layout space */}
-      <div
-        className={cn(
-          'flex gap-4 mt-2',
-          'transition-opacity duration-200',
-          allPiecesVisible ? 'opacity-0 pointer-events-none' : 'opacity-100'
-        )}
-      >
-        <Button
-          variant="outline"
-          size="icon"
-          onClick={handlePrevious}
-          disabled={!canScrollLeft}
-          aria-label="Previous piece"
-        >
-          <ChevronLeft className="w-5 h-5" />
-        </Button>
-        <Button
-          variant="outline"
-          size="icon"
-          onClick={handleNext}
-          disabled={!canScrollRight}
-          aria-label="Next piece"
-        >
-          <ChevronRight className="w-5 h-5" />
-        </Button>
-      </div>
-    </div>
-  );
-};
+PieceTray.displayName = 'PieceTray';
 
 export default PieceTray;

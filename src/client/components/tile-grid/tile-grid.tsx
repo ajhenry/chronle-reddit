@@ -72,6 +72,10 @@ interface GridProviderProps {
   onPiecesRemoved?: (pieceIds: string[]) => void;
   onInvalidPlacement?: (itemId: string) => void;
   onExternalDragInvalid?: (itemId: string) => void;
+  // Called on every drag move event with cursor position and item ID
+  onDragMove?: (position: { clientX: number; clientY: number }, itemId: string) => void;
+  // Called when a piece is dropped outside the grid - return true if handled (dropped to tray)
+  onDragToTray?: (itemId: string, position: { clientX: number; clientY: number }) => boolean;
 }
 
 function GridProvider({
@@ -88,6 +92,8 @@ function GridProvider({
   onPiecesRemoved,
   onInvalidPlacement,
   onExternalDragInvalid,
+  onDragMove,
+  onDragToTray,
 }: GridProviderProps) {
   const spacing = gridSize.spacing ?? 0;
 
@@ -115,6 +121,8 @@ function GridProvider({
       onPiecesRemoved,
       onInvalidPlacement,
       onExternalDragInvalid,
+      onDragMove,
+      onDragToTray,
     });
   }
 
@@ -128,6 +136,8 @@ function GridProvider({
       onPiecesRemoved: onPiecesRemoved || null,
       onInvalidPlacement: onInvalidPlacement || null,
       onExternalDragInvalid: onExternalDragInvalid || null,
+      onDragMove: onDragMove || null,
+      onDragToTray: onDragToTray || null,
     });
   }, [
     onLayoutChange,
@@ -137,6 +147,8 @@ function GridProvider({
     onPiecesRemoved,
     onInvalidPlacement,
     onExternalDragInvalid,
+    onDragMove,
+    onDragToTray,
   ]);
 
   // Update grid configuration when sizing props change (e.g., viewport resize)
@@ -952,6 +964,10 @@ interface GridProps {
   onPiecesRemoved?: (pieceIds: string[]) => void;
   onInvalidPlacement?: (itemId: string) => void;
   onDragOverGridChange?: (pieceId: string | null) => void;
+  // Called on every drag move event with cursor position and item ID
+  onDragMove?: (position: { clientX: number; clientY: number }, itemId: string) => void;
+  // Called when a piece is dropped outside the grid - return true if handled (dropped to tray)
+  onDragToTray?: (itemId: string, position: { clientX: number; clientY: number }) => boolean;
 }
 
 const Grid = forwardRef<GridRef, GridProps>(function Grid(
@@ -978,6 +994,8 @@ const Grid = forwardRef<GridRef, GridProps>(function Grid(
     onPiecesRemoved,
     onInvalidPlacement,
     onDragOverGridChange,
+    onDragMove,
+    onDragToTray,
   },
   ref
 ) {
@@ -995,6 +1013,8 @@ const Grid = forwardRef<GridRef, GridProps>(function Grid(
       isCellBlocked={isCellBlocked}
       onPiecesRemoved={onPiecesRemoved}
       onExternalDragInvalid={onExternalDragInvalid}
+      onDragMove={onDragMove}
+      onDragToTray={onDragToTray}
     >
       <GridContent
         ref={ref}
@@ -1009,6 +1029,7 @@ const Grid = forwardRef<GridRef, GridProps>(function Grid(
         unplacedPieceCount={unplacedPieceCount}
         onDragOverGridChange={onDragOverGridChange}
         onPiecesRemoved={onPiecesRemoved}
+        onDragToTray={onDragToTray}
       >
         {children}
       </GridContent>
@@ -1032,6 +1053,7 @@ const GridContent = forwardRef<
     unplacedPieceCount?: number;
     onDragOverGridChange?: (pieceId: string | null) => void;
     onPiecesRemoved?: (pieceIds: string[]) => void;
+    onDragToTray?: (itemId: string, position: { clientX: number; clientY: number }) => boolean;
   }
 >(function GridContent(
   {
@@ -1047,6 +1069,7 @@ const GridContent = forwardRef<
     unplacedPieceCount = 0,
     onDragOverGridChange,
     onPiecesRemoved,
+    onDragToTray,
   },
   ref
 ) {
@@ -1440,6 +1463,9 @@ const GridContent = forwardRef<
 
       if (!draggedItemId || !gridBounds || !grabOffset) return;
 
+      // Call onDragMove callback so parent can update tray preview
+      state.callbacks.onDragMove?.(coords, draggedItemId);
+
       const pointerX = coords.clientX - gridBounds.left;
       const pointerY = coords.clientY - gridBounds.top;
       const cellX = Math.floor(pointerX / (cellSize.width + spacing));
@@ -1621,6 +1647,32 @@ const GridContent = forwardRef<
         }
       } else {
         // Pointer is outside grid bounds
+        // Check if the piece was dropped over the tray
+        const droppedToTray = onDragToTray?.(currentDraggedItemId, coords);
+
+        if (droppedToTray) {
+          // Piece was dropped to tray - remove it from grid
+          store.getState().removeItem(currentDraggedItemId);
+          callbacks.onPiecesRemoved?.([currentDraggedItemId]);
+          // Reset state and exit early
+          store.setState({
+            externalDragWasPlacedValidly: false,
+            draggedItemId: null,
+            grabOffset: null,
+            dragPreview: null,
+            currentHoveredCell: null,
+            justFinishedDrag: true,
+            // If in tap-drag mode, also clear that state
+            tapDragActiveItemId: null,
+            tapDragOriginalPosition: null,
+          });
+          callbacks.onDragStateChange?.(false);
+          setTimeout(() => {
+            store.getState().setJustFinishedDrag(false);
+          }, 100);
+          return;
+        }
+
         if (isInTapDragMode) {
           // In tap-to-drag mode, keep piece on grid at a clamped position
           const draggedItem = items.find((item) => item.id === currentDraggedItemId);
@@ -1666,7 +1718,7 @@ const GridContent = forwardRef<
         store.getState().setJustFinishedDrag(false);
       }, 100);
     },
-    [store, getGlobalEventCoordinates, onExternalDragInvalid]
+    [store, getGlobalEventCoordinates, onExternalDragInvalid, onDragToTray]
   );
 
   // Keep refs for event handlers
