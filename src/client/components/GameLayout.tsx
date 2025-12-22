@@ -9,7 +9,16 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from './ui/dropdown-menu';
-import { Menu, Plus, Share2, HelpCircle, Hand, MousePointer } from 'lucide-react';
+import {
+  Menu,
+  Plus,
+  Share2,
+  HelpCircle,
+  Hand,
+  MousePointer,
+  RotateCcw,
+  Trophy,
+} from 'lucide-react';
 import type { DragMode } from '../hooks/useDragMode';
 
 interface GameLayoutProps {
@@ -18,6 +27,7 @@ interface GameLayoutProps {
   moves?: number;
   children: ReactNode;
   onBack: () => void;
+  onReset?: () => void;
   onLeaderboard?: () => void;
   onHelp?: () => void;
   onCreateGame?: () => void;
@@ -80,6 +90,7 @@ export const GameLayout = ({
   moves,
   children,
   onBack,
+  onReset,
   onLeaderboard,
   onHelp,
   onCreateGame,
@@ -128,22 +139,12 @@ export const GameLayout = ({
 
           {/* Action Buttons */}
           <div className="flex gap-2 items-center">
-            {/* Leaderboard Button */}
-            <Button variant="outline" size="icon" onClick={onLeaderboard}>
-              <svg
-                width="20"
-                height="20"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="2"
-              >
-                <path d="M3 3v18h18" />
-                <path d="M18 17V9" />
-                <path d="M13 17V5" />
-                <path d="M8 17v-3" />
-              </svg>
-            </Button>
+            {/* Reset Button */}
+            {onReset && (
+              <Button variant="outline" size="icon" onClick={onReset} title="Reset Pieces">
+                <RotateCcw className="w-5 h-5" />
+              </Button>
+            )}
 
             {/* Desktop: Help Button */}
             <Button
@@ -227,6 +228,19 @@ export const GameLayout = ({
                   Help
                 </DropdownMenuItem>
                 <DropdownMenuSeparator />
+                {/* Leaderboard */}
+                {onLeaderboard && (
+                  <>
+                    <DropdownMenuItem
+                      onClick={onLeaderboard}
+                      className="cursor-pointer py-3 text-base hover:bg-[#F7C846] hover:text-black focus:bg-[#F7C846] focus:text-black"
+                    >
+                      <Trophy className="mr-3 w-5 h-5" />
+                      Leaderboard
+                    </DropdownMenuItem>
+                    <DropdownMenuSeparator />
+                  </>
+                )}
                 {/* Drag Mode Toggle */}
                 {onDragModeChange && (
                   <>

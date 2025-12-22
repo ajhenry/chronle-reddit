@@ -832,6 +832,27 @@ export const LetteredPage = ({
     await clearSession();
   };
 
+  // Reset all pieces back to the tray (doesn't clear moves or time)
+  const handleResetPieces = useCallback(() => {
+    if (!gridRef.current || !gameData) return;
+
+    // Get all items currently on the grid and remove them
+    const items = gridRef.current.getItems();
+    for (const item of items) {
+      gridRef.current.removeItem(item.id);
+    }
+
+    // Clear placed pieces in game state manager
+    if (gameStateManagerRef.current) {
+      gameStateManagerRef.current.removePieces(items.map((item) => item.id));
+    }
+
+    // Clear any active drag state
+    setPieceDraggingFromTray(null);
+
+    console.log(`[handleResetPieces] Reset ${items.length} pieces back to tray`);
+  }, [gameData]);
+
   // Clear leaderboard entries for current game (admin only)
   const clearGameLeaderboard = async () => {
     if (!gameId) return;
@@ -1126,6 +1147,7 @@ export const LetteredPage = ({
       time={elapsedTime}
       moves={moves}
       onBack={handleBackToMenu}
+      onReset={handleResetPieces}
       onLeaderboard={() => setUIState((prev) => ({ ...prev, showGameOverModal: true }))}
       onHelp={() => setShowInstructions(true)}
       onCreateGame={handleCreateGame}
