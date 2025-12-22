@@ -163,6 +163,13 @@ export interface GridStore {
   // Actions - Callbacks
   updateCallbacks: (callbacks: Partial<GridStore['callbacks']>) => void;
 
+  // Actions - Grid Configuration Updates
+  updateGridConfig: (config: {
+    cellSize?: GridSize;
+    gridSize?: GridSize;
+    spacing?: number;
+  }) => void;
+
   // Actions - External Drag
   startExternalDrag: (
     itemData: Omit<DraggableItem, 'id'>,
@@ -698,6 +705,14 @@ export const createGridStore = (config: GridStoreConfig) => {
     updateCallbacks: (newCallbacks) =>
       set((state) => ({
         callbacks: { ...state.callbacks, ...newCallbacks },
+      })),
+
+    // Grid configuration updates
+    updateGridConfig: (config) =>
+      set(() => ({
+        ...(config.cellSize !== undefined && { cellSize: config.cellSize }),
+        ...(config.gridSize !== undefined && { gridSize: config.gridSize }),
+        ...(config.spacing !== undefined && { spacing: config.spacing }),
       })),
 
     // External drag

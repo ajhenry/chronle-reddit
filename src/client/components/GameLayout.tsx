@@ -37,6 +37,7 @@ interface GameLayoutProps {
   className?: string;
   dragMode?: DragMode;
   onDragModeChange?: (mode: DragMode) => void;
+  gameComplete?: boolean;
 }
 
 // Format milliseconds to MM:SS or HH:MM:SS
@@ -100,6 +101,7 @@ export const GameLayout = ({
   className,
   dragMode = 'tap-to-drag',
   onDragModeChange,
+  gameComplete = false,
 }: GameLayoutProps) => {
   const [showHelpModal, setShowHelpModal] = useState(false);
 
@@ -139,12 +141,18 @@ export const GameLayout = ({
 
           {/* Action Buttons */}
           <div className="flex gap-2 items-center">
-            {/* Reset Button */}
-            {onReset && (
-              <Button variant="outline" size="icon" onClick={onReset} title="Reset Pieces">
-                <RotateCcw className="w-5 h-5" />
-              </Button>
-            )}
+            {/* Reset Button (during game) or Leaderboard Button (after game complete) */}
+            {gameComplete
+              ? onLeaderboard && (
+                  <Button variant="outline" size="icon" onClick={onLeaderboard} title="Leaderboard">
+                    <Trophy className="w-5 h-5" />
+                  </Button>
+                )
+              : onReset && (
+                  <Button variant="outline" size="icon" onClick={onReset} title="Reset Pieces">
+                    <RotateCcw className="w-5 h-5" />
+                  </Button>
+                )}
 
             {/* Desktop: Help Button */}
             <Button

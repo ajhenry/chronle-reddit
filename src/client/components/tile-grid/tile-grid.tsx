@@ -50,6 +50,8 @@ export interface GridRef {
   updateCursorPosition: (position: { clientX: number; clientY: number }) => void;
   // Cancel cursor preview and return piece to tray
   cancelCursorPreview: () => void;
+  // Deactivate tap-drag mode (hides Place/Remove buttons)
+  deactivateTapDrag: () => void;
   addItem: (item: Omit<DraggableItem, 'id'>) => string;
   removeItem: (itemId: string) => void;
   getItems: () => DraggableItem[];
@@ -136,6 +138,15 @@ function GridProvider({
     onInvalidPlacement,
     onExternalDragInvalid,
   ]);
+
+  // Update grid configuration when sizing props change (e.g., viewport resize)
+  useEffect(() => {
+    storeRef.current?.getState().updateGridConfig({
+      cellSize,
+      gridSize,
+      spacing,
+    });
+  }, [cellSize, gridSize, spacing]);
 
   // Handle layout changes via subscription
   useEffect(() => {
@@ -379,8 +390,9 @@ const DraggableItemComponent = React.memo(
     const handlePointerUp = useCallback(
       (e: React.MouseEvent | React.TouchEvent) => {
         setIsDragging(false);
-        onDragEnd?.(item);
 
+        // Dispatch the synthetic mouseup BEFORE calling onDragEnd
+        // so the global handler can access the drag state
         const coords = getEventCoordinates(e);
         const globalMouseUpEvent = new MouseEvent('mouseup', {
           clientX: coords.clientX,
@@ -392,6 +404,9 @@ const DraggableItemComponent = React.memo(
           cancelable: true,
         });
         document.dispatchEvent(globalMouseUpEvent);
+
+        // Now call onDragEnd after the global handler has processed the event
+        onDragEnd?.(item);
       },
       [item, onDragEnd, getEventCoordinates]
     );
@@ -1114,6 +1129,9 @@ const GridContent = forwardRef<
           state.callbacks.onDragStateChange?.(false);
           onExternalDragInvalid?.(itemId);
         }
+      },
+      deactivateTapDrag: () => {
+        store.getState().deactivateTapDrag();
       },
       addItem: (itemData: Omit<DraggableItem, 'id'>) => {
         return store.getState().addItem(itemData);

@@ -836,6 +836,9 @@ export const LetteredPage = ({
   const handleResetPieces = useCallback(() => {
     if (!gridRef.current || !gameData) return;
 
+    // Deactivate any active tap-drag mode first (hides Place/Remove buttons)
+    gridRef.current.deactivateTapDrag();
+
     // Get all items currently on the grid and remove them
     const items = gridRef.current.getItems();
     for (const item of items) {
@@ -1156,6 +1159,7 @@ export const LetteredPage = ({
       logoSrc="/lettered-logo.svg"
       dragMode={dragMode}
       onDragModeChange={setDragMode}
+      gameComplete={gameComplete}
     >
       {/* Admin Debug Controls */}
       {isAdmin && (
@@ -1349,25 +1353,27 @@ export const LetteredPage = ({
         />
       </div>
 
-      {/* Piece Tray */}
-      <div className="flex justify-center mt-4">
-        <PieceTray
-          pieces={gameData?.pieces ?? []}
-          cellSize={responsiveCellSize}
-          cellSpacing={responsiveCellSpacing}
-          onPieceDragStart={handlePieceDragStart}
-          onPieceDragMove={handlePieceDragMove}
-          onPieceDragEnd={handlePieceDragEnd}
-          getPieceClassName={(piece) => getPieceTileClass(piece, 'text-2xl font-bold')}
-          disabled={gameComplete}
-          hiddenPieceIds={[
-            // Hide placed pieces (use .keys() since placedPieces is a Map)
-            ...Array.from(placedPieces.keys()),
-            // Hide piece currently being dragged
-            ...(pieceDraggingFromTray ? [pieceDraggingFromTray] : []),
-          ]}
-        />
-      </div>
+      {/* Piece Tray - hidden when game is complete */}
+      {!gameComplete && (
+        <div className="flex justify-center mt-4">
+          <PieceTray
+            pieces={gameData?.pieces ?? []}
+            cellSize={responsiveCellSize}
+            cellSpacing={responsiveCellSpacing}
+            onPieceDragStart={handlePieceDragStart}
+            onPieceDragMove={handlePieceDragMove}
+            onPieceDragEnd={handlePieceDragEnd}
+            getPieceClassName={(piece) => getPieceTileClass(piece, 'text-2xl font-bold')}
+            disabled={gameComplete}
+            hiddenPieceIds={[
+              // Hide placed pieces (use .keys() since placedPieces is a Map)
+              ...Array.from(placedPieces.keys()),
+              // Hide piece currently being dragged
+              ...(pieceDraggingFromTray ? [pieceDraggingFromTray] : []),
+            ]}
+          />
+        </div>
+      )}
       {/* Confetti Animation */}
       {uiState.showConfetti && (
         <Confetti

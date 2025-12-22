@@ -411,8 +411,8 @@ export const PieceTray: React.FC<PieceTrayProps> = ({
       }
     }
 
-    // Convert to pixels and add vertical padding for borders
-    const TRAY_VERTICAL_PADDING = 8;
+    // Convert to pixels and add vertical padding for borders and visual breathing room
+    const TRAY_VERTICAL_PADDING = 40;
     return maxHeight * cellSize.height + (maxHeight - 1) * cellSpacing + TRAY_VERTICAL_PADDING;
   }, [pieces, cellSize.height, cellSpacing]);
 
@@ -579,14 +579,18 @@ export const PieceTray: React.FC<PieceTrayProps> = ({
       className={cn('flex flex-col items-center w-full', 'transition-all duration-300 ease-out')}
       style={{
         // Add padding for visual breathing room
-        paddingTop: 16,
-        paddingBottom: 8,
+        paddingTop: 8,
+        paddingBottom: 16,
       }}
     >
       {/* Scrollable tray container */}
       <div
         ref={scrollContainerRef}
-        className={cn('overflow-x-auto overflow-y-hidden', 'transition-all duration-300 ease-out')}
+        className={cn(
+          'overflow-x-auto overflow-y-hidden',
+          'transition-all duration-300 ease-out',
+          'scrollbar-themed'
+        )}
         style={{
           height: trayHeight,
           maxWidth: '100%',
