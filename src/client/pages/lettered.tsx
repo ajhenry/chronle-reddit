@@ -744,9 +744,12 @@ export const LetteredPage = ({
         return;
       }
 
-      // Clear the dragging from tray state - the piece is now placed on the grid
-      // (if it was placed successfully, it's no longer in unplacedPieces anyway)
-      setPieceDraggingFromTray(null);
+      // Note: We intentionally do NOT clear pieceDraggingFromTray here.
+      // This callback fires whenever the grid layout changes, including during active drags.
+      // The piece visibility is managed by:
+      // 1. hiddenPieceIds prop (hides piece during drag via pieceDraggingFromTray)
+      // 2. unplacedPieces (piece removed after successful placement when placedPieces updates)
+      // 3. handleExternalDragInvalid (clears pieceDraggingFromTray on invalid drop/cancel)
 
       // Delegate all game logic to the game state manager
       const result = await gameStateManagerRef.current.updateFromLayout(layout);
@@ -1136,6 +1139,11 @@ export const LetteredPage = ({
     if (gameStateManagerRef.current) {
       gameStateManagerRef.current.removePieces(pieceIds);
     }
+    // If any of the removed pieces was marked as dragging from tray (stale state),
+    // clear that state so the piece shows correctly in the tray
+    setPieceDraggingFromTray((current) =>
+      current && pieceIds.includes(current) ? null : current
+    );
   }, []);
 
   // Handle when a piece enters or leaves the grid bounds during drag
@@ -1598,7 +1606,7 @@ export const LetteredPage = ({
           </div>
 
           {/* Piece Tray */}
-          <div className="flex justify-center mt-4">
+          <div className="flex justify-center">
             <PieceTray
               ref={bottomTrayRef}
               pieces={unplacedPieces}

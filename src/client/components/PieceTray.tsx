@@ -12,13 +12,6 @@ import { LetterPiece as LetterPieceType, GridPosition } from '../../shared/types
 import { ChevronLeft, ChevronRight } from 'lucide-react';
 import { Button } from './ui/button';
 
-// Threshold in pixels for upward movement to trigger piece pickup
-const DRAG_THRESHOLD = 20;
-// Maximum angle from vertical (in degrees) that still counts as a drag gesture
-// 30 degrees means horizontal movement can be up to ~0.58x the vertical movement
-const MAX_DRAG_ANGLE_DEGREES = 60;
-const MAX_DRAG_ANGLE_TAN = Math.tan((MAX_DRAG_ANGLE_DEGREES * Math.PI) / 180); // ~0.577
-
 // Gap size for insertion preview animation
 const INSERTION_GAP_SIZE = 60;
 
@@ -75,8 +68,6 @@ interface TrayPieceProps {
   onDragEnd?: () => void;
   className?: string;
   disabled?: boolean;
-  // Ref to scroll container for programmatic horizontal scrolling
-  scrollContainerRef?: React.RefObject<HTMLDivElement | null>;
 }
 
 const TrayPiece: React.FC<TrayPieceProps> = ({
@@ -88,17 +79,11 @@ const TrayPiece: React.FC<TrayPieceProps> = ({
   onDragEnd,
   className,
   disabled = false,
-  scrollContainerRef,
 }) => {
   // Ref to the piece container for calculating grab offset
   const pieceContainerRef = useRef<HTMLDivElement>(null);
-  // Track touch state for gesture detection
-  const touchStartRef = useRef<{ x: number; y: number; id: number } | null>(null);
-  const hasDragStartedRef = useRef(false);
-  // Track if user is in scroll mode (horizontal movement detected first)
-  const scrollModeRef = useRef(false);
-  // Track last touch position for programmatic scrolling
-  const lastTouchXRef = useRef<number | null>(null);
+  // Track touch identifier for multi-touch support
+  const activeTouchIdRef = useRef<number | null>(null);
   // Track if mouse is over a valid drag target (for cursor)
   const [isOverValidTarget, setIsOverValidTarget] = useState(false);
 
@@ -173,181 +158,131 @@ const TrayPiece: React.FC<TrayPieceProps> = ({
     };
   }, [piece.shape, piece.letters]);
 
-  // Check if a touch/click target is on the piece (allow dragging from anywhere on the piece)
-  const isValidDragTarget = useCallback((target: EventTarget | null): boolean => {
-    if (!target || !(target instanceof HTMLElement)) return false;
-    // Walk up the DOM tree to find if we're on the piece
-    let element: HTMLElement | null = target;
-    while (element) {
-      // Allow drag from anywhere on the piece container
-      if (element.dataset.pieceContainer === 'true') {
-        return true;
+  // Check if a touch/click is on a valid drag target
+  // Valid targets: letter cells, or gaps that are adjacent to letter cells
+  // Invalid targets: dead zones, gaps in dead zone areas
+  const isValidDragTarget = useCallback(
+    (target: EventTarget | null, clientX: number, clientY: number): boolean => {
+      if (!target || !(target instanceof HTMLElement)) return false;
+
+      // Walk up the DOM tree to check what we're on
+      let element: HTMLElement | null = target;
+      let isOnGrid = false;
+
+      while (element) {
+        // Allow drag from letter cells
+        if (element.dataset.hasLetter === 'true') return true;
+        // Dead zones (empty cells) are not valid drag targets
+        if (element.dataset.hasLetter === 'false') return false;
+        // Mark if we're on the grid element (a gap between cells)
+        if (element.dataset.pieceGrid === 'true') {
+          isOnGrid = true;
+          break;
+        }
+        // Stop searching at piece container
+        if (element.dataset.pieceContainer === 'true') return false;
+        element = element.parentElement;
       }
-      // Allow drag from letter cells
-      if (element.dataset.hasLetter === 'true') {
-        return true;
+
+      // If on a gap (grid element), check if nearest cell is a letter cell
+      if (isOnGrid && pieceContainerRef.current) {
+        const rect = pieceContainerRef.current.getBoundingClientRect();
+        const relativeX = clientX - rect.left;
+        const relativeY = clientY - rect.top;
+
+        // Calculate cell dimensions including spacing
+        const cellTotalWidth = cellSize.width + cellSpacing;
+        const cellTotalHeight = cellSize.height + cellSpacing;
+
+        // Find which cell position we're closest to
+        const cellX = Math.round(relativeX / cellTotalWidth - 0.5);
+        const cellY = Math.round(relativeY / cellTotalHeight - 0.5);
+
+        // Clamp to valid range
+        const clampedX = Math.max(0, Math.min(cellX, width - 1));
+        const clampedY = Math.max(0, Math.min(cellY, height - 1));
+
+        // Check if the nearest cell has a letter
+        const nearestCellHasLetter = pieceGrid[clampedY]?.[clampedX] !== null;
+        return nearestCellHasLetter;
       }
-      // Allow drag from the grid wrapper (gaps between cells)
-      if (element.dataset.pieceGrid === 'true') {
-        return true;
-      }
-      // Allow drag from empty cells too (they're part of the piece)
-      if (element.dataset.hasLetter === 'false') {
-        return true;
-      }
-      element = element.parentElement;
-    }
-    return false;
-  }, []);
+
+      return false;
+    },
+    [pieceGrid, width, height, cellSize.width, cellSize.height, cellSpacing]
+  );
 
   const handleTouchStart = useCallback(
     (e: React.TouchEvent) => {
       if (disabled) return;
 
       // Use changedTouches to get the touch that triggered THIS event
-      // This is critical for multi-touch: e.touches[0] would return the first
-      // active touch which might be on a different piece
       const touch = e.changedTouches[0];
       if (!touch) return;
 
-      // Only track touch if it started on a valid letter cell
-      if (!isValidDragTarget(e.target)) return;
+      // Only start drag if touch is on a valid letter cell or gap between letter cells
+      if (!isValidDragTarget(e.target, touch.clientX, touch.clientY)) return;
 
-      touchStartRef.current = {
-        x: touch.clientX,
-        y: touch.clientY,
-        id: touch.identifier,
-      };
-      lastTouchXRef.current = touch.clientX;
-      hasDragStartedRef.current = false;
-      scrollModeRef.current = false;
+      // Prevent any browser touch handling (scrolling)
+      e.preventDefault();
+      e.stopPropagation();
+
+      // Track this touch for multi-touch support
+      activeTouchIdRef.current = touch.identifier;
+
+      // Calculate grab offset and immediately start drag (like mouse behavior)
+      const grabOffset = calculateGrabOffset(touch.clientX, touch.clientY);
+      onDragStart(piece.id, { clientX: touch.clientX, clientY: touch.clientY }, grabOffset);
     },
-    [disabled, isValidDragTarget]
+    [disabled, isValidDragTarget, calculateGrabOffset, onDragStart, piece.id]
   );
 
   const handleTouchMove = useCallback(
     (e: React.TouchEvent) => {
-      if (disabled) return;
+      if (disabled || activeTouchIdRef.current === null) return;
 
-      // If drag already started, forward touch position to update cursor preview
-      // This bridges the gap before global listeners are attached
-      if (hasDragStartedRef.current && touchStartRef.current) {
-        const touch = Array.from(e.touches).find((t) => t.identifier === touchStartRef.current?.id);
-        if (touch) {
-          e.preventDefault();
-          e.stopPropagation();
-          onDragMove?.({ clientX: touch.clientX, clientY: touch.clientY });
-        }
-        return;
-      }
-
-      if (!touchStartRef.current) return;
-
-      const touch = Array.from(e.touches).find((t) => t.identifier === touchStartRef.current?.id);
+      // Find the touch we're tracking
+      const touch = Array.from(e.touches).find((t) => t.identifier === activeTouchIdRef.current);
       if (!touch) return;
 
-      const deltaX = Math.abs(touch.clientX - touchStartRef.current.x);
-      const deltaY = touch.clientY - touchStartRef.current.y;
-      const absDeltaY = Math.abs(deltaY);
-
-      // Calculate if the gesture is within the allowed drag angle (30 degrees from vertical)
-      // If horizontal movement is greater than tan(30) * vertical movement, it's a scroll gesture
-      const isWithinDragAngle = absDeltaY > 0 && deltaX / absDeltaY <= MAX_DRAG_ANGLE_TAN;
-
-      // Lock into scroll mode if movement is too horizontal (outside drag angle cone)
-      // Also enter scroll mode if horizontal movement exceeds threshold first
-      if (!scrollModeRef.current && deltaX > 10) {
-        // Check if this is more horizontal than vertical
-        if (deltaX > absDeltaY) {
-          scrollModeRef.current = true;
-        }
-      }
-      if (!scrollModeRef.current && absDeltaY > 5 && !isWithinDragAngle) {
-        scrollModeRef.current = true;
-      }
-
-      // If in scroll mode, perform programmatic scrolling
-      if (scrollModeRef.current && scrollContainerRef?.current && lastTouchXRef.current !== null) {
-        e.preventDefault();
-        const scrollDelta = lastTouchXRef.current - touch.clientX;
-        scrollContainerRef.current.scrollLeft += scrollDelta;
-        lastTouchXRef.current = touch.clientX;
-        return;
-      }
-
-      // Update last touch position for next scroll calculation
-      lastTouchXRef.current = touch.clientX;
-
-      // Trigger drag if:
-      // 1. NOT in scroll mode
-      // 2. Upward movement exceeds threshold (negative deltaY)
-      // 3. Gesture is within the allowed drag angle
-      if (!scrollModeRef.current && deltaY < -DRAG_THRESHOLD && isWithinDragAngle) {
-        // Upward drag detected - start piece drag
-        hasDragStartedRef.current = true;
-        e.preventDefault();
-        e.stopPropagation();
-
-        // Calculate grab offset from where the touch started (not current position)
-        const grabOffset = calculateGrabOffset(touchStartRef.current.x, touchStartRef.current.y);
-
-        onDragStart(
-          piece.id,
-          {
-            clientX: touch.clientX,
-            clientY: touch.clientY,
-          },
-          grabOffset
-        );
-
-        // Don't reset touchStartRef - we need to keep tracking the touch
-        // to forward subsequent events until global listeners take over
-      }
+      // Prevent scrolling and forward touch position to update cursor preview
+      e.preventDefault();
+      e.stopPropagation();
+      onDragMove?.({ clientX: touch.clientX, clientY: touch.clientY });
     },
-    [disabled, onDragStart, onDragMove, piece.id, calculateGrabOffset, scrollContainerRef]
+    [disabled, onDragMove]
   );
 
   const handleTouchEnd = useCallback(
     (e: React.TouchEvent) => {
-      // Only handle if the ended touch matches the one we're tracking
-      // This is critical for multi-touch: other touches ending shouldn't affect our drag
-      if (!touchStartRef.current) return;
+      if (activeTouchIdRef.current === null) return;
 
+      // Only handle if the ended touch matches the one we're tracking
       const endedTouch = Array.from(e.changedTouches).find(
-        (t) => t.identifier === touchStartRef.current?.id
+        (t) => t.identifier === activeTouchIdRef.current
       );
       if (!endedTouch) return;
 
-      // If drag was started, notify that it ended
-      if (hasDragStartedRef.current) {
-        onDragEnd?.();
-      }
-      touchStartRef.current = null;
-      hasDragStartedRef.current = false;
-      scrollModeRef.current = false;
-      lastTouchXRef.current = null;
+      // Notify that drag ended
+      onDragEnd?.();
+      activeTouchIdRef.current = null;
     },
     [onDragEnd]
   );
 
   const handleTouchCancel = useCallback(
     (e: React.TouchEvent) => {
-      // Only handle if the cancelled touch matches the one we're tracking
-      if (!touchStartRef.current) return;
+      if (activeTouchIdRef.current === null) return;
 
+      // Only handle if the cancelled touch matches the one we're tracking
       const cancelledTouch = Array.from(e.changedTouches).find(
-        (t) => t.identifier === touchStartRef.current?.id
+        (t) => t.identifier === activeTouchIdRef.current
       );
       if (!cancelledTouch) return;
 
-      // If drag was started, notify that it ended
-      if (hasDragStartedRef.current) {
-        onDragEnd?.();
-      }
-      touchStartRef.current = null;
-      hasDragStartedRef.current = false;
-      scrollModeRef.current = false;
-      lastTouchXRef.current = null;
+      // Notify that drag ended
+      onDragEnd?.();
+      activeTouchIdRef.current = null;
     },
     [onDragEnd]
   );
@@ -357,8 +292,8 @@ const TrayPiece: React.FC<TrayPieceProps> = ({
     (e: React.MouseEvent) => {
       if (disabled) return;
 
-      // Only allow drag if click was on a valid letter cell (not dead zone)
-      if (!isValidDragTarget(e.target)) return;
+      // Only allow drag if click was on a valid letter cell or gap between letter cells
+      if (!isValidDragTarget(e.target, e.clientX, e.clientY)) return;
 
       e.preventDefault();
       e.stopPropagation();
@@ -386,7 +321,7 @@ const TrayPiece: React.FC<TrayPieceProps> = ({
         setIsOverValidTarget(false);
         return;
       }
-      const isValid = isValidDragTarget(e.target);
+      const isValid = isValidDragTarget(e.target, e.clientX, e.clientY);
       setIsOverValidTarget(isValid);
     },
     [disabled, isValidDragTarget]
@@ -414,7 +349,7 @@ const TrayPiece: React.FC<TrayPieceProps> = ({
       style={{
         width: pieceWidthPx,
         height: pieceHeightPx,
-        touchAction: 'pan-x', // Allow horizontal scroll, we handle vertical
+        touchAction: 'pan-x pan-y', // Allow scroll by default, prevented by parent when dragging
       }}
       onTouchStart={handleTouchStart}
       onTouchMove={handleTouchMove}
@@ -431,7 +366,6 @@ const TrayPiece: React.FC<TrayPieceProps> = ({
           gridTemplateColumns: `repeat(${width}, ${cellSize.width}px)`,
           gridTemplateRows: `repeat(${height}, ${cellSize.height}px)`,
           gap: cellSpacing,
-          touchAction: 'none', // We control touch gestures - JS handles both scroll and drag detection
         }}
         data-piece-grid="true"
       >
@@ -448,7 +382,8 @@ const TrayPiece: React.FC<TrayPieceProps> = ({
               )}
               style={{
                 backgroundColor: letter ? piece.color : 'transparent',
-                // JS controls touch gestures on letters
+                // Letter cells: no browser touch handling (drag only)
+                // Dead zones: inherit from parent (allows scroll)
                 touchAction: letter ? 'none' : undefined,
               }}
               data-has-letter={letter ? 'true' : 'false'}
@@ -482,6 +417,9 @@ export const PieceTray = forwardRef<PieceTrayRef, PieceTrayProps>(
     const scrollContainerRef = useRef<HTMLDivElement>(null);
     const trayContainerRef = useRef<HTMLDivElement>(null);
     const pieceRefs = useRef<Map<string, HTMLDivElement>>(new Map());
+
+    // Track if any piece is currently being dragged (ref to avoid race conditions)
+    const isDraggingRef = useRef(false);
 
     // Track if we can scroll in each direction
     const [canScrollLeft, setCanScrollLeft] = useState(false);
@@ -713,6 +651,45 @@ export const PieceTray = forwardRef<PieceTrayRef, PieceTrayProps>(
       []
     );
 
+    // Cancel any ongoing scroll animation
+    const cancelScrollAnimation = useCallback(() => {
+      if (scrollAnimationRef.current) {
+        cancelAnimationFrame(scrollAnimationRef.current);
+        scrollAnimationRef.current = null;
+      }
+    }, []);
+
+    // Wrap onPieceDragStart to cancel scroll animations and track drag state
+    const handlePieceDragStart = useCallback(
+      (
+        pieceId: string,
+        touchPosition: { clientX: number; clientY: number },
+        grabOffset: { x: number; y: number }
+      ) => {
+        // Mark that we're dragging (prevents scroll in onTouchMove handler)
+        isDraggingRef.current = true;
+        // Cancel any ongoing scroll animation
+        cancelScrollAnimation();
+        // Call the original handler
+        onPieceDragStart(pieceId, touchPosition, grabOffset);
+      },
+      [onPieceDragStart, cancelScrollAnimation]
+    );
+
+    // Wrap onPieceDragEnd to clear drag state
+    const handlePieceDragEnd = useCallback(() => {
+      isDraggingRef.current = false;
+      onPieceDragEnd?.();
+    }, [onPieceDragEnd]);
+
+    // Handle touch move on scroll container - prevent scrolling when dragging
+    const handleScrollContainerTouchMove = useCallback((e: React.TouchEvent) => {
+      if (isDraggingRef.current) {
+        e.preventDefault();
+        e.stopPropagation();
+      }
+    }, []);
+
     // Bounce animation when at scroll limits
     const bounceAtLimit = useCallback((container: HTMLElement, direction: 'left' | 'right') => {
       const bounceDistance = 12;
@@ -854,11 +831,7 @@ export const PieceTray = forwardRef<PieceTrayRef, PieceTrayProps>(
       }
     }, []);
 
-    // Don't render if no visible pieces and no drag preview
-    if (visiblePieces.length === 0 && !dragPreview) {
-      return null;
-    }
-
+    // Always render the tray - pieces can be dropped back into it at any time
     return (
       <div
         ref={trayContainerRef}
@@ -870,7 +843,6 @@ export const PieceTray = forwardRef<PieceTrayRef, PieceTrayProps>(
         )}
         style={{
           // Add padding for visual breathing room
-          paddingTop: 8,
           paddingBottom: 16,
         }}
         data-tray-drop-zone="true"
@@ -886,8 +858,9 @@ export const PieceTray = forwardRef<PieceTrayRef, PieceTrayProps>(
           style={{
             height: trayHeight,
             maxWidth: '100%',
-            touchAction: 'pan-x', // Enable horizontal touch scrolling
+            touchAction: 'pan-x pan-y', // Enable horizontal and vertical touch scrolling
           }}
+          onTouchMove={handleScrollContainerTouchMove}
         >
           <div
             className={cn(
@@ -937,12 +910,11 @@ export const PieceTray = forwardRef<PieceTrayRef, PieceTrayProps>(
                       piece={piece}
                       cellSize={cellSize}
                       cellSpacing={cellSpacing}
-                      onDragStart={onPieceDragStart}
+                      onDragStart={handlePieceDragStart}
                       onDragMove={onPieceDragMove}
-                      onDragEnd={onPieceDragEnd}
+                      onDragEnd={handlePieceDragEnd}
                       className={getPieceClassName?.(piece)}
                       disabled={disabled}
-                      scrollContainerRef={scrollContainerRef}
                     />
                   </div>
                 </React.Fragment>

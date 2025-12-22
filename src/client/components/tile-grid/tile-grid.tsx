@@ -1417,6 +1417,9 @@ const GridContent = forwardRef<
         // Always update cursor position, even if gridBounds isn't available yet
         store.getState().setCursorPosition(coords);
 
+        // Call onDragMove so tray preview can be updated during external drag
+        state.callbacks.onDragMove?.(coords, cursorPreview.itemId);
+
         // Check if cursor has entered the grid bounds (only if gridBounds available)
         if (gridBounds) {
           const isWithinGrid =
@@ -1533,16 +1536,24 @@ const GridContent = forwardRef<
 
       // Handle cursor preview (piece released before entering grid)
       if (cursorPreview) {
-        // Cancel the cursor preview - piece returns to tray
         const itemId = cursorPreview.itemId;
+        const coords = getGlobalEventCoordinates(e);
+
+        // Check if piece was dropped on a tray (for reordering)
+        const droppedOnTray = onDragToTray?.(itemId, coords);
+
+        // Cancel the cursor preview
         store.setState({
           cursorPreview: null,
           cursorPosition: null,
           isDragging: false,
         });
         callbacks.onDragStateChange?.(false);
-        // Notify that the external drag was invalid (piece returns to tray)
-        onExternalDragInvalid?.(itemId);
+
+        // Only notify invalid if not dropped on a tray
+        if (!droppedOnTray) {
+          onExternalDragInvalid?.(itemId);
+        }
         return;
       }
 

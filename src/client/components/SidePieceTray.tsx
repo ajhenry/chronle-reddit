@@ -507,11 +507,7 @@ export const SidePieceTray = forwardRef<SidePieceTrayRef, SidePieceTrayProps>(
       }
     }, []);
 
-    // Don't render if no visible pieces and no drag preview
-    if (visiblePieces.length === 0 && !dragPreview) {
-      return null;
-    }
-
+    // Always render the tray even when empty - pieces can be dropped back into it
     return (
       <div
         ref={trayContainerRef}
