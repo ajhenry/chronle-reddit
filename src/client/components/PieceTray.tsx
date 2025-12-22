@@ -2,6 +2,7 @@ import React, { useMemo, useCallback, useRef, useState, useEffect } from 'react'
 import { cn } from '../lib/utils';
 import { LetterPiece as LetterPieceType, GridPosition } from '../../shared/types/api';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
+import { Button } from './ui/button';
 
 // Threshold in pixels for upward movement to trigger piece pickup
 const DRAG_THRESHOLD = 20;
@@ -390,12 +391,17 @@ export const PieceTray: React.FC<PieceTrayProps> = ({
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const pieceRefs = useRef<Map<string, HTMLDivElement>>(new Map());
 
-  // Track current focused piece index for navigation
-  const [focusedIndex, setFocusedIndex] = useState(0);
-
   // Track if we can scroll in each direction
   const [canScrollLeft, setCanScrollLeft] = useState(false);
   const [canScrollRight, setCanScrollRight] = useState(false);
+
+  // Get visible pieces (not hidden)
+  const visiblePieces = useMemo(() => {
+    return pieces.filter((piece) => !hiddenPieceIds.includes(piece.id));
+  }, [pieces, hiddenPieceIds]);
+
+  // Check if all visible pieces fit in view (no scrolling needed)
+  const allPiecesVisible = !canScrollLeft && !canScrollRight;
 
   // Calculate the height of the tallest piece (with padding for borders)
   const trayHeight = useMemo(() => {
@@ -440,14 +446,7 @@ export const PieceTray: React.FC<PieceTrayProps> = ({
         window.removeEventListener('resize', updateScrollButtons);
       };
     }
-  }, [updateScrollButtons, pieces]);
-
-  // Reset focused index when pieces change
-  useEffect(() => {
-    if (focusedIndex >= pieces.length) {
-      setFocusedIndex(Math.max(0, pieces.length - 1));
-    }
-  }, [pieces.length, focusedIndex]);
+  }, [updateScrollButtons, pieces, hiddenPieceIds]);
 
   // Ref to track ongoing scroll animation
   const scrollAnimationRef = useRef<number | null>(null);
@@ -514,14 +513,13 @@ export const PieceTray: React.FC<PieceTrayProps> = ({
     requestAnimationFrame(animateBounce);
   }, []);
 
-  // Scroll to center a specific piece
-  const scrollToPiece = useCallback(
-    (index: number, isAtBound: boolean = false, boundDirection?: 'left' | 'right') => {
+  // Scroll to center a specific piece by ID
+  const scrollToPieceById = useCallback(
+    (pieceId: string) => {
       const container = scrollContainerRef.current;
-      const piece = pieces[index];
-      if (!container || !piece) return;
+      if (!container) return;
 
-      const pieceElement = pieceRefs.current.get(piece.id);
+      const pieceElement = pieceRefs.current.get(pieceId);
       if (!pieceElement) return;
 
       // Calculate scroll position to center the piece
@@ -533,32 +531,88 @@ export const PieceTray: React.FC<PieceTrayProps> = ({
       const scrollOffset = pieceCenter - containerCenter;
       const targetScrollLeft = container.scrollLeft + scrollOffset;
 
-      // If at bound, show bounce effect
-      if (isAtBound && boundDirection) {
-        bounceAtLimit(container, boundDirection);
-      } else {
-        // Fast smooth scroll (150ms)
-        smoothScrollTo(container, targetScrollLeft, 150);
-      }
-
-      setFocusedIndex(index);
+      // Fast smooth scroll (150ms)
+      smoothScrollTo(container, targetScrollLeft, 150);
     },
-    [pieces, smoothScrollTo, bounceAtLimit]
+    [smoothScrollTo]
   );
 
-  // Navigate to previous piece
-  const handlePrevious = useCallback(() => {
-    const isAtStart = focusedIndex === 0;
-    const newIndex = Math.max(0, focusedIndex - 1);
-    scrollToPiece(newIndex, isAtStart, 'left');
-  }, [focusedIndex, scrollToPiece]);
+  // Find the first visible piece to the left/right of current scroll position
+  const findNextVisiblePiece = useCallback(
+    (direction: 'left' | 'right'): string | null => {
+      const container = scrollContainerRef.current;
+      if (!container || visiblePieces.length === 0) return null;
 
-  // Navigate to next piece
+      const containerRect = container.getBoundingClientRect();
+      const containerCenter = containerRect.left + containerRect.width / 2;
+
+      // Get all visible piece positions
+      const piecePositions: { id: string; center: number }[] = [];
+      for (const piece of visiblePieces) {
+        const element = pieceRefs.current.get(piece.id);
+        if (element) {
+          const rect = element.getBoundingClientRect();
+          piecePositions.push({
+            id: piece.id,
+            center: rect.left + rect.width / 2,
+          });
+        }
+      }
+
+      // Sort by position
+      piecePositions.sort((a, b) => a.center - b.center);
+
+      if (direction === 'right') {
+        // Find the first piece whose center is to the right of container center
+        for (const pos of piecePositions) {
+          if (pos.center > containerCenter + 10) {
+            return pos.id;
+          }
+        }
+        // If none found, we're at the end
+        return null;
+      } else {
+        // Find the last piece whose center is to the left of container center
+        for (let i = piecePositions.length - 1; i >= 0; i--) {
+          const pos = piecePositions[i];
+          if (pos && pos.center < containerCenter - 10) {
+            return pos.id;
+          }
+        }
+        // If none found, we're at the start
+        return null;
+      }
+    },
+    [visiblePieces]
+  );
+
+  // Navigate to previous visible piece
+  const handlePrevious = useCallback(() => {
+    const container = scrollContainerRef.current;
+    if (!container) return;
+
+    const nextPieceId = findNextVisiblePiece('left');
+    if (nextPieceId) {
+      scrollToPieceById(nextPieceId);
+    } else {
+      // Already at start, bounce
+      bounceAtLimit(container, 'left');
+    }
+  }, [findNextVisiblePiece, scrollToPieceById, bounceAtLimit]);
+
+  // Navigate to next visible piece
   const handleNext = useCallback(() => {
-    const isAtEnd = focusedIndex === pieces.length - 1;
-    const newIndex = Math.min(pieces.length - 1, focusedIndex + 1);
-    scrollToPiece(newIndex, isAtEnd, 'right');
-  }, [focusedIndex, pieces.length, scrollToPiece]);
+    const container = scrollContainerRef.current;
+    if (!container) return;
+
+    const nextPieceId = findNextVisiblePiece('right');
+    if (nextPieceId) {
+      scrollToPieceById(nextPieceId);
+    } else {
+      // Already at end, bounce
+      bounceAtLimit(container, 'right');
+    }
+  }, [findNextVisiblePiece, scrollToPieceById, bounceAtLimit]);
 
   // Register piece ref
   const setPieceRef = useCallback((pieceId: string, element: HTMLDivElement | null) => {
@@ -569,8 +623,8 @@ export const PieceTray: React.FC<PieceTrayProps> = ({
     }
   }, []);
 
-  // Don't render if no pieces
-  if (pieces.length === 0) {
+  // Don't render if no visible pieces
+  if (visiblePieces.length === 0) {
     return null;
   }
 
@@ -639,41 +693,46 @@ export const PieceTray: React.FC<PieceTrayProps> = ({
         </div>
       </div>
 
-      {/* Navigation buttons */}
-      {pieces.length > 1 && (
-        <div className="flex gap-4 mt-3">
-          <button
-            type="button"
+      {/* Scroll indicator - only show when pieces are out of view */}
+      {!allPiecesVisible && (
+        <div className="flex gap-2 justify-center items-center mt-2 text-muted-foreground">
+          <ChevronLeft
+            className={cn(
+              'w-4 h-4 transition-opacity duration-200',
+              canScrollLeft ? 'opacity-100' : 'opacity-0'
+            )}
+          />
+          <span className="text-xs font-medium">More Pieces</span>
+          <ChevronRight
+            className={cn(
+              'w-4 h-4 transition-opacity duration-200',
+              canScrollRight ? 'opacity-100' : 'opacity-0'
+            )}
+          />
+        </div>
+      )}
+
+      {/* Navigation buttons - only show when pieces are out of view */}
+      {!allPiecesVisible && (
+        <div className="flex gap-4 mt-2">
+          <Button
+            variant="outline"
+            size="icon"
             onClick={handlePrevious}
             disabled={!canScrollLeft}
-            className={cn(
-              'flex justify-center items-center',
-              'w-10 h-10 rounded-full',
-              'bg-muted/50 hover:bg-muted',
-              'border border-border',
-              'transition-all duration-200',
-              'disabled:opacity-30 disabled:cursor-not-allowed'
-            )}
             aria-label="Previous piece"
           >
             <ChevronLeft className="w-5 h-5" />
-          </button>
-          <button
-            type="button"
+          </Button>
+          <Button
+            variant="outline"
+            size="icon"
             onClick={handleNext}
             disabled={!canScrollRight}
-            className={cn(
-              'flex justify-center items-center',
-              'w-10 h-10 rounded-full',
-              'bg-muted/50 hover:bg-muted',
-              'border border-border',
-              'transition-all duration-200',
-              'disabled:opacity-30 disabled:cursor-not-allowed'
-            )}
             aria-label="Next piece"
           >
             <ChevronRight className="w-5 h-5" />
-          </button>
+          </Button>
         </div>
       )}
     </div>

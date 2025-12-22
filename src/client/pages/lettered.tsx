@@ -839,21 +839,24 @@ export const LetteredPage = ({
     // Deactivate any active tap-drag mode first (hides Place/Remove buttons)
     gridRef.current.deactivateTapDrag();
 
-    // Get all items currently on the grid and remove them
+    // Get all items currently on the grid and remove only player-placed pieces
+    // (exclude anchor letters which have IDs starting with "anchor-")
     const items = gridRef.current.getItems();
-    for (const item of items) {
+    const playerPieces = items.filter((item) => !item.id.startsWith('anchor-'));
+
+    for (const item of playerPieces) {
       gridRef.current.removeItem(item.id);
     }
 
     // Clear placed pieces in game state manager
     if (gameStateManagerRef.current) {
-      gameStateManagerRef.current.removePieces(items.map((item) => item.id));
+      gameStateManagerRef.current.removePieces(playerPieces.map((item) => item.id));
     }
 
     // Clear any active drag state
     setPieceDraggingFromTray(null);
 
-    console.log(`[handleResetPieces] Reset ${items.length} pieces back to tray`);
+    console.log(`[handleResetPieces] Reset ${playerPieces.length} pieces back to tray`);
   }, [gameData]);
 
   // Clear leaderboard entries for current game (admin only)
