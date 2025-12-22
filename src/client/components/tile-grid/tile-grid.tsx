@@ -1088,6 +1088,7 @@ const GridContent = forwardRef<
   const isCellBlocked = useGridStore((s) => s.callbacks.isCellBlocked);
   const cursorPreview = useGridStore((s) => s.cursorPreview);
   const cursorPosition = useGridStore((s) => s.cursorPosition);
+  const grabOffset = useGridStore((s) => s.grabOffset);
 
   // Expose methods via ref
   useImperativeHandle(
@@ -1472,6 +1473,9 @@ const GridContent = forwardRef<
       const cellY = Math.floor(pointerY / (cellSize.height + spacing));
 
       if (cellX >= 0 && cellX < gridSize.width && cellY >= 0 && cellY < gridSize.height) {
+        // Pointer is within grid bounds - clear cursor position (no cursor preview needed)
+        store.getState().setCursorPosition(null);
+
         const currentHoveredCell = state.currentHoveredCell;
         if (
           !currentHoveredCell ||
@@ -1499,8 +1503,11 @@ const GridContent = forwardRef<
           }
         }
       } else {
+        // Pointer is outside grid bounds - clear grid preview but track cursor position
+        // so we can show a cursor-following preview
         store.getState().setCurrentHoveredCell(null);
         store.getState().setDragPreview(null);
+        store.getState().setCursorPosition(coords);
       }
     },
     [store, getGlobalEventCoordinates]
@@ -1866,7 +1873,7 @@ const GridContent = forwardRef<
         unplacedPieceCount={unplacedPieceCount}
       />
 
-      {/* Cursor preview - piece following cursor before entering grid */}
+      {/* Cursor preview - piece following cursor before entering grid OR when dragged outside grid */}
       {cursorPreview && cursorPosition && (
         <CursorPreviewComponent
           item={cursorPreview.item}
@@ -1877,6 +1884,21 @@ const GridContent = forwardRef<
           defaultClassName={defaultItemClassName}
         />
       )}
+      {/* Cursor preview for grid item dragged outside bounds */}
+      {!cursorPreview && draggedItemId && !dragPreview && cursorPosition && grabOffset && (() => {
+        const draggedItem = items.find((item) => item.id === draggedItemId);
+        if (!draggedItem) return null;
+        return (
+          <CursorPreviewComponent
+            item={draggedItem}
+            cursorPosition={cursorPosition}
+            grabOffset={grabOffset}
+            cellSize={cellSize}
+            spacing={spacing}
+            defaultClassName={defaultItemClassName}
+          />
+        );
+      })()}
 
       <div className={cn('inline-block', className)}>
         <div

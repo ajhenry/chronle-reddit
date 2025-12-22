@@ -1168,19 +1168,34 @@ export const LetteredPage = ({
 
       for (const tray of trays) {
         if (!tray) continue;
-        const insertionIndex = tray.getInsertionIndex(position.clientX, position.clientY);
-        if (insertionIndex >= 0) {
-          console.log(`[handleDragToTray] Piece ${itemId} dropped to tray at index ${insertionIndex}`);
+        const insertionInfo = tray.getInsertionInfo(position.clientX, position.clientY);
+        if (insertionInfo) {
+          console.log(
+            `[handleDragToTray] Piece ${itemId} dropped to tray, insert before: ${insertionInfo.insertBeforePieceId ?? 'end'}`
+          );
 
           // Clear the drag preview
           tray.clearDragPreview();
 
-          // Update piece order to insert at the specified position
+          // Update piece order using insertBeforePieceId for correct positioning
           setPieceOrder((currentOrder) => {
             // Remove the piece from its current position if it exists
             const newOrder = currentOrder.filter((id) => id !== itemId);
-            // Insert at the new position
-            newOrder.splice(insertionIndex, 0, itemId);
+
+            if (insertionInfo.insertBeforePieceId) {
+              // Insert before the specified piece
+              const insertIndex = newOrder.indexOf(insertionInfo.insertBeforePieceId);
+              if (insertIndex >= 0) {
+                newOrder.splice(insertIndex, 0, itemId);
+              } else {
+                // If piece not found (shouldn't happen), append to end
+                newOrder.push(itemId);
+              }
+            } else {
+              // Insert at end
+              newOrder.push(itemId);
+            }
+
             return newOrder;
           });
 
@@ -1582,24 +1597,22 @@ export const LetteredPage = ({
             />
           </div>
 
-          {/* Piece Tray - hidden when game is complete */}
-          {!gameComplete && (
-            <div className="flex justify-center mt-4">
-              <PieceTray
-                ref={bottomTrayRef}
-                pieces={unplacedPieces}
-                cellSize={responsiveCellSize}
-                cellSpacing={responsiveCellSpacing}
-                onPieceDragStart={handlePieceDragStart}
-                onPieceDragMove={handlePieceDragMove}
-                onPieceDragEnd={handlePieceDragEnd}
-                getPieceClassName={(piece) => getPieceTileClass(piece, 'text-2xl font-bold')}
-                disabled={gameComplete}
-                hiddenPieceIds={pieceDraggingFromTray ? [pieceDraggingFromTray] : []}
-                onPieceDropped={handlePieceDroppedToTray}
-              />
-            </div>
-          )}
+          {/* Piece Tray */}
+          <div className="flex justify-center mt-4">
+            <PieceTray
+              ref={bottomTrayRef}
+              pieces={unplacedPieces}
+              cellSize={responsiveCellSize}
+              cellSpacing={responsiveCellSpacing}
+              onPieceDragStart={handlePieceDragStart}
+              onPieceDragMove={handlePieceDragMove}
+              onPieceDragEnd={handlePieceDragEnd}
+              getPieceClassName={(piece) => getPieceTileClass(piece, 'text-2xl font-bold')}
+              disabled={gameComplete}
+              hiddenPieceIds={pieceDraggingFromTray ? [pieceDraggingFromTray] : []}
+              onPieceDropped={handlePieceDroppedToTray}
+            />
+          </div>
         </>
       )}
       {/* Confetti Animation */}

@@ -15,9 +15,9 @@ import { Button } from './ui/button';
 // Threshold in pixels for upward movement to trigger piece pickup
 const DRAG_THRESHOLD = 20;
 // Maximum angle from vertical (in degrees) that still counts as a drag gesture
-// 60 degrees means horizontal movement can be up to ~1.73x the vertical movement
+// 30 degrees means horizontal movement can be up to ~0.58x the vertical movement
 const MAX_DRAG_ANGLE_DEGREES = 60;
-const MAX_DRAG_ANGLE_TAN = Math.tan((MAX_DRAG_ANGLE_DEGREES * Math.PI) / 180); // ~1.73
+const MAX_DRAG_ANGLE_TAN = Math.tan((MAX_DRAG_ANGLE_DEGREES * Math.PI) / 180); // ~0.577
 
 // Gap size for insertion preview animation
 const INSERTION_GAP_SIZE = 60;
@@ -25,14 +25,19 @@ const INSERTION_GAP_SIZE = 60;
 // Ref type for PieceTray to expose bounds and drop handling
 export interface PieceTrayRef {
   getBounds: () => DOMRect | null;
-  // Check if point is over the tray and return insertion index, or -1 if not over tray
+  // Check if point is over the tray and return insertion info, or null if not over tray
+  // Returns the piece ID to insert before (or null if inserting at end)
   getInsertionIndex: (clientX: number, clientY: number) => number;
+  getInsertionInfo: (
+    clientX: number,
+    clientY: number
+  ) => { insertBeforePieceId: string | null; visualIndex: number } | null;
   // Update the drag preview position for insertion indicator
   updateDragPreview: (clientX: number, clientY: number, pieceId: string) => void;
   // Clear the drag preview
   clearDragPreview: () => void;
-  // Handle drop at current preview position
-  handleDrop: () => { pieceId: string; insertionIndex: number } | null;
+  // Handle drop at current preview position - returns piece ID to insert before
+  handleDrop: () => { pieceId: string; insertBeforePieceId: string | null } | null;
 }
 
 interface PieceTrayProps {
@@ -70,6 +75,8 @@ interface TrayPieceProps {
   onDragEnd?: () => void;
   className?: string;
   disabled?: boolean;
+  // Ref to scroll container for programmatic horizontal scrolling
+  scrollContainerRef?: React.RefObject<HTMLDivElement | null>;
 }
 
 const TrayPiece: React.FC<TrayPieceProps> = ({
@@ -81,6 +88,7 @@ const TrayPiece: React.FC<TrayPieceProps> = ({
   onDragEnd,
   className,
   disabled = false,
+  scrollContainerRef,
 }) => {
   // Ref to the piece container for calculating grab offset
   const pieceContainerRef = useRef<HTMLDivElement>(null);
@@ -89,6 +97,8 @@ const TrayPiece: React.FC<TrayPieceProps> = ({
   const hasDragStartedRef = useRef(false);
   // Track if user is in scroll mode (horizontal movement detected first)
   const scrollModeRef = useRef(false);
+  // Track last touch position for programmatic scrolling
+  const lastTouchXRef = useRef<number | null>(null);
   // Track if mouse is over a valid drag target (for cursor)
   const [isOverValidTarget, setIsOverValidTarget] = useState(false);
 
@@ -163,12 +173,16 @@ const TrayPiece: React.FC<TrayPieceProps> = ({
     };
   }, [piece.shape, piece.letters]);
 
-  // Check if a touch/click target is on an actual letter cell (not dead zone)
+  // Check if a touch/click target is on the piece (allow dragging from anywhere on the piece)
   const isValidDragTarget = useCallback((target: EventTarget | null): boolean => {
     if (!target || !(target instanceof HTMLElement)) return false;
-    // Walk up the DOM tree to find if we're on a valid drag target
+    // Walk up the DOM tree to find if we're on the piece
     let element: HTMLElement | null = target;
     while (element) {
+      // Allow drag from anywhere on the piece container
+      if (element.dataset.pieceContainer === 'true') {
+        return true;
+      }
       // Allow drag from letter cells
       if (element.dataset.hasLetter === 'true') {
         return true;
@@ -177,13 +191,9 @@ const TrayPiece: React.FC<TrayPieceProps> = ({
       if (element.dataset.pieceGrid === 'true') {
         return true;
       }
-      // Block drag from empty cells (dead zones)
+      // Allow drag from empty cells too (they're part of the piece)
       if (element.dataset.hasLetter === 'false') {
-        return false;
-      }
-      // Stop at the piece container
-      if (element.dataset.pieceContainer === 'true') {
-        return false;
+        return true;
       }
       element = element.parentElement;
     }
@@ -208,6 +218,7 @@ const TrayPiece: React.FC<TrayPieceProps> = ({
         y: touch.clientY,
         id: touch.identifier,
       };
+      lastTouchXRef.current = touch.clientX;
       hasDragStartedRef.current = false;
       scrollModeRef.current = false;
     },
@@ -239,14 +250,33 @@ const TrayPiece: React.FC<TrayPieceProps> = ({
       const deltaY = touch.clientY - touchStartRef.current.y;
       const absDeltaY = Math.abs(deltaY);
 
-      // Calculate if the gesture is within the allowed drag angle (60 degrees from vertical)
-      // If horizontal movement is greater than tan(60) * vertical movement, it's a scroll gesture
+      // Calculate if the gesture is within the allowed drag angle (30 degrees from vertical)
+      // If horizontal movement is greater than tan(30) * vertical movement, it's a scroll gesture
       const isWithinDragAngle = absDeltaY > 0 && deltaX / absDeltaY <= MAX_DRAG_ANGLE_TAN;
 
       // Lock into scroll mode if movement is too horizontal (outside drag angle cone)
+      // Also enter scroll mode if horizontal movement exceeds threshold first
+      if (!scrollModeRef.current && deltaX > 10) {
+        // Check if this is more horizontal than vertical
+        if (deltaX > absDeltaY) {
+          scrollModeRef.current = true;
+        }
+      }
       if (!scrollModeRef.current && absDeltaY > 5 && !isWithinDragAngle) {
         scrollModeRef.current = true;
       }
+
+      // If in scroll mode, perform programmatic scrolling
+      if (scrollModeRef.current && scrollContainerRef?.current && lastTouchXRef.current !== null) {
+        e.preventDefault();
+        const scrollDelta = lastTouchXRef.current - touch.clientX;
+        scrollContainerRef.current.scrollLeft += scrollDelta;
+        lastTouchXRef.current = touch.clientX;
+        return;
+      }
+
+      // Update last touch position for next scroll calculation
+      lastTouchXRef.current = touch.clientX;
 
       // Trigger drag if:
       // 1. NOT in scroll mode
@@ -273,9 +303,8 @@ const TrayPiece: React.FC<TrayPieceProps> = ({
         // Don't reset touchStartRef - we need to keep tracking the touch
         // to forward subsequent events until global listeners take over
       }
-      // If in scroll mode, let native scroll handle it (don't prevent default)
     },
-    [disabled, onDragStart, onDragMove, piece.id, calculateGrabOffset]
+    [disabled, onDragStart, onDragMove, piece.id, calculateGrabOffset, scrollContainerRef]
   );
 
   const handleTouchEnd = useCallback(
@@ -296,6 +325,7 @@ const TrayPiece: React.FC<TrayPieceProps> = ({
       touchStartRef.current = null;
       hasDragStartedRef.current = false;
       scrollModeRef.current = false;
+      lastTouchXRef.current = null;
     },
     [onDragEnd]
   );
@@ -317,6 +347,7 @@ const TrayPiece: React.FC<TrayPieceProps> = ({
       touchStartRef.current = null;
       hasDragStartedRef.current = false;
       scrollModeRef.current = false;
+      lastTouchXRef.current = null;
     },
     [onDragEnd]
   );
@@ -400,7 +431,7 @@ const TrayPiece: React.FC<TrayPieceProps> = ({
           gridTemplateColumns: `repeat(${width}, ${cellSize.width}px)`,
           gridTemplateRows: `repeat(${height}, ${cellSize.height}px)`,
           gap: cellSpacing,
-          touchAction: 'none', // Prevent browser scroll when touching the piece grid
+          touchAction: 'none', // We control touch gestures - JS handles both scroll and drag detection
         }}
         data-piece-grid="true"
       >
@@ -417,7 +448,7 @@ const TrayPiece: React.FC<TrayPieceProps> = ({
               )}
               style={{
                 backgroundColor: letter ? piece.color : 'transparent',
-                // Prevent browser scroll when touching letter cells - we handle drag ourselves
+                // JS controls touch gestures on letters
                 touchAction: letter ? 'none' : undefined,
               }}
               data-has-letter={letter ? 'true' : 'false'}
@@ -462,11 +493,15 @@ export const PieceTray = forwardRef<PieceTrayRef, PieceTrayProps>(
       pieceId: string;
     } | null>(null);
 
-    // Calculate insertion index based on cursor position
-    const calculateInsertionIndex = useCallback(
-      (clientX: number, clientY: number): number => {
+    // Calculate insertion info based on cursor position
+    // Returns the piece ID to insert before (or null if inserting at end) and visual index
+    const calculateInsertionInfo = useCallback(
+      (
+        clientX: number,
+        clientY: number
+      ): { insertBeforePieceId: string | null; visualIndex: number } | null => {
         const trayContainer = trayContainerRef.current;
-        if (!trayContainer) return -1;
+        if (!trayContainer) return null;
 
         const trayBounds = trayContainer.getBoundingClientRect();
 
@@ -478,12 +513,12 @@ export const PieceTray = forwardRef<PieceTrayRef, PieceTrayProps>(
           clientY < trayBounds.top - verticalTolerance ||
           clientY > trayBounds.bottom + verticalTolerance
         ) {
-          return -1;
+          return null;
         }
 
         // Get visible pieces (not being dragged)
         const visiblePieces = pieces.filter((p) => !hiddenPieceIds.includes(p.id));
-        if (visiblePieces.length === 0) return 0;
+        if (visiblePieces.length === 0) return { insertBeforePieceId: null, visualIndex: 0 };
 
         // Get piece positions and find insertion point
         const piecePositions: { id: string; left: number; right: number; center: number }[] = [];
@@ -507,17 +542,35 @@ export const PieceTray = forwardRef<PieceTrayRef, PieceTrayProps>(
         for (let i = 0; i < piecePositions.length; i++) {
           const pos = piecePositions[i];
           if (pos && clientX < pos.center) {
-            // Find the original index of this piece
+            // Find the original index of this piece for visual rendering
             const originalIndex = pieces.findIndex((p) => p.id === pos.id);
-            return originalIndex >= 0 ? originalIndex : i;
+            return {
+              insertBeforePieceId: pos.id,
+              visualIndex: originalIndex >= 0 ? originalIndex : i,
+            };
           }
         }
 
         // Insert at end
-        return pieces.length;
+        return { insertBeforePieceId: null, visualIndex: pieces.length };
       },
       [pieces, hiddenPieceIds]
     );
+
+    // Legacy method for backwards compatibility - returns visual index
+    const calculateInsertionIndex = useCallback(
+      (clientX: number, clientY: number): number => {
+        const info = calculateInsertionInfo(clientX, clientY);
+        return info ? info.visualIndex : -1;
+      },
+      [calculateInsertionInfo]
+    );
+
+    // Track the insertion info for the current drag preview
+    const [dragPreviewInfo, setDragPreviewInfo] = useState<{
+      insertBeforePieceId: string | null;
+      pieceId: string;
+    } | null>(null);
 
     // Expose methods via ref
     useImperativeHandle(
@@ -531,31 +584,46 @@ export const PieceTray = forwardRef<PieceTrayRef, PieceTrayProps>(
           return calculateInsertionIndex(clientX, clientY);
         },
 
+        getInsertionInfo: (clientX: number, clientY: number) => {
+          return calculateInsertionInfo(clientX, clientY);
+        },
+
         updateDragPreview: (clientX: number, clientY: number, pieceId: string) => {
-          const insertionIndex = calculateInsertionIndex(clientX, clientY);
-          if (insertionIndex >= 0) {
-            setDragPreview({ insertionIndex, pieceId });
+          const info = calculateInsertionInfo(clientX, clientY);
+          if (info) {
+            setDragPreview({ insertionIndex: info.visualIndex, pieceId });
+            setDragPreviewInfo({ insertBeforePieceId: info.insertBeforePieceId, pieceId });
           } else {
             setDragPreview(null);
+            setDragPreviewInfo(null);
           }
         },
 
         clearDragPreview: () => {
           setDragPreview(null);
+          setDragPreviewInfo(null);
         },
 
         handleDrop: () => {
-          if (!dragPreview) return null;
+          if (!dragPreview || !dragPreviewInfo) return null;
           const result = {
-            pieceId: dragPreview.pieceId,
-            insertionIndex: dragPreview.insertionIndex,
+            pieceId: dragPreviewInfo.pieceId,
+            insertBeforePieceId: dragPreviewInfo.insertBeforePieceId,
           };
           setDragPreview(null);
-          onPieceDropped?.(result.pieceId, result.insertionIndex);
+          setDragPreviewInfo(null);
+          // Legacy callback still uses visual index for backwards compatibility
+          onPieceDropped?.(result.pieceId, dragPreview.insertionIndex);
           return result;
         },
       }),
-      [calculateInsertionIndex, dragPreview, onPieceDropped]
+      [
+        calculateInsertionIndex,
+        calculateInsertionInfo,
+        dragPreview,
+        dragPreviewInfo,
+        onPieceDropped,
+      ]
     );
 
     // Get visible pieces (not hidden)
@@ -798,7 +866,7 @@ export const PieceTray = forwardRef<PieceTrayRef, PieceTrayProps>(
           'flex flex-col items-center w-full',
           'transition-all duration-300 ease-out',
           // Highlight when dragging over
-          dragPreview ? 'bg-accent/10 rounded-lg' : ''
+          dragPreview ? 'rounded-lg bg-accent/10' : ''
         )}
         style={{
           // Add padding for visual breathing room
@@ -818,6 +886,7 @@ export const PieceTray = forwardRef<PieceTrayRef, PieceTrayProps>(
           style={{
             height: trayHeight,
             maxWidth: '100%',
+            touchAction: 'pan-x', // Enable horizontal touch scrolling
           }}
         >
           <div
@@ -873,6 +942,7 @@ export const PieceTray = forwardRef<PieceTrayRef, PieceTrayProps>(
                       onDragEnd={onPieceDragEnd}
                       className={getPieceClassName?.(piece)}
                       disabled={disabled}
+                      scrollContainerRef={scrollContainerRef}
                     />
                   </div>
                 </React.Fragment>

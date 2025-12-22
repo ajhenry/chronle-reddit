@@ -15,14 +15,18 @@ const INSERTION_GAP_SIZE = 40;
 // Ref type for SidePieceTray to expose bounds and drop handling
 export interface SidePieceTrayRef {
   getBounds: () => DOMRect | null;
-  // Check if point is over the tray and return insertion index, or -1 if not over tray
+  // Check if point is over the tray and return insertion info, or null if not over tray
   getInsertionIndex: (clientX: number, clientY: number) => number;
+  getInsertionInfo: (
+    clientX: number,
+    clientY: number
+  ) => { insertBeforePieceId: string | null; visualIndex: number } | null;
   // Update the drag preview position for insertion indicator
   updateDragPreview: (clientX: number, clientY: number, pieceId: string) => void;
   // Clear the drag preview
   clearDragPreview: () => void;
-  // Handle drop at current preview position
-  handleDrop: () => { pieceId: string; insertionIndex: number } | null;
+  // Handle drop at current preview position - returns piece ID to insert before
+  handleDrop: () => { pieceId: string; insertBeforePieceId: string | null } | null;
 }
 
 interface SidePieceTrayProps {
@@ -368,11 +372,15 @@ export const SidePieceTray = forwardRef<SidePieceTrayRef, SidePieceTrayProps>(
       return pieces.filter((piece) => !hiddenPieceIds.includes(piece.id));
     }, [pieces, hiddenPieceIds]);
 
-    // Calculate insertion index based on cursor position (vertical for side trays)
-    const calculateInsertionIndex = useCallback(
-      (clientX: number, clientY: number): number => {
+    // Calculate insertion info based on cursor position (vertical for side trays)
+    // Returns the piece ID to insert before (or null if inserting at end) and visual index
+    const calculateInsertionInfo = useCallback(
+      (
+        clientX: number,
+        clientY: number
+      ): { insertBeforePieceId: string | null; visualIndex: number } | null => {
         const trayContainer = trayContainerRef.current;
-        if (!trayContainer) return -1;
+        if (!trayContainer) return null;
 
         const trayBounds = trayContainer.getBoundingClientRect();
 
@@ -384,11 +392,11 @@ export const SidePieceTray = forwardRef<SidePieceTrayRef, SidePieceTrayProps>(
           clientY < trayBounds.top ||
           clientY > trayBounds.bottom
         ) {
-          return -1;
+          return null;
         }
 
         // Get visible pieces (not being dragged)
-        if (visiblePieces.length === 0) return 0;
+        if (visiblePieces.length === 0) return { insertBeforePieceId: null, visualIndex: 0 };
 
         // Get piece positions and find insertion point
         const piecePositions: { id: string; top: number; bottom: number; center: number }[] = [];
@@ -412,17 +420,35 @@ export const SidePieceTray = forwardRef<SidePieceTrayRef, SidePieceTrayProps>(
         for (let i = 0; i < piecePositions.length; i++) {
           const pos = piecePositions[i];
           if (pos && clientY < pos.center) {
-            // Find the original index of this piece
+            // Find the original index of this piece for visual rendering
             const originalIndex = pieces.findIndex((p) => p.id === pos.id);
-            return originalIndex >= 0 ? originalIndex : i;
+            return {
+              insertBeforePieceId: pos.id,
+              visualIndex: originalIndex >= 0 ? originalIndex : i,
+            };
           }
         }
 
         // Insert at end
-        return pieces.length;
+        return { insertBeforePieceId: null, visualIndex: pieces.length };
       },
       [pieces, visiblePieces]
     );
+
+    // Legacy method for backwards compatibility - returns visual index
+    const calculateInsertionIndex = useCallback(
+      (clientX: number, clientY: number): number => {
+        const info = calculateInsertionInfo(clientX, clientY);
+        return info ? info.visualIndex : -1;
+      },
+      [calculateInsertionInfo]
+    );
+
+    // Track the insertion info for the current drag preview
+    const [dragPreviewInfo, setDragPreviewInfo] = useState<{
+      insertBeforePieceId: string | null;
+      pieceId: string;
+    } | null>(null);
 
     // Expose methods via ref
     useImperativeHandle(
@@ -436,28 +462,40 @@ export const SidePieceTray = forwardRef<SidePieceTrayRef, SidePieceTrayProps>(
           return calculateInsertionIndex(clientX, clientY);
         },
 
+        getInsertionInfo: (clientX: number, clientY: number) => {
+          return calculateInsertionInfo(clientX, clientY);
+        },
+
         updateDragPreview: (clientX: number, clientY: number, pieceId: string) => {
-          const insertionIndex = calculateInsertionIndex(clientX, clientY);
-          if (insertionIndex >= 0) {
-            setDragPreview({ insertionIndex, pieceId });
+          const info = calculateInsertionInfo(clientX, clientY);
+          if (info) {
+            setDragPreview({ insertionIndex: info.visualIndex, pieceId });
+            setDragPreviewInfo({ insertBeforePieceId: info.insertBeforePieceId, pieceId });
           } else {
             setDragPreview(null);
+            setDragPreviewInfo(null);
           }
         },
 
         clearDragPreview: () => {
           setDragPreview(null);
+          setDragPreviewInfo(null);
         },
 
         handleDrop: () => {
-          if (!dragPreview) return null;
-          const result = { pieceId: dragPreview.pieceId, insertionIndex: dragPreview.insertionIndex };
+          if (!dragPreview || !dragPreviewInfo) return null;
+          const result = {
+            pieceId: dragPreviewInfo.pieceId,
+            insertBeforePieceId: dragPreviewInfo.insertBeforePieceId,
+          };
           setDragPreview(null);
-          onPieceDropped?.(result.pieceId, result.insertionIndex);
+          setDragPreviewInfo(null);
+          // Legacy callback still uses visual index for backwards compatibility
+          onPieceDropped?.(result.pieceId, dragPreview.insertionIndex);
           return result;
         },
       }),
-      [calculateInsertionIndex, dragPreview, onPieceDropped]
+      [calculateInsertionIndex, calculateInsertionInfo, dragPreview, dragPreviewInfo, onPieceDropped]
     );
 
     // Register piece ref
