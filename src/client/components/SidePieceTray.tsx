@@ -74,12 +74,9 @@ const SideTrayPiece: React.FC<SideTrayPieceProps> = ({
   disabled = false,
 }) => {
   const pieceContainerRef = useRef<HTMLDivElement>(null);
-  const touchStartRef = useRef<{ x: number; y: number; id: number } | null>(null);
-  const hasDragStartedRef = useRef(false);
+  // Track touch identifier for multi-touch support
+  const activeTouchIdRef = useRef<number | null>(null);
   const [isOverValidTarget, setIsOverValidTarget] = useState(false);
-
-  // Threshold for drag gesture detection
-  const DRAG_THRESHOLD = 20;
 
   const calculateGrabOffset = useCallback(
     (clientX: number, clientY: number): { x: number; y: number } => {
@@ -163,90 +160,73 @@ const SideTrayPiece: React.FC<SideTrayPieceProps> = ({
   const handleTouchStart = useCallback(
     (e: React.TouchEvent) => {
       if (disabled) return;
+
       const touch = e.changedTouches[0];
       if (!touch) return;
+
+      // Only start drag if touch is on a valid letter cell
       if (!isValidDragTarget(e.target)) return;
 
-      touchStartRef.current = {
-        x: touch.clientX,
-        y: touch.clientY,
-        id: touch.identifier,
-      };
-      hasDragStartedRef.current = false;
+      // Prevent any browser touch handling (scrolling)
+      e.preventDefault();
+      e.stopPropagation();
+
+      // Track this touch for multi-touch support
+      activeTouchIdRef.current = touch.identifier;
+
+      // Calculate grab offset and immediately start drag (like mouse behavior)
+      const grabOffset = calculateGrabOffset(touch.clientX, touch.clientY);
+      onDragStart(piece.id, { clientX: touch.clientX, clientY: touch.clientY }, grabOffset);
     },
-    [disabled, isValidDragTarget]
+    [disabled, isValidDragTarget, calculateGrabOffset, onDragStart, piece.id]
   );
 
   const handleTouchMove = useCallback(
     (e: React.TouchEvent) => {
-      if (disabled) return;
+      if (disabled || activeTouchIdRef.current === null) return;
 
-      if (hasDragStartedRef.current && touchStartRef.current) {
-        const touch = Array.from(e.touches).find((t) => t.identifier === touchStartRef.current?.id);
-        if (touch) {
-          e.preventDefault();
-          e.stopPropagation();
-          onDragMove?.({ clientX: touch.clientX, clientY: touch.clientY });
-        }
-        return;
-      }
-
-      if (!touchStartRef.current) return;
-
-      const touch = Array.from(e.touches).find((t) => t.identifier === touchStartRef.current?.id);
+      // Find the touch we're tracking
+      const touch = Array.from(e.touches).find((t) => t.identifier === activeTouchIdRef.current);
       if (!touch) return;
 
-      const deltaX = touch.clientX - touchStartRef.current.x;
-      const deltaY = touch.clientY - touchStartRef.current.y;
-      const distance = Math.sqrt(deltaX * deltaX + deltaY * deltaY);
-
-      // Start drag if movement exceeds threshold
-      if (distance > DRAG_THRESHOLD) {
-        hasDragStartedRef.current = true;
-        e.preventDefault();
-        e.stopPropagation();
-
-        const grabOffset = calculateGrabOffset(touchStartRef.current.x, touchStartRef.current.y);
-        onDragStart(
-          piece.id,
-          { clientX: touch.clientX, clientY: touch.clientY },
-          grabOffset
-        );
-      }
+      // Prevent scrolling and forward touch position to update cursor preview
+      e.preventDefault();
+      e.stopPropagation();
+      onDragMove?.({ clientX: touch.clientX, clientY: touch.clientY });
     },
-    [disabled, onDragStart, onDragMove, piece.id, calculateGrabOffset]
+    [disabled, onDragMove]
   );
 
   const handleTouchEnd = useCallback(
     (e: React.TouchEvent) => {
-      if (!touchStartRef.current) return;
+      if (activeTouchIdRef.current === null) return;
+
+      // Only handle if the ended touch matches the one we're tracking
       const endedTouch = Array.from(e.changedTouches).find(
-        (t) => t.identifier === touchStartRef.current?.id
+        (t) => t.identifier === activeTouchIdRef.current
       );
       if (!endedTouch) return;
 
-      if (hasDragStartedRef.current) {
-        onDragEnd?.();
-      }
-      touchStartRef.current = null;
-      hasDragStartedRef.current = false;
+      // Notify that drag ended
+      onDragEnd?.();
+      activeTouchIdRef.current = null;
     },
     [onDragEnd]
   );
 
   const handleTouchCancel = useCallback(
     (e: React.TouchEvent) => {
-      if (!touchStartRef.current) return;
+      if (activeTouchIdRef.current === null) return;
+
+      // Only handle if the cancelled touch matches the one we're tracking
       const cancelledTouch = Array.from(e.changedTouches).find(
-        (t) => t.identifier === touchStartRef.current?.id
+        (t) => t.identifier === activeTouchIdRef.current
       );
       if (!cancelledTouch) return;
 
-      if (hasDragStartedRef.current) {
-        onDragEnd?.();
-      }
-      touchStartRef.current = null;
-      hasDragStartedRef.current = false;
+      // Notify that drag ended
+      onDragEnd?.();
+      activeTouchIdRef.current = null;
     },
     [onDragEnd]
   );
@@ -507,6 +487,9 @@ export const SidePieceTray = forwardRef<SidePieceTrayRef, SidePieceTrayProps>(
       }
     }, []);
 
+    // Calculate minimum width based on cell size so tray remains visible when empty
+    const minTrayWidth = cellSize.width * 2 + cellSpacing + 16;
+
     // Always render the tray even when empty - pieces can be dropped back into it
     return (
       <div
@@ -521,7 +504,8 @@ export const SidePieceTray = forwardRef<SidePieceTrayRef, SidePieceTrayProps>(
           dragPreview ? 'bg-accent/10 rounded-lg' : ''
         )}
         style={{
-          maxHeight: '100%',
+          minWidth: minTrayWidth,
+          height: '100%',
         }}
         data-tray-drop-zone="true"
       >

@@ -27,7 +27,7 @@ export const RESPONSIVE_CELL_SPACING: Record<Breakpoint, number> = {
   sm: 4,
   md: 4,
   lg: 4,
-  xl: 6,
+  xl: 4,
 };
 
 // Get responsive cell size based on current breakpoint and grid size

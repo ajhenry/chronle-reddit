@@ -573,8 +573,12 @@ export const PieceTray = forwardRef<PieceTrayRef, PieceTrayProps>(
     const allPiecesVisible = !canScrollLeft && !canScrollRight;
 
     // Calculate the height of the tallest piece (with padding for borders)
+    // Keep a minimum height so the tray remains visible when empty
     const trayHeight = useMemo(() => {
-      if (pieces.length === 0) return 0;
+      const TRAY_VERTICAL_PADDING = 40;
+      const MIN_TRAY_HEIGHT = cellSize.height + TRAY_VERTICAL_PADDING;
+
+      if (pieces.length === 0) return MIN_TRAY_HEIGHT;
 
       let maxHeight = 0;
       for (const piece of pieces) {
@@ -587,7 +591,6 @@ export const PieceTray = forwardRef<PieceTrayRef, PieceTrayProps>(
       }
 
       // Convert to pixels and add vertical padding for borders and visual breathing room
-      const TRAY_VERTICAL_PADDING = 40;
       return maxHeight * cellSize.height + (maxHeight - 1) * cellSpacing + TRAY_VERTICAL_PADDING;
     }, [pieces, cellSize.height, cellSpacing]);
 

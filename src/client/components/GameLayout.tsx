@@ -297,7 +297,7 @@ export const GameLayout = ({
       </div>
 
       {/* Game Content */}
-      <div className="mx-auto max-w-2xl">{children}</div>
+      <div className="mx-auto max-w-2xl xl:max-w-6xl">{children}</div>
 
       {/* Help Modal */}
       {showHelpModal && (

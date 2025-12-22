@@ -288,16 +288,34 @@ export const LetteredPage = ({
   // Check if we're on XL viewport for side trays layout
   const isXLViewport = breakpoint === 'xl';
 
-  // Split pieces between left and right trays for XL viewport
-  const { leftTrayPieces, rightTrayPieces } = useMemo(() => {
-    if (!gameData) return { leftTrayPieces: [], rightTrayPieces: [] };
-    // Use unplacedPieces for side trays (already ordered)
-    const midpoint = Math.ceil(unplacedPieces.length / 2);
+  // Assign pieces to trays based on initial order (stable assignment)
+  // This ensures pieces don't shift between trays when other pieces are placed
+  const trayAssignments = useMemo(() => {
+    if (!gameData)
+      return { left: new Set<string>(), right: new Set<string>(), bottom: new Set<string>() };
+
+    // Use pieceOrder if available, otherwise use original piece order
+    const orderedPieceIds = pieceOrder.length > 0 ? pieceOrder : gameData.pieces.map((p) => p.id);
+
+    // Split ALL pieces into 3 groups (not just unplaced)
+    const thirdPoint = Math.ceil(orderedPieceIds.length / 3);
+    const twoThirdsPoint = Math.ceil((orderedPieceIds.length * 2) / 3);
+
     return {
-      leftTrayPieces: unplacedPieces.slice(0, midpoint),
-      rightTrayPieces: unplacedPieces.slice(midpoint),
+      left: new Set(orderedPieceIds.slice(0, thirdPoint)),
+      right: new Set(orderedPieceIds.slice(thirdPoint, twoThirdsPoint)),
+      bottom: new Set(orderedPieceIds.slice(twoThirdsPoint)),
     };
-  }, [gameData]);
+  }, [gameData, pieceOrder]);
+
+  // Filter unplaced pieces by their stable tray assignment
+  const { leftTrayPieces, rightTrayPieces, bottomTrayPiecesXL } = useMemo(() => {
+    return {
+      leftTrayPieces: unplacedPieces.filter((p) => trayAssignments.left.has(p.id)),
+      rightTrayPieces: unplacedPieces.filter((p) => trayAssignments.right.has(p.id)),
+      bottomTrayPiecesXL: unplacedPieces.filter((p) => trayAssignments.bottom.has(p.id)),
+    };
+  }, [unplacedPieces, trayAssignments]);
 
   // Check for post context and get gameId
   useEffect(() => {
@@ -1141,9 +1159,7 @@ export const LetteredPage = ({
     }
     // If any of the removed pieces was marked as dragging from tray (stale state),
     // clear that state so the piece shows correctly in the tray
-    setPieceDraggingFromTray((current) =>
-      current && pieceIds.includes(current) ? null : current
-    );
+    setPieceDraggingFromTray((current) => (current && pieceIds.includes(current) ? null : current));
   }, []);
 
   // Handle when a piece enters or leaves the grid bounds during drag
@@ -1230,14 +1246,11 @@ export const LetteredPage = ({
   );
 
   // Handle piece dropped into tray (callback from PieceTray)
-  const handlePieceDroppedToTray = useCallback(
-    (pieceId: string, insertionIndex: number) => {
-      console.log(`[handlePieceDroppedToTray] Piece ${pieceId} inserted at index ${insertionIndex}`);
-      // The piece order update is already handled in handleDragToTray
-      // This callback is for additional side effects if needed
-    },
-    []
-  );
+  const handlePieceDroppedToTray = useCallback((pieceId: string, insertionIndex: number) => {
+    console.log(`[handlePieceDroppedToTray] Piece ${pieceId} inserted at index ${insertionIndex}`);
+    // The piece order update is already handled in handleDragToTray
+    // This callback is for additional side effects if needed
+  }, []);
 
   // Show error state (check before loading to show errors from context check early)
   if (error) {
@@ -1492,80 +1505,113 @@ export const LetteredPage = ({
       </div>
 
       {/* Game Content */}
-      {/* XL viewport: 3-column layout with side trays */}
+      {/* XL viewport: 3-column layout with side trays and bottom tray */}
       {isXLViewport && !gameComplete ? (
-        <div className="flex justify-center items-start gap-6">
-          {/* Left Piece Tray */}
-          <div className="flex-shrink-0" style={{ maxHeight: 'calc(100vh - 300px)' }}>
-            <SidePieceTray
-              ref={leftTrayRef}
-              pieces={leftTrayPieces}
-              cellSize={responsiveCellSize}
-              cellSpacing={responsiveCellSpacing}
-              onPieceDragStart={handlePieceDragStart}
-              onPieceDragMove={handlePieceDragMove}
-              onPieceDragEnd={handlePieceDragEnd}
-              getPieceClassName={(piece) => getPieceTileClass(piece, 'text-2xl font-bold')}
-              disabled={gameComplete}
-              hiddenPieceIds={pieceDraggingFromTray ? [pieceDraggingFromTray] : []}
-              side="left"
-            />
-          </div>
+        (() => {
+          // Calculate board dimensions for tray sizing
+          const gridCols = gameData.grid[0]!.length || 8;
+          const gridRows = gameData.grid.length;
+          const boardWidth =
+            gridCols * responsiveCellSize.width + (gridCols - 1) * responsiveCellSpacing;
+          const boardHeight =
+            gridRows * responsiveCellSize.height + (gridRows - 1) * responsiveCellSpacing;
 
-          {/* Grid */}
-          <div className="flex-shrink-0">
-            <Grid
-              ref={gridRef}
-              key={`${gameComplete}`}
-              gridSize={{
-                width: gameData.grid[0]!.length || 8,
-                height: gameData.grid.length,
-                spacing: responsiveCellSpacing,
-              }}
-              cellSize={responsiveCellSize}
-              initialItems={convertGridDataToItems({
-                grid: gameData.grid,
-                placedPieces: placedPieces,
-                pieces: gameData.pieces,
-                getTileClassName: (piece) => getPieceTileClass(piece, 'text-2xl font-bold'),
-              })}
-              onLayoutChange={handleGridLayoutChange}
-              defaultBoardTileClassName="bg-card hover:bg-accent transition-colors"
-              defaultItemClassName="bg-primary text-primary-foreground"
-              getBoardTileClassName={boardTileClass}
-              getTileDraggingClassName={pieceTileDraggingClass}
-              disabled={gameComplete}
-              dragMode={dragMode}
-              shouldAutoComplete={checkPuzzleComplete}
-              hideBanner={uiState.showGameOverModal || showInstructions}
-              onExternalDragInvalid={handleExternalDragInvalid}
-              onInvalidPlacement={handleInvalidPlacement}
-              unplacedPieceCount={unplacedPieces.length}
-              isCellBlocked={isCellBlocked}
-              onPiecesRemoved={handlePiecesRemoved}
-              onDragOverGridChange={handleDragOverGridChange}
-              onDragMove={handleDragMove}
-              onDragToTray={handleDragToTray}
-            />
-          </div>
+          return (
+            <div className="flex flex-col items-center gap-4">
+              <div className="flex justify-center items-stretch gap-6">
+                {/* Left Piece Tray */}
+                <div className="flex-shrink-0" style={{ minHeight: boardHeight }}>
+                  <SidePieceTray
+                    ref={leftTrayRef}
+                    pieces={leftTrayPieces}
+                    cellSize={responsiveCellSize}
+                    cellSpacing={responsiveCellSpacing}
+                    onPieceDragStart={handlePieceDragStart}
+                    onPieceDragMove={handlePieceDragMove}
+                    onPieceDragEnd={handlePieceDragEnd}
+                    getPieceClassName={(piece) => getPieceTileClass(piece, 'text-2xl font-bold')}
+                    disabled={gameComplete}
+                    hiddenPieceIds={pieceDraggingFromTray ? [pieceDraggingFromTray] : []}
+                    side="left"
+                    onPieceDropped={handlePieceDroppedToTray}
+                  />
+                </div>
 
-          {/* Right Piece Tray */}
-          <div className="flex-shrink-0" style={{ maxHeight: 'calc(100vh - 300px)' }}>
-            <SidePieceTray
-              ref={rightTrayRef}
-              pieces={rightTrayPieces}
-              cellSize={responsiveCellSize}
-              cellSpacing={responsiveCellSpacing}
-              onPieceDragStart={handlePieceDragStart}
-              onPieceDragMove={handlePieceDragMove}
-              onPieceDragEnd={handlePieceDragEnd}
-              getPieceClassName={(piece) => getPieceTileClass(piece, 'text-2xl font-bold')}
-              disabled={gameComplete}
-              hiddenPieceIds={pieceDraggingFromTray ? [pieceDraggingFromTray] : []}
-              side="right"
-            />
-          </div>
-        </div>
+                {/* Grid */}
+                <div className="flex-shrink-0">
+                  <Grid
+                    ref={gridRef}
+                    key={`${gameComplete}`}
+                    gridSize={{
+                      width: gridCols,
+                      height: gridRows,
+                      spacing: responsiveCellSpacing,
+                    }}
+                    cellSize={responsiveCellSize}
+                    initialItems={convertGridDataToItems({
+                      grid: gameData.grid,
+                      placedPieces: placedPieces,
+                      pieces: gameData.pieces,
+                      getTileClassName: (piece) => getPieceTileClass(piece, 'text-2xl font-bold'),
+                    })}
+                    onLayoutChange={handleGridLayoutChange}
+                    defaultBoardTileClassName="bg-card hover:bg-accent transition-colors"
+                    defaultItemClassName="bg-primary text-primary-foreground"
+                    getBoardTileClassName={boardTileClass}
+                    getTileDraggingClassName={pieceTileDraggingClass}
+                    disabled={gameComplete}
+                    dragMode="hold-to-drag"
+                    shouldAutoComplete={checkPuzzleComplete}
+                    hideBanner={uiState.showGameOverModal || showInstructions}
+                    onExternalDragInvalid={handleExternalDragInvalid}
+                    onInvalidPlacement={handleInvalidPlacement}
+                    unplacedPieceCount={unplacedPieces.length}
+                    isCellBlocked={isCellBlocked}
+                    onPiecesRemoved={handlePiecesRemoved}
+                    onDragOverGridChange={handleDragOverGridChange}
+                    onDragMove={handleDragMove}
+                    onDragToTray={handleDragToTray}
+                  />
+                </div>
+
+                {/* Right Piece Tray */}
+                <div className="flex-shrink-0" style={{ minHeight: boardHeight }}>
+                  <SidePieceTray
+                    ref={rightTrayRef}
+                    pieces={rightTrayPieces}
+                    cellSize={responsiveCellSize}
+                    cellSpacing={responsiveCellSpacing}
+                    onPieceDragStart={handlePieceDragStart}
+                    onPieceDragMove={handlePieceDragMove}
+                    onPieceDragEnd={handlePieceDragEnd}
+                    getPieceClassName={(piece) => getPieceTileClass(piece, 'text-2xl font-bold')}
+                    disabled={gameComplete}
+                    hiddenPieceIds={pieceDraggingFromTray ? [pieceDraggingFromTray] : []}
+                    side="right"
+                    onPieceDropped={handlePieceDroppedToTray}
+                  />
+                </div>
+              </div>
+
+              {/* Bottom Piece Tray for XL */}
+              <div className="flex justify-center" style={{ minWidth: boardWidth }}>
+                <PieceTray
+                  ref={bottomTrayRef}
+                  pieces={bottomTrayPiecesXL}
+                  cellSize={responsiveCellSize}
+                  cellSpacing={responsiveCellSpacing}
+                  onPieceDragStart={handlePieceDragStart}
+                  onPieceDragMove={handlePieceDragMove}
+                  onPieceDragEnd={handlePieceDragEnd}
+                  getPieceClassName={(piece) => getPieceTileClass(piece, 'text-2xl font-bold')}
+                  disabled={gameComplete}
+                  hiddenPieceIds={pieceDraggingFromTray ? [pieceDraggingFromTray] : []}
+                  onPieceDropped={handlePieceDroppedToTray}
+                />
+              </div>
+            </div>
+          );
+        })()
       ) : (
         <>
           {/* Standard layout for smaller viewports or completed games */}
