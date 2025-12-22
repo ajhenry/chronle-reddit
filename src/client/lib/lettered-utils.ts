@@ -8,16 +8,16 @@ export const RESPONSIVE_CELL_SIZES: Record<
 > = {
   9: {
     xs: { width: 32, height: 32 },
-    sm: { width: 42, height: 42 },
-    md: { width: 42, height: 42 },
-    lg: { width: 50, height: 50 },
+    sm: { width: 32, height: 32 },
+    md: { width: 32, height: 32 },
+    lg: { width: 32, height: 32 },
     xl: { width: 50, height: 50 },
   },
   8: {
     xs: { width: 38, height: 38 },
-    sm: { width: 46, height: 46 },
-    md: { width: 50, height: 50 },
-    lg: { width: 62, height: 62 },
+    sm: { width: 38, height: 38 },
+    md: { width: 38, height: 38 },
+    lg: { width: 38, height: 38 },
     xl: { width: 62, height: 62 },
   },
 };
@@ -25,8 +25,8 @@ export const RESPONSIVE_CELL_SIZES: Record<
 export const RESPONSIVE_CELL_SPACING: Record<Breakpoint, number> = {
   xs: 4,
   sm: 4,
-  md: 6,
-  lg: 6,
+  md: 4,
+  lg: 4,
   xl: 6,
 };
 
