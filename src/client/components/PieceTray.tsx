@@ -693,48 +693,56 @@ export const PieceTray: React.FC<PieceTrayProps> = ({
         </div>
       </div>
 
-      {/* Scroll indicator - only show when pieces are out of view */}
-      {!allPiecesVisible && (
-        <div className="flex gap-2 justify-center items-center mt-2 text-muted-foreground">
-          <ChevronLeft
-            className={cn(
-              'w-4 h-4 transition-opacity duration-200',
-              canScrollLeft ? 'opacity-100' : 'opacity-0'
-            )}
-          />
-          <span className="text-xs font-medium">More Pieces</span>
-          <ChevronRight
-            className={cn(
-              'w-4 h-4 transition-opacity duration-200',
-              canScrollRight ? 'opacity-100' : 'opacity-0'
-            )}
-          />
-        </div>
-      )}
+      {/* Scroll indicator - hidden when all pieces visible but keeps layout space */}
+      <div
+        className={cn(
+          'flex gap-2 justify-center items-center mt-2 text-muted-foreground',
+          'transition-opacity duration-200',
+          allPiecesVisible ? 'opacity-0 pointer-events-none' : 'opacity-100'
+        )}
+      >
+        <ChevronLeft
+          className={cn(
+            'w-4 h-4 transition-opacity duration-200',
+            canScrollLeft ? 'opacity-100' : 'opacity-0'
+          )}
+        />
+        <span className="text-xs font-medium">More Pieces</span>
+        <ChevronRight
+          className={cn(
+            'w-4 h-4 transition-opacity duration-200',
+            canScrollRight ? 'opacity-100' : 'opacity-0'
+          )}
+        />
+      </div>
 
-      {/* Navigation buttons - only show when pieces are out of view */}
-      {!allPiecesVisible && (
-        <div className="flex gap-4 mt-2">
-          <Button
-            variant="outline"
-            size="icon"
-            onClick={handlePrevious}
-            disabled={!canScrollLeft}
-            aria-label="Previous piece"
-          >
-            <ChevronLeft className="w-5 h-5" />
-          </Button>
-          <Button
-            variant="outline"
-            size="icon"
-            onClick={handleNext}
-            disabled={!canScrollRight}
-            aria-label="Next piece"
-          >
-            <ChevronRight className="w-5 h-5" />
-          </Button>
-        </div>
-      )}
+      {/* Navigation buttons - hidden when all pieces visible but keeps layout space */}
+      <div
+        className={cn(
+          'flex gap-4 mt-2',
+          'transition-opacity duration-200',
+          allPiecesVisible ? 'opacity-0 pointer-events-none' : 'opacity-100'
+        )}
+      >
+        <Button
+          variant="outline"
+          size="icon"
+          onClick={handlePrevious}
+          disabled={!canScrollLeft}
+          aria-label="Previous piece"
+        >
+          <ChevronLeft className="w-5 h-5" />
+        </Button>
+        <Button
+          variant="outline"
+          size="icon"
+          onClick={handleNext}
+          disabled={!canScrollRight}
+          aria-label="Next piece"
+        >
+          <ChevronRight className="w-5 h-5" />
+        </Button>
+      </div>
     </div>
   );
 };
