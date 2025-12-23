@@ -53,6 +53,8 @@ interface PieceTrayProps {
   hiddenPieceIds?: string[];
   // Called when a piece is dropped into the tray
   onPieceDropped?: (pieceId: string, insertionIndex: number) => void;
+  // When true, pieces wrap to next row instead of horizontal scrolling
+  wrap?: boolean;
 }
 
 interface TrayPieceProps {
@@ -410,6 +412,7 @@ export const PieceTray = forwardRef<PieceTrayRef, PieceTrayProps>(
       disabled = false,
       hiddenPieceIds = [],
       onPieceDropped,
+      wrap = false,
     },
     ref
   ) => {
@@ -850,31 +853,30 @@ export const PieceTray = forwardRef<PieceTrayRef, PieceTrayProps>(
         }}
         data-tray-drop-zone="true"
       >
-        {/* Scrollable tray container */}
+        {/* Tray container - scrollable or wrapping based on wrap prop */}
         <div
           ref={scrollContainerRef}
           className={cn(
-            'overflow-x-auto overflow-y-hidden',
             'transition-all duration-300 ease-out',
-            'scrollbar-themed'
+            wrap ? 'overflow-visible' : 'overflow-x-auto overflow-y-hidden scrollbar-themed'
           )}
           style={{
-            height: trayHeight,
+            height: wrap ? 'auto' : trayHeight,
+            minHeight: wrap ? trayHeight : undefined,
             maxWidth: '100%',
-            touchAction: 'pan-x pan-y', // Enable horizontal and vertical touch scrolling
+            touchAction: wrap ? 'none' : 'pan-x pan-y',
           }}
-          onTouchMove={handleScrollContainerTouchMove}
+          onTouchMove={wrap ? undefined : handleScrollContainerTouchMove}
         >
           <div
             className={cn(
               'flex items-center',
-              'h-full',
-              'transition-all duration-300 ease-out'
+              'transition-all duration-300 ease-out',
+              wrap ? 'flex-wrap justify-center gap-y-4' : 'h-full'
             )}
             style={{
-              // Ensure pieces are left-aligned within the scrollable container
-              justifyContent: 'flex-start',
-              minWidth: 'min-content',
+              justifyContent: wrap ? 'center' : 'flex-start',
+              minWidth: wrap ? undefined : 'min-content',
             }}
           >
             {pieces.map((piece, index) => {
@@ -902,7 +904,8 @@ export const PieceTray = forwardRef<PieceTrayRef, PieceTrayProps>(
                     className={cn(
                       'transition-all duration-300 ease-out origin-center',
                       // Entrance animation when piece first appears (not hidden)
-                      !isHidden && 'animate-in fade-in zoom-in-90 slide-in-from-bottom-2 duration-300'
+                      // Disable animations during drag to prevent vibration
+                      !isHidden && !dragPreview && 'animate-in fade-in zoom-in-90 slide-in-from-bottom-2 duration-300'
                     )}
                     // Use CSS to hide instead of filtering from DOM
                     // This keeps touch handlers active during drag
@@ -948,56 +951,60 @@ export const PieceTray = forwardRef<PieceTrayRef, PieceTrayProps>(
           </div>
         </div>
 
-        {/* Scroll indicator - hidden when all pieces visible but keeps layout space */}
-        <div
-          className={cn(
-            'flex gap-2 justify-center items-center mt-2 text-muted-foreground',
-            'transition-opacity duration-200',
-            allPiecesVisible ? 'opacity-0 pointer-events-none' : 'opacity-100'
-          )}
-        >
-          <ChevronLeft
+        {/* Scroll indicator - hidden when wrapping or all pieces visible */}
+        {!wrap && (
+          <div
             className={cn(
-              'w-4 h-4 transition-opacity duration-200',
-              canScrollLeft ? 'opacity-100' : 'opacity-0'
+              'flex gap-2 justify-center items-center mt-2 text-muted-foreground',
+              'transition-opacity duration-200',
+              allPiecesVisible ? 'opacity-0 pointer-events-none' : 'opacity-100'
             )}
-          />
-          <span className="text-xs font-medium">More Pieces</span>
-          <ChevronRight
-            className={cn(
-              'w-4 h-4 transition-opacity duration-200',
-              canScrollRight ? 'opacity-100' : 'opacity-0'
-            )}
-          />
-        </div>
+          >
+            <ChevronLeft
+              className={cn(
+                'w-4 h-4 transition-opacity duration-200',
+                canScrollLeft ? 'opacity-100' : 'opacity-0'
+              )}
+            />
+            <span className="text-xs font-medium">More Pieces</span>
+            <ChevronRight
+              className={cn(
+                'w-4 h-4 transition-opacity duration-200',
+                canScrollRight ? 'opacity-100' : 'opacity-0'
+              )}
+            />
+          </div>
+        )}
 
-        {/* Navigation buttons - hidden when all pieces visible but keeps layout space */}
-        <div
-          className={cn(
-            'flex gap-4 mt-2',
-            'transition-opacity duration-200',
-            allPiecesVisible ? 'opacity-0 pointer-events-none' : 'opacity-100'
-          )}
-        >
-          <Button
-            variant="outline"
-            size="icon"
-            onClick={handlePrevious}
-            disabled={!canScrollLeft}
-            aria-label="Previous piece"
+        {/* Navigation buttons - hidden when wrapping or all pieces visible */}
+        {!wrap && (
+          <div
+            className={cn(
+              'flex gap-4 mt-2',
+              'transition-opacity duration-200',
+              allPiecesVisible ? 'opacity-0 pointer-events-none' : 'opacity-100'
+            )}
           >
-            <ChevronLeft className="w-5 h-5" />
-          </Button>
-          <Button
-            variant="outline"
-            size="icon"
-            onClick={handleNext}
-            disabled={!canScrollRight}
-            aria-label="Next piece"
-          >
-            <ChevronRight className="w-5 h-5" />
-          </Button>
-        </div>
+            <Button
+              variant="outline"
+              size="icon"
+              onClick={handlePrevious}
+              disabled={!canScrollLeft}
+              aria-label="Previous piece"
+            >
+              <ChevronLeft className="w-5 h-5" />
+            </Button>
+            <Button
+              variant="outline"
+              size="icon"
+              onClick={handleNext}
+              disabled={!canScrollRight}
+              aria-label="Next piece"
+            >
+              <ChevronRight className="w-5 h-5" />
+            </Button>
+          </div>
+        )}
       </div>
     );
   }

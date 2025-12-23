@@ -46,6 +46,8 @@ interface SidePieceTrayProps {
   side: 'left' | 'right';
   // Called when a piece is dropped into the tray
   onPieceDropped?: (pieceId: string, insertionIndex: number) => void;
+  // Minimum height for the tray (typically matches the puzzle/grid height)
+  minHeight?: number;
 }
 
 interface SideTrayPieceProps {
@@ -334,6 +336,7 @@ export const SidePieceTray = forwardRef<SidePieceTrayRef, SidePieceTrayProps>(
       hiddenPieceIds = [],
       side,
       onPieceDropped,
+      minHeight,
     },
     ref
   ) => {
@@ -512,7 +515,7 @@ export const SidePieceTray = forwardRef<SidePieceTrayRef, SidePieceTrayProps>(
         style={{
           width: trayWidth,
           flexShrink: 0,
-          height: '100%',
+          minHeight: minHeight,
         }}
         data-tray-drop-zone="true"
       >
@@ -540,9 +543,12 @@ export const SidePieceTray = forwardRef<SidePieceTrayRef, SidePieceTrayProps>(
                 className={cn(
                   'transition-all duration-300 ease-out origin-center',
                   // Entrance animation when piece first appears (not hidden)
+                  // Disable animations during drag to prevent vibration
                   // Left tray: slide in from left, Right tray: slide in from right
-                  !isHidden && 'animate-in fade-in zoom-in-90 duration-300',
-                  !isHidden && (side === 'left' ? 'slide-in-from-left-2' : 'slide-in-from-right-2')
+                  !isHidden && !dragPreview && 'animate-in fade-in zoom-in-90 duration-300',
+                  !isHidden &&
+                    !dragPreview &&
+                    (side === 'left' ? 'slide-in-from-left-2' : 'slide-in-from-right-2')
                 )}
                 // Use transform: scale and max-height for smooth animations (can't animate to 'auto')
                 // Use vertical margin for spacing (animates smoothly when hidden)
