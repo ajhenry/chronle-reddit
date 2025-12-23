@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 
 export type Breakpoint = 'xs' | 'sm' | 'md' | 'lg' | 'xl';
 
@@ -11,29 +11,59 @@ const BREAKPOINTS = {
 } as const;
 
 export function useViewport(): { breakpoint: Breakpoint; width: number; height: number } {
-  const [viewport, setViewport] = useState(() => {
+  const getViewportSize = useCallback(() => {
     if (typeof window === 'undefined') {
-      return { width: 1024, height: 768, breakpoint: 'lg' as Breakpoint };
+      return { width: 1024, height: 768 };
     }
+    // Use document.documentElement for more accurate size in iframes
+    // Falls back to window.innerWidth/Height if not available
+    const width = document.documentElement?.clientWidth || window.innerWidth;
+    const height = document.documentElement?.clientHeight || window.innerHeight;
+    return { width, height };
+  }, []);
+
+  const [viewport, setViewport] = useState(() => {
+    const { width, height } = getViewportSize();
     return {
-      width: window.innerWidth,
-      height: window.innerHeight,
-      breakpoint: getBreakpoint(window.innerWidth),
+      width,
+      height,
+      breakpoint: getBreakpoint(width),
     };
   });
 
   useEffect(() => {
     const handleResize = () => {
-      const width = window.innerWidth;
-      const height = window.innerHeight;
+      const { width, height } = getViewportSize();
       const breakpoint = getBreakpoint(width);
 
-      setViewport({ width, height, breakpoint });
+      setViewport((prev) => {
+        // Only update if values actually changed
+        if (prev.width === width && prev.height === height && prev.breakpoint === breakpoint) {
+          return prev;
+        }
+        return { width, height, breakpoint };
+      });
     };
 
+    // Listen for window resize events (works for standalone and some iframe scenarios)
     window.addEventListener('resize', handleResize);
-    return () => window.removeEventListener('resize', handleResize);
-  }, []);
+
+    // Use ResizeObserver on document body to detect container size changes
+    // This is crucial for iframes where the container can resize without triggering window.resize
+    let resizeObserver: ResizeObserver | null = null;
+    if (typeof ResizeObserver !== 'undefined') {
+      resizeObserver = new ResizeObserver(handleResize);
+      resizeObserver.observe(document.documentElement);
+    }
+
+    // Initial size check in case the iframe loaded with a different size
+    handleResize();
+
+    return () => {
+      window.removeEventListener('resize', handleResize);
+      resizeObserver?.disconnect();
+    };
+  }, [getViewportSize]);
 
   return viewport;
 }

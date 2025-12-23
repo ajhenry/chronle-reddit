@@ -1,6 +1,5 @@
 import { useState, useEffect } from 'react';
 import { Routes, Route, useNavigate } from 'react-router-dom';
-import { DevPage } from './pages/dev';
 import { LetteredPage } from './pages/lettered';
 import { TermsPage } from './pages/terms';
 import { PrivacyPage } from './pages/privacy';
@@ -110,7 +109,6 @@ export const App = () => {
         />
         <Route path="/terms" element={<TermsPage />} />
         <Route path="/privacy" element={<PrivacyPage />} />
-        <Route path="/dev" element={<DevPage onBack={handleBackFromDev} />} />
         <Route path="/admin" element={<AdminPage />} />
         <Route
           path="*"
@@ -118,6 +116,7 @@ export const App = () => {
             <LetteredPage
               onBack={handleBackToMenu}
               isAdmin={showAdminUI && (userInfo?.admin ?? false)}
+              onToggleAdmin={() => setShowAdminUI(false)}
             />
           }
         />

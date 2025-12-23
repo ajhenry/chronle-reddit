@@ -122,6 +122,15 @@ export const RedisKeys = {
   letteredGameLeaderboard: (gameId: string) => `lettered:leaderboard:${gameId}`,
   letteredGameLeaderboardMeta: (gameId: string) => `lettered:leaderboard:${gameId}:meta`,
   userStats: (userId: string) => `user_stats:${userId}`,
+  // Separate key for current streak with TTL - expires if user doesn't play
+  userCurrentStreak: (userId: string) => `user_streak:current:${userId}`,
   leaderboard: (type: 'overall' | 'lettered', period: TimePeriod, date?: Date) =>
     formatLeaderboardKey(type, period, date),
+  // Analytics keys
+  analytics: {
+    uniqueUsers: () => 'analytics:unique_users',
+    screenSizes: () => 'analytics:screen_sizes',
+    gamesAttempted: () => 'analytics:games_attempted',
+    gamesCompleted: () => 'analytics:games_completed',
+  },
 };

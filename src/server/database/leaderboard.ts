@@ -33,6 +33,7 @@ export interface UserStats {
   bestDailyStreak: number;
   currentDailyLetteredStreak: number;
   bestDailyLetteredStreak: number;
+  lastGameCompletedDate: string | null;
   totalPoints: number;
   totalGamesPlayed: number;
   totalLetteredGamesPlayed: number;
@@ -48,6 +49,7 @@ interface UserStatsStorage {
   best_daily_streak: number;
   current_daily_lettered_streak: number;
   best_daily_lettered_streak: number;
+  last_game_completed_date: string | null;
   total_points: number;
   total_games_played: number;
   total_lettered_games_played: number;
@@ -77,6 +79,7 @@ const convertUserStats = (stats: UserStatsStorage): UserStats => ({
   bestDailyStreak: stats.best_daily_streak,
   currentDailyLetteredStreak: stats.current_daily_lettered_streak,
   bestDailyLetteredStreak: stats.best_daily_lettered_streak,
+  lastGameCompletedDate: stats.last_game_completed_date,
   totalPoints: stats.total_points,
   totalGamesPlayed: stats.total_games_played,
   totalLetteredGamesPlayed: stats.total_lettered_games_played,
@@ -92,6 +95,7 @@ const convertUserStatsToStorage = (stats: UserStats): UserStatsStorage => ({
   best_daily_streak: stats.bestDailyStreak,
   current_daily_lettered_streak: stats.currentDailyLetteredStreak,
   best_daily_lettered_streak: stats.bestDailyLetteredStreak,
+  last_game_completed_date: stats.lastGameCompletedDate,
   total_points: stats.totalPoints,
   total_games_played: stats.totalGamesPlayed,
   total_lettered_games_played: stats.totalLetteredGamesPlayed,
@@ -356,14 +360,32 @@ export async function addScoreToLeaderboards(
 export async function getUserStats(userId: string): Promise<UserStats | null> {
   try {
     const redis = await getRedisClient();
-    const statsData = await redis.get(RedisKeys.userStats(userId));
 
+    // Get the main stats
+    const statsData = await redis.get(RedisKeys.userStats(userId));
     if (!statsData) {
       return null;
     }
 
     const stats = deserialize<UserStatsStorage>(statsData);
-    return stats ? convertUserStats(stats) : null;
+    if (!stats) {
+      return null;
+    }
+
+    // Get the current streak from the TTL-based key
+    // If this key has expired, the streak is 0 (user hasn't played recently)
+    const streakKey = RedisKeys.userCurrentStreak(userId);
+    const currentStreakValue = await redis.get(streakKey);
+    const currentStreak = currentStreakValue ? parseInt(currentStreakValue, 10) || 0 : 0;
+
+    // Convert stats and override currentDailyStreak with the TTL-based value
+    const convertedStats = convertUserStats(stats);
+    return {
+      ...convertedStats,
+      currentDailyStreak: currentStreak,
+      // Also reset lettered streak if main streak expired
+      currentDailyLetteredStreak: currentStreak > 0 ? convertedStats.currentDailyLetteredStreak : 0,
+    };
   } catch (error) {
     console.error('Failed to fetch user statistics:', error);
     throw new Error('Failed to fetch user statistics');
@@ -378,6 +400,7 @@ export async function updateUserStats(userId: string, stats: Partial<UserStats>)
       bestDailyStreak: 0,
       currentDailyLetteredStreak: 0,
       bestDailyLetteredStreak: 0,
+      lastGameCompletedDate: null,
       totalPoints: 0,
       totalGamesPlayed: 0,
       totalLetteredGamesPlayed: 0,

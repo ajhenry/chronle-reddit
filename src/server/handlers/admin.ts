@@ -7,6 +7,7 @@ import { findLetteredSessionById, getLatestLetteredSubmission } from '../databas
 import { generateMockGame } from '../lib/lettered-game-generator';
 import { getNextLetteredPhrase } from '../lib/phrase-tracker';
 import type { LetteredGameData } from '../../shared/types/api';
+import { getAnalytics } from '../database/analytics';
 
 const router = Router();
 
@@ -1008,6 +1009,46 @@ router.post('/api/admin/lettered/regenerate', async (_req, res): Promise<void> =
     res.status(500).json({
       status: 'error',
       message: error instanceof Error ? error.message : 'Internal server error',
+    });
+  }
+});
+
+// Admin endpoint to get analytics data
+router.get('/api/admin/analytics', async (_req, res): Promise<void> => {
+  try {
+    // First check if user is admin
+    const redditUsername = await reddit.getCurrentUsername();
+
+    if (!redditUsername || redditUsername === 'anonymous') {
+      res.status(404).json({
+        status: 'error',
+        message: 'Not found',
+      });
+      return;
+    }
+
+    const user = await getUserByRedditHandle(redditUsername);
+
+    if (!user || !user.admin) {
+      console.log('User is not admin', { user });
+      res.status(404).json({
+        status: 'error',
+        message: 'Not found',
+      });
+      return;
+    }
+
+    const analytics = await getAnalytics();
+
+    res.json({
+      status: 'success',
+      data: analytics,
+    });
+  } catch (error) {
+    console.error('Error fetching analytics:', error);
+    res.status(500).json({
+      status: 'error',
+      message: 'Internal server error',
     });
   }
 });

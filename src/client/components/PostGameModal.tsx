@@ -20,6 +20,10 @@ export interface PostGameModalProps {
   // Theme/prompt
   theme: string;
 
+  // Streak data
+  currentStreak?: number;
+  bestStreak?: number;
+
   // Leaderboard data
   leaderboard?: Array<{
     username: string;
@@ -60,6 +64,8 @@ export const PostGameModal: React.FC<PostGameModalProps> = ({
   time,
   moves,
   theme,
+  currentStreak,
+  bestStreak,
   leaderboard = [],
   playerRank,
   totalPlayers,
@@ -164,13 +170,13 @@ export const PostGameModal: React.FC<PostGameModalProps> = ({
                           : 'bg-muted text-foreground'
                       }`}
                     >
-                      <div className="flex gap-2 items-center">
+                      <div className="flex flex-1 gap-2 items-center min-w-0">
                         <span
-                          className={`font-black ${index === (playerRank ? playerRank - 1 : -1) ? 'text-black' : 'text-[#F7C846]'}`}
+                          className={`font-black flex-shrink-0 ${index === (playerRank ? playerRank - 1 : -1) ? 'text-black' : 'text-[#F7C846]'}`}
                         >
                           #{index + 1}
                         </span>
-                        <span className="font-bold">{entry.username}</span>
+                        <span className="font-bold truncate">{entry.username}</span>
                       </div>
                       <div className="flex gap-2 items-center">
                         <span className="font-black">{formatTime(entry.timeElapsed)}</span>
@@ -195,6 +201,22 @@ export const PostGameModal: React.FC<PostGameModalProps> = ({
               </div>
             )}
           </div>
+
+          {/* Daily Streak */}
+          {(currentStreak !== undefined || loading) && (
+            <div className="p-4 text-center bg-[#F7C846] rounded-lg">
+              <div className="mb-1 text-xs font-bold tracking-wider text-black/70">
+                CURRENT STREAK
+              </div>
+              <div className="text-xl font-black tracking-tight text-black">
+                {loading ? (
+                  <Skeleton className="mx-auto w-64 h-7 bg-black/20" />
+                ) : (
+                  `${currentStreak} day${currentStreak === 1 ? '' : 's'} ${bestStreak !== undefined && bestStreak > (currentStreak ?? 0) ? ` (Best: ${bestStreak} day${bestStreak === 1 ? '' : 's'})` : ''}`
+                )}
+              </div>
+            </div>
+          )}
 
           {/* Additional content (game-specific sections) */}
           {children}

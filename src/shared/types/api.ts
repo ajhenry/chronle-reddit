@@ -66,6 +66,7 @@ export type UserStats = {
   bestDailyStreak: number;
   currentDailyLetteredStreak: number;
   bestDailyLetteredStreak: number;
+  lastGameCompletedDate: string | null;
   totalPoints: number;
   totalGamesPlayed: number;
   totalLetteredGamesPlayed: number;

@@ -243,6 +243,37 @@ body {
   animation: shake 0.5s ease-in-out;
 }
 
+/* Breathing opacity animation for invalid piece placement */
+@keyframes invalid-breathe {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.5;
+  }
+}
+
+.animate-invalid-breathe {
+  animation: invalid-breathe 0.6s ease-in-out infinite;
+}
+
+/* Red breathing animation for pieces that will be overlapped/removed */
+@keyframes pulse-red {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.5;
+  }
+}
+
+.animate-pulse-red {
+  background-color: rgb(239, 68, 68) !important;
+  animation: pulse-red 0.8s ease-in-out infinite;
+}
+
 .number-container {
   position: relative;
   overflow: hidden;
@@ -394,4 +425,41 @@ body.no-scroll {
 /* Specific touch handling for grid elements */
 [data-grid] {
   overscroll-behavior: contain;
+}
+
+/* Custom scrollbar styling for piece tray */
+.scrollbar-themed {
+  scrollbar-width: thin;
+  scrollbar-color: rgb(156, 163, 175) transparent;
+}
+
+.scrollbar-themed::-webkit-scrollbar {
+  height: 6px;
+  width: 6px;
+}
+
+.scrollbar-themed::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.scrollbar-themed::-webkit-scrollbar-thumb {
+  background-color: rgb(156, 163, 175);
+  border-radius: 3px;
+}
+
+.scrollbar-themed::-webkit-scrollbar-thumb:hover {
+  background-color: rgb(107, 114, 128);
+}
+
+/* Dark mode scrollbar - darker/more subtle */
+.dark .scrollbar-themed {
+  scrollbar-color: rgb(75, 85, 99) transparent;
+}
+
+.dark .scrollbar-themed::-webkit-scrollbar-thumb {
+  background-color: rgb(75, 85, 99);
+}
+
+.dark .scrollbar-themed::-webkit-scrollbar-thumb:hover {
+  background-color: rgb(107, 114, 128);
 }

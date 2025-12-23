@@ -35,13 +35,9 @@ export class LetteredGameStateManager {
     gameStartTime?: number,
     moves?: number
   ): GameState {
-    // Initialize placed pieces with initial tray positions for all pieces
+    // Start with no placed pieces - pieces are added when dragged from the tray modal
+    // Session restoration will add pieces back as needed
     const placedPieces = new Map<string, GridPosition>();
-    if (gameData?.initialPiecePositions) {
-      Object.entries(gameData.initialPiecePositions).forEach(([pieceId, position]) => {
-        placedPieces.set(pieceId, position);
-      });
-    }
 
     const startTime = gameStartTime ?? Date.now();
 
@@ -204,6 +200,7 @@ export class LetteredGameStateManager {
     }
 
     this.state.placedPieces.delete(pieceId);
+    this.state.lastValidPositions.delete(pieceId);
     this.updateBoardLayout();
 
     this.notifyUpdates({
@@ -214,8 +211,39 @@ export class LetteredGameStateManager {
     return true;
   }
 
+  // Remove multiple pieces from the board (e.g., when overlapping pieces are displaced)
+  removePieces(pieceIds: string[]): void {
+    if (this.state.gameComplete || pieceIds.length === 0) {
+      return;
+    }
+
+    console.log(`[GameStateManager.removePieces] Removing pieces: [${pieceIds.join(', ')}]`);
+
+    let anyRemoved = false;
+    for (const pieceId of pieceIds) {
+      if (this.state.placedPieces.has(pieceId)) {
+        this.state.placedPieces.delete(pieceId);
+        this.state.lastValidPositions.delete(pieceId);
+        anyRemoved = true;
+      }
+    }
+
+    if (anyRemoved) {
+      this.updateBoardLayout();
+      this.notifyUpdates({
+        placedPieces: new Map(this.state.placedPieces),
+        boardLayout: this.state.boardLayout,
+      });
+    }
+  }
+
   // Update game state from a 2D layout array (from Grid component)
   async updateFromLayout(layout: (string | null)[][]): Promise<LayoutUpdateResult> {
+    console.log(`[GameStateManager.updateFromLayout] START`);
+    console.log(
+      `[GameStateManager.updateFromLayout] Current placedPieces: [${Array.from(this.state.placedPieces.keys()).join(', ')}]`
+    );
+
     const noChangeResult: LayoutUpdateResult = {
       hasChanges: false,
       placedPieces: this.getPlacedPiecesAsRecord(),
@@ -224,55 +252,71 @@ export class LetteredGameStateManager {
 
     // Prevent updates when game is complete or no game data
     if (this.state.gameComplete || !this.state.gameData) {
+      console.log(
+        `[GameStateManager.updateFromLayout] EARLY EXIT - gameComplete=${this.state.gameComplete}, hasGameData=${!!this.state.gameData}`
+      );
       return noChangeResult;
     }
 
     // Parse layout to extract piece anchor positions
+    console.log(`[GameStateManager.updateFromLayout] Parsing layout...`);
     const newPlacedPieces = this.parseLayoutToPositions(layout);
+    console.log(
+      `[GameStateManager.updateFromLayout] Parsed newPlacedPieces: [${Array.from(
+        newPlacedPieces.entries()
+      )
+        .map(([id, pos]) => `${id}@(${pos.row},${pos.col})`)
+        .join(', ')}]`
+    );
 
     // Compare with current state to detect changes
+    // NOTE: We only check for MOVED or ADDED pieces, not REMOVED pieces.
+    // Removed pieces are handled separately via removePieces() method.
+    // Pieces can temporarily "disappear" from the layout during drag when overlapping,
+    // and we don't want to treat that as a change.
     const currentPlacedPieces = this.state.placedPieces;
     let hasAnyPieceMoved = false;
+    let changeReason = '';
 
-    // Check for moved pieces
+    // Check for moved pieces (pieces that exist in both old and new, but at different positions)
     for (const [pieceId, newPosition] of newPlacedPieces) {
       const currentPosition = currentPlacedPieces.get(pieceId);
-      if (
-        !currentPosition ||
-        currentPosition.row !== newPosition.row ||
-        currentPosition.col !== newPosition.col
-      ) {
+      if (currentPosition) {
+        // Piece exists in both - check if it moved
+        if (currentPosition.row !== newPosition.row || currentPosition.col !== newPosition.col) {
+          hasAnyPieceMoved = true;
+          changeReason = `Piece ${pieceId} moved: (${currentPosition.row},${currentPosition.col}) -> (${newPosition.row},${newPosition.col})`;
+          console.log(`[GameStateManager.updateFromLayout] ${changeReason}`);
+          break;
+        }
+      } else {
+        // Piece is new (added)
         hasAnyPieceMoved = true;
+        changeReason = `Piece ${pieceId} was added at (${newPosition.row},${newPosition.col})`;
+        console.log(`[GameStateManager.updateFromLayout] ${changeReason}`);
         break;
       }
     }
 
-    // Check for removed pieces
-    if (!hasAnyPieceMoved) {
-      for (const [pieceId] of currentPlacedPieces) {
-        if (!newPlacedPieces.has(pieceId)) {
-          hasAnyPieceMoved = true;
-          break;
-        }
-      }
-    }
-
-    // Check for added pieces
-    if (!hasAnyPieceMoved) {
-      for (const [pieceId] of newPlacedPieces) {
-        if (!currentPlacedPieces.has(pieceId)) {
-          hasAnyPieceMoved = true;
-          break;
-        }
-      }
-    }
+    // NOTE: We intentionally do NOT check for removed pieces here.
+    // Pieces missing from layout could be temporarily overlapped during drag.
+    // Actual piece removal is handled via removePieces() called from onPiecesRemoved.
 
     // If no changes detected, return early
     if (!hasAnyPieceMoved) {
+      console.log(`[GameStateManager.updateFromLayout] No changes detected, returning early`);
       return noChangeResult;
     }
 
-    // Batch update all piece positions
+    console.log(`[GameStateManager.updateFromLayout] Changes detected: ${changeReason}`);
+
+    // NOTE: We do NOT automatically remove pieces that are missing from the layout.
+    // This is because pieces can temporarily overlap during drag mode, causing them
+    // to "disappear" from the tileGrid layout (which can only store one piece per cell).
+    // Pieces are only removed when explicitly told via the removePieces() method,
+    // which is called when placement is confirmed and overlapping pieces are removed.
+
+    // Add/update piece positions (only for pieces that ARE in the layout)
     for (const [pieceId, newPosition] of newPlacedPieces) {
       const currentPosition = currentPlacedPieces.get(pieceId);
       if (
@@ -518,7 +562,19 @@ export class LetteredGameStateManager {
     }
   }
 
+  // Generate a unique signature for a piece based on its letters and shape
+  // Pieces with the same signature are interchangeable
+  private getPieceSignature(piece: LetterPiece): string {
+    const letters = piece.letters.join('');
+    const shapeStr = piece.shape
+      .map((pos) => `${pos.row},${pos.col}`)
+      .sort()
+      .join(';');
+    return `${letters}:${shapeStr}`;
+  }
+
   // Validate by comparing placed pieces with solution positions
+  // Handles identical pieces that can be validly swapped
   private async validateBoardAgainstPhrase(): Promise<boolean> {
     if (!this.state.gameData || !this.state.gameData.solution) {
       return false;
@@ -541,18 +597,48 @@ export class LetteredGameStateManager {
       return false;
     }
 
-    // Check if each piece is in the correct position
-    for (const [pieceId, placedPosition] of mainBoardPieces) {
-      const solutionPosition = solution[pieceId];
-      if (!solutionPosition) {
+    // Group pieces by their signature (identical pieces can be swapped)
+    const piecesBySignature = new Map<string, LetterPiece[]>();
+    for (const piece of this.state.gameData.pieces) {
+      const signature = this.getPieceSignature(piece);
+      const group = piecesBySignature.get(signature) || [];
+      group.push(piece);
+      piecesBySignature.set(signature, group);
+    }
+
+    // For each group of identical pieces, check if placed positions match solution positions
+    for (const [, groupPieces] of piecesBySignature) {
+      // Get the solution positions for all pieces in this group
+      const solutionPositions = groupPieces
+        .map((piece) => {
+          const pos = solution[piece.id];
+          return pos ? `${pos.row},${pos.col}` : null;
+        })
+        .filter((pos): pos is string => pos !== null)
+        .sort();
+
+      // Get the placed positions for all pieces in this group
+      const placedPositions = groupPieces
+        .map((piece) => {
+          const pos = this.state.placedPieces.get(piece.id);
+          // Only count positions within the main grid
+          if (pos && pos.row < mainGridHeight && pos.col < mainGridWidth) {
+            return `${pos.row},${pos.col}`;
+          }
+          return null;
+        })
+        .filter((pos): pos is string => pos !== null)
+        .sort();
+
+      // Check if the sets of positions match (order doesn't matter for identical pieces)
+      if (solutionPositions.length !== placedPositions.length) {
         return false;
       }
 
-      if (
-        placedPosition.row !== solutionPosition.row ||
-        placedPosition.col !== solutionPosition.col
-      ) {
-        return false;
+      for (let i = 0; i < solutionPositions.length; i++) {
+        if (solutionPositions[i] !== placedPositions[i]) {
+          return false;
+        }
       }
     }
 

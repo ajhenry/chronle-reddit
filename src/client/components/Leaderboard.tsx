@@ -217,10 +217,10 @@ export const Leaderboard = ({ seasonId, currentUserId, onClose }: LeaderboardPro
                       {getRankIcon(entry.rank)}
                     </div>
                     <div>
-                      <div className="flex items-center gap-2">
-                        <span className="font-semibold">{entry.redditHandle}</span>
+                      <div className="flex items-center gap-2 min-w-0">
+                        <span className="font-semibold truncate max-w-[120px]">{entry.redditHandle}</span>
                         {entry.rank <= 3 && (
-                          <Badge variant={getRankBadgeVariant(entry.rank)}>
+                          <Badge variant={getRankBadgeVariant(entry.rank)} className="flex-shrink-0">
                             {entry.rank === 1
                               ? 'Champion'
                               : entry.rank === 2
@@ -228,7 +228,7 @@ export const Leaderboard = ({ seasonId, currentUserId, onClose }: LeaderboardPro
                                 : 'Third Place'}
                           </Badge>
                         )}
-                        {entry.userId === currentUserId && <Badge variant="outline">You</Badge>}
+                        {entry.userId === currentUserId && <Badge variant="outline" className="flex-shrink-0">You</Badge>}
                       </div>
                       <div className="text-sm text-muted-foreground">
                         {entry.gamesPlayed} games • {(entry.winRate * 100).toFixed(1)}% win rate

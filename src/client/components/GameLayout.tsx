@@ -9,8 +9,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from './ui/dropdown-menu';
-import { Menu, Plus, Share2, HelpCircle, Hand, MousePointer } from 'lucide-react';
-import type { DragMode } from '../hooks/useDragMode';
+import { Menu, Plus, Share2, HelpCircle, RotateCcw, Trophy } from 'lucide-react';
 
 interface GameLayoutProps {
   gameTitle: string;
@@ -18,15 +17,16 @@ interface GameLayoutProps {
   moves?: number;
   children: ReactNode;
   onBack: () => void;
+  onReset?: () => void;
   onLeaderboard?: () => void;
   onHelp?: () => void;
   onCreateGame?: () => void;
+  onHeaderInteraction?: () => void; // Called when any header button is clicked (e.g., to deactivate drag mode)
   postId?: string | null;
   subredditName?: string | null;
   logoSrc?: string;
   className?: string;
-  dragMode?: DragMode;
-  onDragModeChange?: (mode: DragMode) => void;
+  gameComplete?: boolean;
 }
 
 // Format milliseconds to MM:SS or HH:MM:SS
@@ -80,15 +80,16 @@ export const GameLayout = ({
   moves,
   children,
   onBack,
+  onReset,
   onLeaderboard,
   onHelp,
   onCreateGame,
+  onHeaderInteraction,
   postId,
   subredditName,
   logoSrc = '/lettered-logo.svg',
   className,
-  dragMode = 'tap-to-drag',
-  onDragModeChange,
+  gameComplete = false,
 }: GameLayoutProps) => {
   const [showHelpModal, setShowHelpModal] = useState(false);
 
@@ -96,10 +97,20 @@ export const GameLayout = ({
     <div className={cn('p-4 min-h-screen bg-background', className)}>
       {/* Top Bar */}
       <div className="mx-auto mb-6 max-w-2xl">
-        <div className="flex justify-between items-center">
+        <div
+          className="flex justify-between items-center"
+          onPointerDown={() => onHeaderInteraction?.()}
+        >
           {/* Logo */}
           <div className="flex gap-3 items-center">
-            <Button variant="ghost" size="icon" onClick={onBack}>
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={() => {
+                onHeaderInteraction?.();
+                onBack();
+              }}
+            >
               <img src={logoSrc} alt="Game Logo" className="object-contain w-12 h-12" />
             </Button>
             <h1 className="hidden text-2xl font-semibold text-foreground md:block">{gameTitle}</h1>
@@ -128,93 +139,50 @@ export const GameLayout = ({
 
           {/* Action Buttons */}
           <div className="flex gap-2 items-center">
-            {/* Leaderboard Button */}
-            <Button variant="outline" size="icon" onClick={onLeaderboard}>
-              <svg
-                width="20"
-                height="20"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="2"
-              >
-                <path d="M3 3v18h18" />
-                <path d="M18 17V9" />
-                <path d="M13 17V5" />
-                <path d="M8 17v-3" />
-              </svg>
-            </Button>
-
-            {/* Desktop: Help Button */}
-            <Button
-              variant="outline"
-              size="icon"
-              onClick={() => {
-                if (onHelp) {
-                  onHelp();
-                } else {
-                  setShowHelpModal(true);
-                }
-              }}
-              className="hidden md:flex"
-              title="Help"
-            >
-              <HelpCircle className="w-5 h-5" />
-            </Button>
-
-            {/* Desktop: Create Game Button (gradient) */}
-            <Button
-              size="icon"
-              onClick={onCreateGame}
-              className="hidden text-white bg-gradient-to-r from-purple-500 to-pink-500 border-0 md:flex hover:from-purple-600 hover:to-pink-600"
-              title="Create Game"
-            >
-              <Plus className="w-5 h-5" />
-            </Button>
-
-            {/* Desktop: Share Button (gold) */}
-            <Button
-              size="icon"
-              onClick={() => void handleShare(postId, subredditName)}
-              className="hidden bg-[#F7C846] text-black border-[#F7C846] md:flex hover:bg-[#E5B83D] hover:border-[#E5B83D]"
-              title="Share"
-            >
-              <Share2 className="w-5 h-5" />
-            </Button>
-
-            {/* Desktop: Drag Mode Toggle */}
-            {onDragModeChange && (
-              <Button
-                variant="outline"
-                size="icon"
-                onClick={() =>
-                  onDragModeChange(dragMode === 'tap-to-drag' ? 'hold-to-drag' : 'tap-to-drag')
-                }
-                className="hidden md:flex"
-                title={
-                  dragMode === 'tap-to-drag'
-                    ? 'Tap to Drag (click to switch)'
-                    : 'Hold to Drag (click to switch)'
-                }
-              >
-                {dragMode === 'tap-to-drag' ? (
-                  <MousePointer className="w-5 h-5" />
-                ) : (
-                  <Hand className="w-5 h-5" />
+            {/* Reset Button (during game) or Leaderboard Button (after game complete) */}
+            {gameComplete
+              ? onLeaderboard && (
+                  <Button
+                    variant="outline"
+                    size="icon"
+                    onClick={() => {
+                      onHeaderInteraction?.();
+                      onLeaderboard?.();
+                    }}
+                    title="Leaderboard"
+                  >
+                    <Trophy className="w-5 h-5" />
+                  </Button>
+                )
+              : onReset && (
+                  <Button
+                    variant="outline"
+                    size="icon"
+                    onClick={() => {
+                      onHeaderInteraction?.();
+                      onReset?.();
+                    }}
+                    title="Reset Pieces"
+                  >
+                    <RotateCcw className="w-5 h-5" />
+                  </Button>
                 )}
-              </Button>
-            )}
 
-            {/* Mobile: Hamburger Menu */}
-            <DropdownMenu>
+            {/* Hamburger Menu */}
+            <DropdownMenu
+              onOpenChange={(open) => {
+                if (open) onHeaderInteraction?.();
+              }}
+            >
               <DropdownMenuTrigger asChild>
-                <Button variant="outline" size="icon" className="md:hidden">
+                <Button variant="outline" size="icon">
                   <Menu className="w-5 h-5" />
                 </Button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end" className="w-52">
                 <DropdownMenuItem
                   onClick={() => {
+                    onHeaderInteraction?.();
                     if (onHelp) {
                       onHelp();
                     } else {
@@ -227,34 +195,27 @@ export const GameLayout = ({
                   Help
                 </DropdownMenuItem>
                 <DropdownMenuSeparator />
-                {/* Drag Mode Toggle */}
-                {onDragModeChange && (
+                {/* Leaderboard */}
+                {onLeaderboard && (
                   <>
                     <DropdownMenuItem
-                      onClick={() =>
-                        onDragModeChange(
-                          dragMode === 'tap-to-drag' ? 'hold-to-drag' : 'tap-to-drag'
-                        )
-                      }
+                      onClick={() => {
+                        onHeaderInteraction?.();
+                        onLeaderboard?.();
+                      }}
                       className="cursor-pointer py-3 text-base hover:bg-[#F7C846] hover:text-black focus:bg-[#F7C846] focus:text-black"
                     >
-                      {dragMode === 'tap-to-drag' ? (
-                        <>
-                          <MousePointer className="mr-3 w-5 h-5" />
-                          Tap to Drag
-                        </>
-                      ) : (
-                        <>
-                          <Hand className="mr-3 w-5 h-5" />
-                          Hold to Drag
-                        </>
-                      )}
+                      <Trophy className="mr-3 w-5 h-5" />
+                      Leaderboard
                     </DropdownMenuItem>
                     <DropdownMenuSeparator />
                   </>
                 )}
                 <DropdownMenuItem
-                  onClick={() => void handleShare(postId, subredditName)}
+                  onClick={() => {
+                    onHeaderInteraction?.();
+                    void handleShare(postId, subredditName);
+                  }}
                   className="cursor-pointer py-3 text-base hover:bg-[#F7C846] hover:text-black focus:bg-[#F7C846] focus:text-black"
                 >
                   <Share2 className="mr-3 w-5 h-5" />
@@ -262,8 +223,11 @@ export const GameLayout = ({
                 </DropdownMenuItem>
                 <DropdownMenuSeparator />
                 <DropdownMenuItem
-                  onClick={onCreateGame}
-                  className="cursor-pointer py-3 text-base text-white bg-gradient-to-r from-purple-500 to-pink-500 focus:from-purple-600 focus:to-pink-600 focus:text-white"
+                  onClick={() => {
+                    onHeaderInteraction?.();
+                    onCreateGame?.();
+                  }}
+                  className="py-3 text-base text-white bg-gradient-to-r from-purple-500 to-pink-500 cursor-pointer focus:from-purple-600 focus:to-pink-600 focus:text-white"
                 >
                   <Plus className="mr-3 w-5 h-5" />
                   Create Game
@@ -275,7 +239,7 @@ export const GameLayout = ({
       </div>
 
       {/* Game Content */}
-      <div className="mx-auto max-w-2xl">{children}</div>
+      <div className="mx-auto max-w-2xl xl:max-w-6xl">{children}</div>
 
       {/* Help Modal */}
       {showHelpModal && (
