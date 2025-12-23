@@ -262,8 +262,33 @@ export const LetteredPage = ({
   // Track which piece is being dragged from the tray (hide immediately when drag starts)
   const [pieceDraggingFromTray, setPieceDraggingFromTray] = useState<string | null>(null);
 
-  // Track piece order for tray (allows reordering when pieces return to tray)
+  // Track which tray each piece belongs to (fully explicit, no auto-balancing)
+  // Initialized once when game loads, then only changes when user drags pieces between trays
+  const [trayAssignments, setTrayAssignments] = useState<Map<string, 'left' | 'right' | 'bottom'>>(
+    new Map()
+  );
+
+  // Track piece order within each tray (allows reordering when pieces are dropped)
   const [pieceOrder, setPieceOrder] = useState<string[]>([]);
+
+  // Initialize tray assignments when game data loads (only once)
+  useEffect(() => {
+    if (!gameData || trayAssignments.size > 0) return;
+
+    // Distribute pieces evenly across trays on initial load
+    const allPieceIds = gameData.pieces.map((p) => p.id);
+    const thirdPoint = Math.ceil(allPieceIds.length / 3);
+    const twoThirdsPoint = Math.ceil((allPieceIds.length * 2) / 3);
+
+    const initialAssignments = new Map<string, 'left' | 'right' | 'bottom'>();
+    allPieceIds.slice(0, thirdPoint).forEach((id) => initialAssignments.set(id, 'left'));
+    allPieceIds
+      .slice(thirdPoint, twoThirdsPoint)
+      .forEach((id) => initialAssignments.set(id, 'right'));
+    allPieceIds.slice(twoThirdsPoint).forEach((id) => initialAssignments.set(id, 'bottom'));
+
+    setTrayAssignments(initialAssignments);
+  }, [gameData, trayAssignments.size]);
 
   // Compute unplaced pieces (pieces not yet placed on the grid)
   // Order unplaced pieces according to pieceOrder state
@@ -288,32 +313,13 @@ export const LetteredPage = ({
   // Check if we're on a wide viewport for side trays layout (md and up)
   const useSideTraysLayout = breakpoint === 'md' || breakpoint === 'lg' || breakpoint === 'xl';
 
-  // Assign pieces to trays based on initial order (stable assignment)
-  // This ensures pieces don't shift between trays when other pieces are placed
-  const trayAssignments = useMemo(() => {
-    if (!gameData)
-      return { left: new Set<string>(), right: new Set<string>(), bottom: new Set<string>() };
-
-    // Use pieceOrder if available, otherwise use original piece order
-    const orderedPieceIds = pieceOrder.length > 0 ? pieceOrder : gameData.pieces.map((p) => p.id);
-
-    // Split ALL pieces into 3 groups (not just unplaced)
-    const thirdPoint = Math.ceil(orderedPieceIds.length / 3);
-    const twoThirdsPoint = Math.ceil((orderedPieceIds.length * 2) / 3);
-
-    return {
-      left: new Set(orderedPieceIds.slice(0, thirdPoint)),
-      right: new Set(orderedPieceIds.slice(thirdPoint, twoThirdsPoint)),
-      bottom: new Set(orderedPieceIds.slice(twoThirdsPoint)),
-    };
-  }, [gameData, pieceOrder]);
-
-  // Filter unplaced pieces by their stable tray assignment
+  // Filter unplaced pieces by their tray assignment
+  // Pieces stay in their assigned tray - no rebalancing when other pieces are added/removed
   const { leftTrayPieces, rightTrayPieces, bottomTrayPieces } = useMemo(() => {
     return {
-      leftTrayPieces: unplacedPieces.filter((p) => trayAssignments.left.has(p.id)),
-      rightTrayPieces: unplacedPieces.filter((p) => trayAssignments.right.has(p.id)),
-      bottomTrayPieces: unplacedPieces.filter((p) => trayAssignments.bottom.has(p.id)),
+      leftTrayPieces: unplacedPieces.filter((p) => trayAssignments.get(p.id) === 'left'),
+      rightTrayPieces: unplacedPieces.filter((p) => trayAssignments.get(p.id) === 'right'),
+      bottomTrayPieces: unplacedPieces.filter((p) => trayAssignments.get(p.id) === 'bottom'),
     };
   }, [unplacedPieces, trayAssignments]);
 
@@ -1188,18 +1194,33 @@ export const LetteredPage = ({
   const handleDragToTray = useCallback(
     (itemId: string, position: { clientX: number; clientY: number }): boolean => {
       // Check each tray to see if the drop was over it
-      const trays = [bottomTrayRef.current, leftTrayRef.current, rightTrayRef.current];
+      // Track which tray for explicit assignment
+      const trayChecks: Array<{
+        ref: typeof bottomTrayRef.current;
+        name: 'left' | 'right' | 'bottom';
+      }> = [
+        { ref: bottomTrayRef.current, name: 'bottom' },
+        { ref: leftTrayRef.current, name: 'left' },
+        { ref: rightTrayRef.current, name: 'right' },
+      ];
 
-      for (const tray of trays) {
+      for (const { ref: tray, name: trayName } of trayChecks) {
         if (!tray) continue;
         const insertionInfo = tray.getInsertionInfo(position.clientX, position.clientY);
         if (insertionInfo) {
           console.log(
-            `[handleDragToTray] Piece ${itemId} dropped to tray, insert before: ${insertionInfo.insertBeforePieceId ?? 'end'}`
+            `[handleDragToTray] Piece ${itemId} dropped to ${trayName} tray, insert before: ${insertionInfo.insertBeforePieceId ?? 'end'}`
           );
 
           // Clear the drag preview
           tray.clearDragPreview();
+
+          // Update tray assignment when user drops piece to a specific tray
+          setTrayAssignments((current) => {
+            const updated = new Map(current);
+            updated.set(itemId, trayName);
+            return updated;
+          });
 
           // Update piece order using insertBeforePieceId for correct positioning
           setPieceOrder((currentOrder) => {
