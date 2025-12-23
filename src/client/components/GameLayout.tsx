@@ -21,6 +21,7 @@ interface GameLayoutProps {
   onLeaderboard?: () => void;
   onHelp?: () => void;
   onCreateGame?: () => void;
+  onHeaderInteraction?: () => void; // Called when any header button is clicked (e.g., to deactivate drag mode)
   postId?: string | null;
   subredditName?: string | null;
   logoSrc?: string;
@@ -83,6 +84,7 @@ export const GameLayout = ({
   onLeaderboard,
   onHelp,
   onCreateGame,
+  onHeaderInteraction,
   postId,
   subredditName,
   logoSrc = '/lettered-logo.svg',
@@ -95,10 +97,20 @@ export const GameLayout = ({
     <div className={cn('p-4 min-h-screen bg-background', className)}>
       {/* Top Bar */}
       <div className="mx-auto mb-6 max-w-2xl">
-        <div className="flex justify-between items-center">
+        <div
+          className="flex justify-between items-center"
+          onPointerDown={() => onHeaderInteraction?.()}
+        >
           {/* Logo */}
           <div className="flex gap-3 items-center">
-            <Button variant="ghost" size="icon" onClick={onBack}>
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={() => {
+                onHeaderInteraction?.();
+                onBack();
+              }}
+            >
               <img src={logoSrc} alt="Game Logo" className="object-contain w-12 h-12" />
             </Button>
             <h1 className="hidden text-2xl font-semibold text-foreground md:block">{gameTitle}</h1>
@@ -130,18 +142,38 @@ export const GameLayout = ({
             {/* Reset Button (during game) or Leaderboard Button (after game complete) */}
             {gameComplete
               ? onLeaderboard && (
-                  <Button variant="outline" size="icon" onClick={onLeaderboard} title="Leaderboard">
+                  <Button
+                    variant="outline"
+                    size="icon"
+                    onClick={() => {
+                      onHeaderInteraction?.();
+                      onLeaderboard?.();
+                    }}
+                    title="Leaderboard"
+                  >
                     <Trophy className="w-5 h-5" />
                   </Button>
                 )
               : onReset && (
-                  <Button variant="outline" size="icon" onClick={onReset} title="Reset Pieces">
+                  <Button
+                    variant="outline"
+                    size="icon"
+                    onClick={() => {
+                      onHeaderInteraction?.();
+                      onReset?.();
+                    }}
+                    title="Reset Pieces"
+                  >
                     <RotateCcw className="w-5 h-5" />
                   </Button>
                 )}
 
             {/* Hamburger Menu */}
-            <DropdownMenu>
+            <DropdownMenu
+              onOpenChange={(open) => {
+                if (open) onHeaderInteraction?.();
+              }}
+            >
               <DropdownMenuTrigger asChild>
                 <Button variant="outline" size="icon">
                   <Menu className="w-5 h-5" />
@@ -150,6 +182,7 @@ export const GameLayout = ({
               <DropdownMenuContent align="end" className="w-52">
                 <DropdownMenuItem
                   onClick={() => {
+                    onHeaderInteraction?.();
                     if (onHelp) {
                       onHelp();
                     } else {
@@ -166,7 +199,10 @@ export const GameLayout = ({
                 {onLeaderboard && (
                   <>
                     <DropdownMenuItem
-                      onClick={onLeaderboard}
+                      onClick={() => {
+                        onHeaderInteraction?.();
+                        onLeaderboard?.();
+                      }}
                       className="cursor-pointer py-3 text-base hover:bg-[#F7C846] hover:text-black focus:bg-[#F7C846] focus:text-black"
                     >
                       <Trophy className="mr-3 w-5 h-5" />
@@ -176,7 +212,10 @@ export const GameLayout = ({
                   </>
                 )}
                 <DropdownMenuItem
-                  onClick={() => void handleShare(postId, subredditName)}
+                  onClick={() => {
+                    onHeaderInteraction?.();
+                    void handleShare(postId, subredditName);
+                  }}
                   className="cursor-pointer py-3 text-base hover:bg-[#F7C846] hover:text-black focus:bg-[#F7C846] focus:text-black"
                 >
                   <Share2 className="mr-3 w-5 h-5" />
@@ -184,8 +223,11 @@ export const GameLayout = ({
                 </DropdownMenuItem>
                 <DropdownMenuSeparator />
                 <DropdownMenuItem
-                  onClick={onCreateGame}
-                  className="cursor-pointer py-3 text-base text-white bg-gradient-to-r from-purple-500 to-pink-500 focus:from-purple-600 focus:to-pink-600 focus:text-white"
+                  onClick={() => {
+                    onHeaderInteraction?.();
+                    onCreateGame?.();
+                  }}
+                  className="py-3 text-base text-white bg-gradient-to-r from-purple-500 to-pink-500 cursor-pointer focus:from-purple-600 focus:to-pink-600 focus:text-white"
                 >
                   <Plus className="mr-3 w-5 h-5" />
                   Create Game

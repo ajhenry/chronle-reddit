@@ -1387,6 +1387,7 @@ export const LetteredPage = ({
       onLeaderboard={() => setUIState((prev) => ({ ...prev, showGameOverModal: true }))}
       onHelp={() => setShowInstructions(true)}
       onCreateGame={handleCreateGame}
+      onHeaderInteraction={() => gridRef.current?.placeTapDragItem()}
       postId={postId}
       subredditName={subredditName}
       logoSrc="/lettered-logo.svg"

@@ -52,6 +52,8 @@ export interface GridRef {
   cancelCursorPreview: () => void;
   // Deactivate tap-drag mode (hides Place/Remove buttons)
   deactivateTapDrag: () => void;
+  // Place the tap-drag item at its current position (validates and exits drag mode)
+  placeTapDragItem: () => void;
   addItem: (item: Omit<DraggableItem, 'id'>) => string;
   removeItem: (itemId: string) => void;
   getItems: () => DraggableItem[];
@@ -1157,6 +1159,9 @@ const GridContent = forwardRef<
       },
       deactivateTapDrag: () => {
         store.getState().deactivateTapDrag();
+      },
+      placeTapDragItem: () => {
+        store.getState().placeTapDragItem();
       },
       addItem: (itemData: Omit<DraggableItem, 'id'>) => {
         return store.getState().addItem(itemData);

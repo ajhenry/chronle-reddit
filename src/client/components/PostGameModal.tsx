@@ -188,13 +188,13 @@ export const PostGameModal: React.FC<PostGameModalProps> = ({
                           : 'bg-muted text-foreground'
                       }`}
                     >
-                      <div className="flex gap-2 items-center">
+                      <div className="flex gap-2 items-center min-w-0 flex-1">
                         <span
-                          className={`font-black ${index === (playerRank ? playerRank - 1 : -1) ? 'text-black' : 'text-[#F7C846]'}`}
+                          className={`font-black flex-shrink-0 ${index === (playerRank ? playerRank - 1 : -1) ? 'text-black' : 'text-[#F7C846]'}`}
                         >
                           #{index + 1}
                         </span>
-                        <span className="font-bold">{entry.username}</span>
+                        <span className="font-bold truncate">{entry.username}</span>
                       </div>
                       <div className="flex gap-2 items-center">
                         <span className="font-black">{formatTime(entry.timeElapsed)}</span>
