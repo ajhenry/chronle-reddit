@@ -867,7 +867,7 @@ export const PieceTray = forwardRef<PieceTrayRef, PieceTrayProps>(
         >
           <div
             className={cn(
-              'flex gap-4 items-center',
+              'flex items-center',
               'h-full',
               'transition-all duration-300 ease-out'
             )}
@@ -887,7 +887,7 @@ export const PieceTray = forwardRef<PieceTrayRef, PieceTrayProps>(
                   {/* Insertion gap indicator */}
                   {showInsertionGapBefore && (
                     <div
-                      className="flex-shrink-0 transition-all duration-200 ease-out"
+                      className="flex-shrink-0 animate-in fade-in zoom-in-95 duration-200"
                       style={{
                         width: INSERTION_GAP_SIZE,
                         height: '100%',
@@ -899,13 +899,22 @@ export const PieceTray = forwardRef<PieceTrayRef, PieceTrayProps>(
                   )}
                   <div
                     ref={(el) => setPieceRef(piece.id, el)}
-                    className="transition-all duration-200 ease-out"
+                    className={cn(
+                      'transition-all duration-300 ease-out origin-center',
+                      // Entrance animation when piece first appears (not hidden)
+                      !isHidden && 'animate-in fade-in zoom-in-90 slide-in-from-bottom-2 duration-300'
+                    )}
                     // Use CSS to hide instead of filtering from DOM
                     // This keeps touch handlers active during drag
+                    // Use transform: scale and max-width for smooth animations (can't animate to 'auto')
+                    // Use horizontal margin for spacing (animates smoothly when hidden)
                     style={{
                       opacity: isHidden ? 0 : 1,
-                      width: isHidden ? 0 : 'auto',
-                      overflow: isHidden ? 'hidden' : 'visible',
+                      transform: isHidden ? 'scale(0.8)' : 'scale(1)',
+                      maxWidth: isHidden ? 0 : 200,
+                      marginLeft: isHidden ? 0 : 8,
+                      marginRight: isHidden ? 0 : 8,
+                      overflow: 'hidden',
                       pointerEvents: isHidden ? 'none' : 'auto',
                     }}
                   >
@@ -926,7 +935,7 @@ export const PieceTray = forwardRef<PieceTrayRef, PieceTrayProps>(
             {/* Insertion gap at end */}
             {dragPreview && dragPreview.insertionIndex >= pieces.length && (
               <div
-                className="flex-shrink-0 transition-all duration-200 ease-out"
+                className="flex-shrink-0 animate-in fade-in zoom-in-95 duration-200"
                 style={{
                   width: INSERTION_GAP_SIZE,
                   height: '100%',

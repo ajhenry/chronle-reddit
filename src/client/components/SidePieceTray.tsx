@@ -493,24 +493,25 @@ export const SidePieceTray = forwardRef<SidePieceTrayRef, SidePieceTrayProps>(
       }
     }, []);
 
-    // Calculate minimum width based on cell size so tray remains visible when empty
-    const minTrayWidth = cellSize.width * 2 + cellSpacing + 16;
+    // Calculate fixed width based on cell size - use enough space for typical pieces
+    // Width is locked so the phrase area doesn't shift when pieces are added/removed
+    const trayWidth = cellSize.width * 3 + cellSpacing * 2 + 24;
 
     // Always render the tray even when empty - pieces can be dropped back into it
     return (
       <div
         ref={trayContainerRef}
         className={cn(
-          'flex flex-col items-center gap-3 xl:gap-4 py-4 px-2',
+          'flex flex-col items-center py-4 px-2',
           'overflow-y-auto overflow-x-hidden',
           'scrollbar-themed',
-          'transition-all duration-300 ease-out',
           side === 'left' ? 'items-end' : 'items-start',
           // Highlight when dragging over
           dragPreview ? 'bg-accent/10 rounded-lg' : ''
         )}
         style={{
-          minWidth: minTrayWidth,
+          width: trayWidth,
+          flexShrink: 0,
           height: '100%',
         }}
         data-tray-drop-zone="true"
@@ -525,7 +526,7 @@ export const SidePieceTray = forwardRef<SidePieceTrayRef, SidePieceTrayProps>(
               {/* Insertion gap indicator */}
               {showInsertionGapBefore && (
                 <div
-                  className="flex-shrink-0 w-full transition-all duration-200 ease-out"
+                  className="flex-shrink-0 w-full animate-in fade-in zoom-in-95 duration-200"
                   style={{
                     height: INSERTION_GAP_SIZE,
                     background:
@@ -536,13 +537,23 @@ export const SidePieceTray = forwardRef<SidePieceTrayRef, SidePieceTrayProps>(
               )}
               <div
                 ref={(el) => setPieceRef(piece.id, el)}
-                className="transition-all duration-200 ease-out"
+                className={cn(
+                  'transition-all duration-300 ease-out origin-center',
+                  // Entrance animation when piece first appears (not hidden)
+                  // Left tray: slide in from left, Right tray: slide in from right
+                  !isHidden && 'animate-in fade-in zoom-in-90 duration-300',
+                  !isHidden && (side === 'left' ? 'slide-in-from-left-2' : 'slide-in-from-right-2')
+                )}
+                // Use transform: scale and max-height for smooth animations (can't animate to 'auto')
+                // Use vertical margin for spacing (animates smoothly when hidden)
                 style={{
                   opacity: isHidden ? 0 : 1,
-                  height: isHidden ? 0 : 'auto',
-                  overflow: isHidden ? 'hidden' : 'visible',
+                  transform: isHidden ? 'scale(0.8)' : 'scale(1)',
+                  maxHeight: isHidden ? 0 : 200,
+                  marginTop: isHidden ? 0 : 6,
+                  marginBottom: isHidden ? 0 : 6,
+                  overflow: 'hidden',
                   pointerEvents: isHidden ? 'none' : 'auto',
-                  margin: isHidden ? 0 : undefined,
                 }}
               >
                 <SideTrayPiece
@@ -562,7 +573,7 @@ export const SidePieceTray = forwardRef<SidePieceTrayRef, SidePieceTrayProps>(
         {/* Insertion gap at end */}
         {dragPreview && dragPreview.insertionIndex >= pieces.length && (
           <div
-            className="flex-shrink-0 w-full transition-all duration-200 ease-out"
+            className="flex-shrink-0 w-full animate-in fade-in zoom-in-95 duration-200"
             style={{
               height: INSERTION_GAP_SIZE,
               background:

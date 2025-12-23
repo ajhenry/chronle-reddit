@@ -249,7 +249,7 @@ export const LetteredPage = ({
   const responsiveCellSpacing = getResponsiveCellSpacing(breakpoint);
 
   // Drag mode preference
-  const { dragMode, setDragMode } = useDragMode();
+  const { dragMode } = useDragMode();
 
   // Grid ref for external drag
   const gridRef = useRef<GridRef>(null);
@@ -1333,8 +1333,6 @@ export const LetteredPage = ({
       postId={postId}
       subredditName={subredditName}
       logoSrc="/lettered-logo.svg"
-      dragMode={dragMode}
-      onDragModeChange={setDragMode}
       gameComplete={gameComplete}
     >
       {/* Admin Debug Controls */}

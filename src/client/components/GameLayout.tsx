@@ -9,17 +9,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from './ui/dropdown-menu';
-import {
-  Menu,
-  Plus,
-  Share2,
-  HelpCircle,
-  Hand,
-  MousePointer,
-  RotateCcw,
-  Trophy,
-} from 'lucide-react';
-import type { DragMode } from '../hooks/useDragMode';
+import { Menu, Plus, Share2, HelpCircle, RotateCcw, Trophy } from 'lucide-react';
 
 interface GameLayoutProps {
   gameTitle: string;
@@ -35,8 +25,6 @@ interface GameLayoutProps {
   subredditName?: string | null;
   logoSrc?: string;
   className?: string;
-  dragMode?: DragMode;
-  onDragModeChange?: (mode: DragMode) => void;
   gameComplete?: boolean;
 }
 
@@ -99,8 +87,6 @@ export const GameLayout = ({
   subredditName,
   logoSrc = '/lettered-logo.svg',
   className,
-  dragMode = 'tap-to-drag',
-  onDragModeChange,
   gameComplete = false,
 }: GameLayoutProps) => {
   const [showHelpModal, setShowHelpModal] = useState(false);
@@ -154,70 +140,10 @@ export const GameLayout = ({
                   </Button>
                 )}
 
-            {/* Desktop: Help Button */}
-            <Button
-              variant="outline"
-              size="icon"
-              onClick={() => {
-                if (onHelp) {
-                  onHelp();
-                } else {
-                  setShowHelpModal(true);
-                }
-              }}
-              className="hidden md:flex"
-              title="Help"
-            >
-              <HelpCircle className="w-5 h-5" />
-            </Button>
-
-            {/* Desktop: Create Game Button (gradient) */}
-            <Button
-              size="icon"
-              onClick={onCreateGame}
-              className="hidden text-white bg-gradient-to-r from-purple-500 to-pink-500 border-0 md:flex hover:from-purple-600 hover:to-pink-600"
-              title="Create Game"
-            >
-              <Plus className="w-5 h-5" />
-            </Button>
-
-            {/* Desktop: Share Button (gold) */}
-            <Button
-              size="icon"
-              onClick={() => void handleShare(postId, subredditName)}
-              className="hidden bg-[#F7C846] text-black border-[#F7C846] md:flex hover:bg-[#E5B83D] hover:border-[#E5B83D]"
-              title="Share"
-            >
-              <Share2 className="w-5 h-5" />
-            </Button>
-
-            {/* Desktop: Drag Mode Toggle */}
-            {onDragModeChange && (
-              <Button
-                variant="outline"
-                size="icon"
-                onClick={() =>
-                  onDragModeChange(dragMode === 'tap-to-drag' ? 'hold-to-drag' : 'tap-to-drag')
-                }
-                className="hidden md:flex"
-                title={
-                  dragMode === 'tap-to-drag'
-                    ? 'Tap to Drag (click to switch)'
-                    : 'Hold to Drag (click to switch)'
-                }
-              >
-                {dragMode === 'tap-to-drag' ? (
-                  <MousePointer className="w-5 h-5" />
-                ) : (
-                  <Hand className="w-5 h-5" />
-                )}
-              </Button>
-            )}
-
-            {/* Mobile: Hamburger Menu */}
+            {/* Hamburger Menu */}
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
-                <Button variant="outline" size="icon" className="md:hidden">
+                <Button variant="outline" size="icon">
                   <Menu className="w-5 h-5" />
                 </Button>
               </DropdownMenuTrigger>
@@ -245,32 +171,6 @@ export const GameLayout = ({
                     >
                       <Trophy className="mr-3 w-5 h-5" />
                       Leaderboard
-                    </DropdownMenuItem>
-                    <DropdownMenuSeparator />
-                  </>
-                )}
-                {/* Drag Mode Toggle */}
-                {onDragModeChange && (
-                  <>
-                    <DropdownMenuItem
-                      onClick={() =>
-                        onDragModeChange(
-                          dragMode === 'tap-to-drag' ? 'hold-to-drag' : 'tap-to-drag'
-                        )
-                      }
-                      className="cursor-pointer py-3 text-base hover:bg-[#F7C846] hover:text-black focus:bg-[#F7C846] focus:text-black"
-                    >
-                      {dragMode === 'tap-to-drag' ? (
-                        <>
-                          <MousePointer className="mr-3 w-5 h-5" />
-                          Tap to Drag
-                        </>
-                      ) : (
-                        <>
-                          <Hand className="mr-3 w-5 h-5" />
-                          Hold to Drag
-                        </>
-                      )}
                     </DropdownMenuItem>
                     <DropdownMenuSeparator />
                   </>
