@@ -1949,7 +1949,7 @@ const GridContent = forwardRef<
       />
 
       <BottomBanner
-        isVisible={!disabled && !hideBanner && dragMode === 'tap-to-drag' && unplacedPieceCount > 0}
+        isVisible={!disabled && !hideBanner && dragMode === 'tap-to-drag' && (unplacedPieceCount > 0 || !!tapDragActiveItemId || !!cursorPreview)}
         isDragMode={!!tapDragActiveItemId || !!cursorPreview}
         onPlace={handlePlacePiece}
         onRemove={handleRemovePiece}
