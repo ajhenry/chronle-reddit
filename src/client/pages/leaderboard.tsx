@@ -444,8 +444,9 @@ const SeasonLeaderboardTab = ({
       </div>
 
       <p className="max-w-2xl text-sm text-muted-foreground">
-        Compete with players across all Lettered games this season. Rankings are based on total points earned,
-        with higher scores placing you higher on the leaderboard. Keep playing daily to climb the ranks!
+        Compete with players across all Lettered games this season. Rankings are based on total
+        points earned, with higher scores placing you higher on the leaderboard. Keep playing daily
+        to climb the ranks!
       </p>
 
       {entries.length === 0 ? (
@@ -493,7 +494,9 @@ const SeasonLeaderboardTab = ({
                   </TableCell>
                   <TableCell className="py-4 max-w-[200px]">
                     <div className="min-w-0">
-                      <div className="mb-1 font-semibold text-foreground truncate">{entry.redditHandle}</div>
+                      <div className="mb-1 font-semibold truncate text-foreground">
+                        {entry.redditHandle}
+                      </div>
                       <div className="text-sm text-muted-foreground">
                         avg points: {entry.averageScore?.toFixed(1) || 'N/A'}
                       </div>

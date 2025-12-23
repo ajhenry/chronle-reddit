@@ -143,24 +143,6 @@ export const PostGameModal: React.FC<PostGameModalProps> = ({
             </div>
           </div>
 
-          {/* Daily Streak */}
-          {(currentStreak !== undefined || loading) && (
-            <div className="p-4 text-center bg-[#F7C846] rounded-lg">
-              <div className="text-xl font-black tracking-tight text-black">
-                {loading ? (
-                  <Skeleton className="mx-auto w-64 h-7 bg-black/20" />
-                ) : (
-                  `CURRENT DAYS PLAYED IN A ROW ${currentStreak}`
-                )}
-              </div>
-              {!loading && bestStreak !== undefined && bestStreak > (currentStreak ?? 0) && (
-                <div className="mt-1 text-sm text-black/60">
-                  Your longest streak is {bestStreak}
-                </div>
-              )}
-            </div>
-          )}
-
           {/* Theme Display */}
           <div className="p-4 text-center bg-[#F7C846] rounded-lg">
             <div className="mb-1 text-xs font-bold tracking-wider text-black/70">
@@ -188,7 +170,7 @@ export const PostGameModal: React.FC<PostGameModalProps> = ({
                           : 'bg-muted text-foreground'
                       }`}
                     >
-                      <div className="flex gap-2 items-center min-w-0 flex-1">
+                      <div className="flex flex-1 gap-2 items-center min-w-0">
                         <span
                           className={`font-black flex-shrink-0 ${index === (playerRank ? playerRank - 1 : -1) ? 'text-black' : 'text-[#F7C846]'}`}
                         >
@@ -219,6 +201,22 @@ export const PostGameModal: React.FC<PostGameModalProps> = ({
               </div>
             )}
           </div>
+
+          {/* Daily Streak */}
+          {(currentStreak !== undefined || loading) && (
+            <div className="p-4 text-center bg-[#F7C846] rounded-lg">
+              <div className="mb-1 text-xs font-bold tracking-wider text-black/70">
+                CURRENT STREAK
+              </div>
+              <div className="text-xl font-black tracking-tight text-black">
+                {loading ? (
+                  <Skeleton className="mx-auto w-64 h-7 bg-black/20" />
+                ) : (
+                  `${currentStreak} day${currentStreak === 1 ? '' : 's'} ${bestStreak !== undefined && bestStreak > (currentStreak ?? 0) ? ` (Best: ${bestStreak} day${bestStreak === 1 ? '' : 's'})` : ''}`
+                )}
+              </div>
+            </div>
+          )}
 
           {/* Additional content (game-specific sections) */}
           {children}

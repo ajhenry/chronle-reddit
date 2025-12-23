@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { requestExpandedMode, navigateTo } from '@devvit/web/client';
+import { Flame } from 'lucide-react';
 import { apiFetch } from '../lib/utils';
-import type { SplashStatsResponse } from '../../shared/types/api';
+import type { SplashStatsResponse, UserStatsResponse } from '../../shared/types/api';
 
 // Format time in MM:SS format
 function formatTime(ms: number): string {
@@ -78,6 +79,7 @@ export function Splash() {
   const [gameId, setGameId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [dailyStreak, setDailyStreak] = useState<number>(0);
 
   // Fetch context to get gameId
   useEffect(() => {
@@ -103,6 +105,24 @@ export function Splash() {
     };
 
     void fetchContext();
+  }, []);
+
+  // Fetch user stats to get daily streak
+  useEffect(() => {
+    const fetchUserStats = async () => {
+      try {
+        const response = await apiFetch('/api/stats/user');
+        if (response.ok) {
+          const data: UserStatsResponse = await response.json();
+          setDailyStreak(data.stats.currentDailyStreak);
+        }
+      } catch (err) {
+        console.error('Error fetching user stats:', err);
+        // Don't set error - streak is optional
+      }
+    };
+
+    void fetchUserStats();
   }, []);
 
   // Fetch splash stats once we have gameId
@@ -238,13 +258,22 @@ export function Splash() {
         )}
       </div>
 
-      {/* Create your own button */}
-      <button
-        onClick={(e) => requestExpandedMode(e.nativeEvent, 'creator')}
-        className="absolute right-4 bottom-4 px-6 py-2 text-sm font-bold text-[#F7C846] bg-transparent border-2 border-[#F7C846] rounded cursor-pointer hover:bg-[#F7C846] hover:text-black transition-colors"
-      >
-        Create your own
-      </button>
+      {/* Bottom bar with streak and create button */}
+      <div className="flex absolute right-4 bottom-4 gap-4 items-center">
+        {/* Daily streak display */}
+        <div className="flex gap-1 items-center text-xl font-bold text-white">
+          <span>{dailyStreak}</span>
+          <Flame className="w-6 h-6" />
+        </div>
+
+        {/* Create your own button */}
+        <button
+          onClick={(e) => requestExpandedMode(e.nativeEvent, 'creator')}
+          className="px-6 py-2 text-sm font-bold text-[#F7C846] bg-transparent border-2 border-[#F7C846] rounded cursor-pointer hover:bg-[#F7C846] hover:text-black transition-colors"
+        >
+          Create your own
+        </button>
+      </div>
     </div>
   );
 }
