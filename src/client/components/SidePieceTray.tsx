@@ -475,7 +475,13 @@ export const SidePieceTray = forwardRef<SidePieceTrayRef, SidePieceTrayProps>(
           return result;
         },
       }),
-      [calculateInsertionIndex, calculateInsertionInfo, dragPreview, dragPreviewInfo, onPieceDropped]
+      [
+        calculateInsertionIndex,
+        calculateInsertionInfo,
+        dragPreview,
+        dragPreviewInfo,
+        onPieceDropped,
+      ]
     );
 
     // Register piece ref
@@ -495,7 +501,7 @@ export const SidePieceTray = forwardRef<SidePieceTrayRef, SidePieceTrayProps>(
       <div
         ref={trayContainerRef}
         className={cn(
-          'flex flex-col items-center gap-3 py-4 px-2',
+          'flex flex-col items-center gap-3 xl:gap-4 py-4 px-2',
           'overflow-y-auto overflow-x-hidden',
           'scrollbar-themed',
           'transition-all duration-300 ease-out',
@@ -573,4 +579,3 @@ export const SidePieceTray = forwardRef<SidePieceTrayRef, SidePieceTrayProps>(
 SidePieceTray.displayName = 'SidePieceTray';
 
 export default SidePieceTray;
-

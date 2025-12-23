@@ -285,8 +285,8 @@ export const LetteredPage = ({
     });
   }, [gameData, placedPieces, pieceOrder]);
 
-  // Check if we're on XL viewport for side trays layout
-  const isXLViewport = breakpoint === 'xl';
+  // Check if we're on a wide viewport for side trays layout (md and up)
+  const useSideTraysLayout = breakpoint === 'md' || breakpoint === 'lg' || breakpoint === 'xl';
 
   // Assign pieces to trays based on initial order (stable assignment)
   // This ensures pieces don't shift between trays when other pieces are placed
@@ -309,11 +309,11 @@ export const LetteredPage = ({
   }, [gameData, pieceOrder]);
 
   // Filter unplaced pieces by their stable tray assignment
-  const { leftTrayPieces, rightTrayPieces, bottomTrayPiecesXL } = useMemo(() => {
+  const { leftTrayPieces, rightTrayPieces, bottomTrayPieces } = useMemo(() => {
     return {
       leftTrayPieces: unplacedPieces.filter((p) => trayAssignments.left.has(p.id)),
       rightTrayPieces: unplacedPieces.filter((p) => trayAssignments.right.has(p.id)),
-      bottomTrayPiecesXL: unplacedPieces.filter((p) => trayAssignments.bottom.has(p.id)),
+      bottomTrayPieces: unplacedPieces.filter((p) => trayAssignments.bottom.has(p.id)),
     };
   }, [unplacedPieces, trayAssignments]);
 
@@ -1505,8 +1505,8 @@ export const LetteredPage = ({
       </div>
 
       {/* Game Content */}
-      {/* XL viewport: 3-column layout with side trays and bottom tray */}
-      {isXLViewport && !gameComplete ? (
+      {/* Wide viewport (md+): 3-column layout with side trays and bottom tray */}
+      {useSideTraysLayout && !gameComplete ? (
         (() => {
           // Calculate board dimensions for tray sizing
           const gridCols = gameData.grid[0]!.length || 8;
@@ -1593,11 +1593,11 @@ export const LetteredPage = ({
                 </div>
               </div>
 
-              {/* Bottom Piece Tray for XL */}
+              {/* Bottom Piece Tray for wide viewport layout */}
               <div className="flex justify-center" style={{ minWidth: boardWidth }}>
                 <PieceTray
                   ref={bottomTrayRef}
-                  pieces={bottomTrayPiecesXL}
+                  pieces={bottomTrayPieces}
                   cellSize={responsiveCellSize}
                   cellSpacing={responsiveCellSpacing}
                   onPieceDragStart={handlePieceDragStart}
@@ -1614,7 +1614,7 @@ export const LetteredPage = ({
         })()
       ) : (
         <>
-          {/* Standard layout for smaller viewports or completed games */}
+          {/* Standard layout for small viewports (xs, sm) or completed games */}
           <div className="flex justify-center">
             <Grid
               ref={gridRef}
