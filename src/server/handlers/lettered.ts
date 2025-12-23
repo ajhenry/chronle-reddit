@@ -34,6 +34,13 @@ import { generateMockGame } from '../lib/lettered-game-generator';
 import { context } from '@devvit/web/server';
 import { reddit } from '../lib/reddit-provider';
 import { setPostToGameMapping } from '../database/redis';
+import {
+  trackUniqueUser,
+  trackScreenSize,
+  incrementGamesAttempted,
+  incrementGamesCompleted,
+  type ScreenInfo,
+} from '../database/analytics';
 
 // Zod schema for validating the payload
 const gridPositionSchema = z.object({
@@ -54,9 +61,16 @@ const boardStateSchema = z.object({
   placedPieces: z.record(z.string().min(1), gridPositionSchema),
 });
 
+const screenInfoSchema = z.object({
+  width: z.number().int().positive(),
+  height: z.number().int().positive(),
+  breakpoint: z.enum(['xs', 'sm', 'md', 'lg', 'xl']),
+});
+
 const letteredSessionPayloadSchema = z.object({
   boardState: boardStateSchema,
   timestamp: z.number().positive(),
+  screenInfo: screenInfoSchema.optional(),
 });
 
 // Generate a unique signature for a piece based on its letters and shape
@@ -204,6 +218,17 @@ router.get('/api/lettered/:gameId/game', async (req, res): Promise<void> => {
 
     console.log('existingSession', existingSession);
 
+    // Track analytics (fire-and-forget, silent on failure)
+    try {
+      void trackUniqueUser(userId);
+      // Track game attempted only if this is a new session (no moves yet)
+      if (existingSession.moves === 0 && !existingSession.isCompleted) {
+        void incrementGamesAttempted();
+      }
+    } catch {
+      // Silent failure for analytics
+    }
+
     // User has an existing session, get the latest board state submission
     const latestSubmission = await getLatestLetteredSubmission(userId, gameId);
 
@@ -263,6 +288,17 @@ router.get('/api/lettered/game', async (_req, res): Promise<void> => {
     const existingSession = await getOrCreateLetteredSession(userId, letteredGame.id);
 
     console.log('existingSession', existingSession);
+
+    // Track analytics (fire-and-forget, silent on failure)
+    try {
+      void trackUniqueUser(userId);
+      // Track game attempted only if this is a new session (no moves yet)
+      if (existingSession.moves === 0 && !existingSession.isCompleted) {
+        void incrementGamesAttempted();
+      }
+    } catch {
+      // Silent failure for analytics
+    }
 
     // User has an existing session, get the latest board state submission
     const latestSubmission = await getLatestLetteredSubmission(userId, letteredGame.id);
@@ -343,7 +379,16 @@ router.post('/api/lettered/:gameId/session', async (req, res): Promise<void> => 
       return;
     }
 
-    const { boardState } = payloadValidation.data;
+    const { boardState, screenInfo } = payloadValidation.data;
+
+    // Track screen size analytics (fire-and-forget, silent on failure)
+    if (screenInfo) {
+      try {
+        void trackScreenSize(screenInfo);
+      } catch {
+        // Silent failure for analytics
+      }
+    }
 
     // Get the lettered game by ID (works for both daily and custom games)
     const redis = await getRedisClient();
@@ -460,6 +505,13 @@ router.post('/api/lettered/:gameId/session', async (req, res): Promise<void> => 
         timeElapsed: timeElapsedMs,
         moves: updatedSession.moves,
       });
+
+      // Track game completion analytics (fire-and-forget, silent on failure)
+      try {
+        void incrementGamesCompleted();
+      } catch {
+        // Silent failure for analytics
+      }
 
       // Update leaderboard tables with the final time and moves
       try {

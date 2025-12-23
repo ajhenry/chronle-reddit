@@ -253,7 +253,7 @@ export const LetteredPage = ({
   const [moves, setMoves] = useState(0);
 
   // Get responsive viewport information
-  const { breakpoint } = useViewport();
+  const { breakpoint, width: viewportWidth, height: viewportHeight } = useViewport();
   const responsiveCellSize = getResponsiveCellSize(breakpoint, gameData?.rows, gameData?.cols);
   const responsiveCellSpacing = getResponsiveCellSpacing(breakpoint);
 
@@ -824,6 +824,11 @@ export const LetteredPage = ({
                 placedPieces: result.placedPieces,
               },
               timestamp: Date.now(),
+              screenInfo: {
+                width: viewportWidth,
+                height: viewportHeight,
+                breakpoint,
+              },
             }),
           });
 
@@ -846,7 +851,7 @@ export const LetteredPage = ({
         }
       }
     },
-    [gameId, loadPostGameStats]
+    [gameId, loadPostGameStats, viewportWidth, viewportHeight, breakpoint]
   );
 
   const handleBackToMenu = () => {

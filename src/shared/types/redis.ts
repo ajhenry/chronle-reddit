@@ -126,4 +126,11 @@ export const RedisKeys = {
   userCurrentStreak: (userId: string) => `user_streak:current:${userId}`,
   leaderboard: (type: 'overall' | 'lettered', period: TimePeriod, date?: Date) =>
     formatLeaderboardKey(type, period, date),
+  // Analytics keys
+  analytics: {
+    uniqueUsers: () => 'analytics:unique_users',
+    screenSizes: () => 'analytics:screen_sizes',
+    gamesAttempted: () => 'analytics:games_attempted',
+    gamesCompleted: () => 'analytics:games_completed',
+  },
 };

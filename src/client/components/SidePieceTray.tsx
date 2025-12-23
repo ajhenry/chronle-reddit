@@ -496,9 +496,22 @@ export const SidePieceTray = forwardRef<SidePieceTrayRef, SidePieceTrayProps>(
       }
     }, []);
 
-    // Calculate fixed width based on cell size - use enough space for typical pieces
+    // Calculate fixed width based on the maximum piece width in the tray
+    // This ensures wider pieces (4+ cells) don't get cut off on larger screens
+    const maxPieceWidth = useMemo(() => {
+      if (pieces.length === 0) return 3; // Default minimum width
+      let maxWidth = 3; // Minimum width to prevent tray from collapsing
+      for (const piece of pieces) {
+        const minCol = Math.min(...piece.shape.map((pos) => pos.col));
+        const maxCol = Math.max(...piece.shape.map((pos) => pos.col));
+        const pieceWidth = maxCol - minCol + 1;
+        maxWidth = Math.max(maxWidth, pieceWidth);
+      }
+      return maxWidth;
+    }, [pieces]);
+
     // Width is locked so the phrase area doesn't shift when pieces are added/removed
-    const trayWidth = cellSize.width * 3 + cellSpacing * 2 + 24;
+    const trayWidth = cellSize.width * maxPieceWidth + cellSpacing * (maxPieceWidth - 1) + 24;
 
     // Always render the tray even when empty - pieces can be dropped back into it
     return (

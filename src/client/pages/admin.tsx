@@ -101,6 +101,18 @@ interface UpdateUserNameResponse {
   };
 }
 
+interface AnalyticsData {
+  uniqueUsers: number;
+  screenSizes: Record<string, number>;
+  gamesAttempted: number;
+  gamesCompleted: number;
+}
+
+interface AnalyticsResponse {
+  status: string;
+  data: AnalyticsData;
+}
+
 export const AdminPage = () => {
   const navigate = useNavigate();
   const [user, setUser] = useState<User | null>(null);
@@ -133,6 +145,10 @@ export const AdminPage = () => {
   const [newUserName, setNewUserName] = useState('');
   const [updatingUserName, setUpdatingUserName] = useState(false);
 
+  // Analytics state
+  const [analyticsData, setAnalyticsData] = useState<AnalyticsData | null>(null);
+  const [analyticsLoading, setAnalyticsLoading] = useState(false);
+
   useEffect(() => {
     const checkAdminAccess = async () => {
       try {
@@ -156,6 +172,31 @@ export const AdminPage = () => {
 
     void checkAdminAccess();
   }, [navigate]);
+
+  // Fetch analytics data
+  useEffect(() => {
+    const fetchAnalytics = async () => {
+      setAnalyticsLoading(true);
+      try {
+        const response = await apiFetch('/api/admin/analytics');
+        if (response.ok) {
+          const data: AnalyticsResponse = await response.json();
+          setAnalyticsData(data.data);
+        }
+        // Silent failure - analytics is not critical
+      } catch (error) {
+        console.error('Error fetching analytics:', error);
+        // Silent failure
+      } finally {
+        setAnalyticsLoading(false);
+      }
+    };
+
+    // Only fetch if user is loaded and is admin
+    if (user?.admin) {
+      void fetchAnalytics();
+    }
+  }, [user]);
 
   const handleClearSessionsClick = () => {
     setShowClearSessionsDialog(true);
@@ -424,6 +465,84 @@ export const AdminPage = () => {
                 <strong>Admin Status:</strong> {user.admin ? 'Yes' : 'No'}
               </p>
             </div>
+          </CardContent>
+        </Card>
+
+        {/* Analytics */}
+        <Card className="mb-8">
+          <CardHeader>
+            <CardTitle>Analytics</CardTitle>
+          </CardHeader>
+          <CardContent>
+            {analyticsLoading ? (
+              <div className="flex justify-center py-8">
+                <Loader2 className="w-6 h-6 animate-spin" />
+              </div>
+            ) : analyticsData ? (
+              <div className="space-y-6">
+                {/* Summary Stats */}
+                <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+                  <div className="p-4 rounded-lg border bg-muted/50">
+                    <div className="text-sm text-muted-foreground">Unique Users</div>
+                    <div className="text-2xl font-bold">{analyticsData.uniqueUsers.toLocaleString()}</div>
+                  </div>
+                  <div className="p-4 rounded-lg border bg-muted/50">
+                    <div className="text-sm text-muted-foreground">Games Attempted</div>
+                    <div className="text-2xl font-bold">{analyticsData.gamesAttempted.toLocaleString()}</div>
+                  </div>
+                  <div className="p-4 rounded-lg border bg-muted/50">
+                    <div className="text-sm text-muted-foreground">Games Completed</div>
+                    <div className="text-2xl font-bold">{analyticsData.gamesCompleted.toLocaleString()}</div>
+                  </div>
+                  <div className="p-4 rounded-lg border bg-muted/50">
+                    <div className="text-sm text-muted-foreground">Completion Rate</div>
+                    <div className="text-2xl font-bold">
+                      {analyticsData.gamesAttempted > 0
+                        ? `${((analyticsData.gamesCompleted / analyticsData.gamesAttempted) * 100).toFixed(1)}%`
+                        : 'N/A'}
+                    </div>
+                  </div>
+                </div>
+
+                {/* Screen Sizes */}
+                <div>
+                  <h4 className="mb-3 font-semibold">Screen Size Distribution</h4>
+                  {Object.keys(analyticsData.screenSizes).length > 0 ? (
+                    <div className="overflow-x-auto">
+                      <table className="w-full text-sm">
+                        <thead>
+                          <tr className="border-b">
+                            <th className="py-2 pr-4 text-left font-medium">Dimensions</th>
+                            <th className="py-2 pr-4 text-left font-medium">Breakpoint</th>
+                            <th className="py-2 text-right font-medium">Count</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {Object.entries(analyticsData.screenSizes)
+                            .sort(([, a], [, b]) => b - a)
+                            .map(([key, count]) => {
+                              const [dimensions, breakpoint] = key.split(':');
+                              return (
+                                <tr key={key} className="border-b border-muted">
+                                  <td className="py-2 pr-4 font-mono text-xs">{dimensions}</td>
+                                  <td className="py-2 pr-4">
+                                    <span className="px-2 py-0.5 text-xs rounded bg-muted">{breakpoint}</span>
+                                  </td>
+                                  <td className="py-2 text-right">{count.toLocaleString()}</td>
+                                </tr>
+                              );
+                            })}
+                        </tbody>
+                      </table>
+                    </div>
+                  ) : (
+                    <p className="text-sm text-muted-foreground">No screen size data available yet.</p>
+                  )}
+                </div>
+              </div>
+            ) : (
+              <p className="text-sm text-muted-foreground">Failed to load analytics data.</p>
+            )}
           </CardContent>
         </Card>
 
