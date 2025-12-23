@@ -1443,7 +1443,7 @@ export const LetteredPage = ({
 
       {/* Completion Banner for Completed Games */}
       {gameComplete && (
-        <div className="p-4 mb-4 rounded-lg border-2 border-foreground">
+        <div className="p-4 mx-auto mb-4 max-w-2xl rounded-lg border-2 border-foreground">
           <div
             className={cn(
               'flex flex-col gap-3',
@@ -1517,8 +1517,8 @@ export const LetteredPage = ({
             gridRows * responsiveCellSize.height + (gridRows - 1) * responsiveCellSpacing;
 
           return (
-            <div className="flex flex-col items-center gap-4">
-              <div className="flex justify-center items-stretch gap-6">
+            <div className="flex flex-col gap-4 items-center">
+              <div className="flex gap-6 justify-center items-stretch">
                 {/* Left Piece Tray */}
                 <div className="flex-shrink-0" style={{ minHeight: boardHeight }}>
                   <SidePieceTray

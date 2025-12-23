@@ -1089,6 +1089,7 @@ const GridContent = forwardRef<
   const cursorPreview = useGridStore((s) => s.cursorPreview);
   const cursorPosition = useGridStore((s) => s.cursorPosition);
   const grabOffset = useGridStore((s) => s.grabOffset);
+  const pendingExternalItem = useGridStore((s) => s.pendingExternalItem);
 
   // Expose methods via ref
   useImperativeHandle(
@@ -1487,7 +1488,10 @@ const GridContent = forwardRef<
         ) {
           store.getState().setCurrentHoveredCell({ x: cellX, y: cellY });
 
-          const draggedItem = items.find((item) => item.id === draggedItemId);
+          // Check for the dragged item - could be in items or pending external
+          const draggedItem =
+            items.find((item) => item.id === draggedItemId) ||
+            (state.pendingExternalItem?.id === draggedItemId ? state.pendingExternalItem : null);
           if (draggedItem) {
             const previewPosition = {
               x: cellX - grabOffset.x,
@@ -1503,6 +1507,13 @@ const GridContent = forwardRef<
               position: previewPosition,
               isValid,
             });
+
+            // Also update the pending item position if it's the one being dragged
+            if (state.pendingExternalItem?.id === draggedItemId) {
+              store.setState({
+                pendingExternalItem: { ...state.pendingExternalItem, position: previewPosition },
+              });
+            }
           }
         }
       } else {
@@ -1575,8 +1586,15 @@ const GridContent = forwardRef<
       // validation only happens when user clicks "Place".
       const isInTapDragMode = tapDragActiveItemId === currentDraggedItemId;
 
+      // Check if this is a pending external item (being dragged from tray in hold-to-drag mode)
+      const pendingItem = state.pendingExternalItem;
+      const isPendingExternalDrag = pendingItem?.id === currentDraggedItemId;
+
       if (isPointerWithinBounds) {
-        const draggedItem = items.find((item) => item.id === currentDraggedItemId);
+        // Find the dragged item - could be in items or pending external
+        const draggedItem = isPendingExternalDrag
+          ? pendingItem
+          : items.find((item) => item.id === currentDraggedItemId);
         if (!draggedItem) return;
 
         const dropPosition = {
@@ -1587,7 +1605,12 @@ const GridContent = forwardRef<
         const withinBounds = state.isPositionWithinBounds(draggedItem, dropPosition);
 
         if (!withinBounds) {
-          if (isInTapDragMode) {
+          if (isPendingExternalDrag) {
+            // Pending external item dropped out of bounds - don't add to grid, return to tray
+            store.setState({ pendingExternalItem: null });
+            onExternalDragInvalid?.(currentDraggedItemId);
+            placedValidly = false;
+          } else if (isInTapDragMode) {
             // In tap-to-drag mode, clamp the position to stay within bounds
             const clampedPosition = {
               x: Math.max(0, Math.min(dropPosition.x, gridSize.width - draggedItem.shape.width)),
@@ -1610,55 +1633,84 @@ const GridContent = forwardRef<
         } else {
           const isOnBlockedTile = state.isPositionOnBlockedTile(draggedItem, dropPosition);
 
-          if (isOnBlockedTile && !isInTapDragMode) {
-            // Only return to original in non-tap-drag mode
-            if (tapDragOriginalPosition) {
-              store
-                .getState()
-                .setItems((prev) =>
-                  prev.map((item) =>
-                    item.id === currentDraggedItemId
-                      ? { ...item, position: tapDragOriginalPosition }
-                      : item
-                  )
-                );
+          if (isOnBlockedTile) {
+            if (isPendingExternalDrag) {
+              // Pending external item dropped on blocked tile - don't add to grid, return to tray
+              store.setState({ pendingExternalItem: null });
+              onExternalDragInvalid?.(currentDraggedItemId);
+              placedValidly = false;
+            } else if (!isInTapDragMode) {
+              // Only return to original in non-tap-drag mode
+              if (tapDragOriginalPosition) {
+                store
+                  .getState()
+                  .setItems((prev) =>
+                    prev.map((item) =>
+                      item.id === currentDraggedItemId
+                        ? { ...item, position: tapDragOriginalPosition }
+                        : item
+                    )
+                  );
+              }
+              placedValidly = false;
             }
-            placedValidly = false;
           } else {
-            // Position is valid OR we're in tap-drag mode (validation deferred to "Place")
-            store.getState().moveItem(currentDraggedItemId, dropPosition);
-            placedValidly = true;
+            // Position is valid
+            if (isPendingExternalDrag) {
+              // Add pending external item to grid at the valid position
+              const itemToAdd = { ...draggedItem, position: dropPosition };
+              store.getState().setItems((prev) => [...prev, itemToAdd]);
+              store.setState({ pendingExternalItem: null });
+              placedValidly = true;
 
-            if (!isInTapDragMode) {
+              // Check for overlapping pieces and remove them
               const overlappingIds = state.getOverlappingItemIds(
-                draggedItem,
+                itemToAdd,
                 dropPosition,
-                draggedItem.id
+                itemToAdd.id
               );
-
               if (overlappingIds.length > 0) {
                 store
                   .getState()
                   .setItems((prev) => prev.filter((item) => !overlappingIds.includes(item.id)));
                 callbacks.onPiecesRemoved?.(overlappingIds);
               }
-            }
+            } else {
+              // Regular item - move it
+              store.getState().moveItem(currentDraggedItemId, dropPosition);
+              placedValidly = true;
 
-            if (isInTapDragMode && callbacks.shouldAutoComplete) {
-              const previewLayout = state.buildPreviewLayout(draggedItem.id, dropPosition);
-              if (callbacks.shouldAutoComplete(previewLayout)) {
-                store.setState({
-                  tapDragActiveItemId: null,
-                  tapDragOriginalPosition: null,
-                  draggedItemId: null,
-                  grabOffset: null,
-                  dragPreview: null,
-                  currentHoveredCell: null,
-                  externalDragWasPlacedValidly: true,
-                });
-                callbacks.onLayoutChange?.(previewLayout);
-                callbacks.onDragStateChange?.(false);
-                return;
+              if (!isInTapDragMode) {
+                const overlappingIds = state.getOverlappingItemIds(
+                  draggedItem,
+                  dropPosition,
+                  draggedItem.id
+                );
+
+                if (overlappingIds.length > 0) {
+                  store
+                    .getState()
+                    .setItems((prev) => prev.filter((item) => !overlappingIds.includes(item.id)));
+                  callbacks.onPiecesRemoved?.(overlappingIds);
+                }
+              }
+
+              if (isInTapDragMode && callbacks.shouldAutoComplete) {
+                const previewLayout = state.buildPreviewLayout(draggedItem.id, dropPosition);
+                if (callbacks.shouldAutoComplete(previewLayout)) {
+                  store.setState({
+                    tapDragActiveItemId: null,
+                    tapDragOriginalPosition: null,
+                    draggedItemId: null,
+                    grabOffset: null,
+                    dragPreview: null,
+                    currentHoveredCell: null,
+                    externalDragWasPlacedValidly: true,
+                  });
+                  callbacks.onLayoutChange?.(previewLayout);
+                  callbacks.onDragStateChange?.(false);
+                  return;
+                }
               }
             }
           }
@@ -1669,9 +1721,15 @@ const GridContent = forwardRef<
         const droppedToTray = onDragToTray?.(currentDraggedItemId, coords);
 
         if (droppedToTray) {
-          // Piece was dropped to tray - remove it from grid
-          store.getState().removeItem(currentDraggedItemId);
-          callbacks.onPiecesRemoved?.([currentDraggedItemId]);
+          // Piece was dropped to tray
+          if (isPendingExternalDrag) {
+            // Pending external item - just clear it (never was on grid)
+            store.setState({ pendingExternalItem: null });
+          } else {
+            // Regular item - remove it from grid
+            store.getState().removeItem(currentDraggedItemId);
+            callbacks.onPiecesRemoved?.([currentDraggedItemId]);
+          }
           // Reset state and exit early
           store.setState({
             externalDragWasPlacedValidly: false,
@@ -1680,6 +1738,7 @@ const GridContent = forwardRef<
             dragPreview: null,
             currentHoveredCell: null,
             justFinishedDrag: true,
+            pendingExternalItem: null,
             // If in tap-drag mode, also clear that state
             tapDragActiveItemId: null,
             tapDragOriginalPosition: null,
@@ -1691,7 +1750,12 @@ const GridContent = forwardRef<
           return;
         }
 
-        if (isInTapDragMode) {
+        if (isPendingExternalDrag) {
+          // Pending external item released outside grid and not on tray - return to tray
+          store.setState({ pendingExternalItem: null });
+          onExternalDragInvalid?.(currentDraggedItemId);
+          placedValidly = false;
+        } else if (isInTapDragMode) {
           // In tap-to-drag mode, keep piece on grid at a clamped position
           const draggedItem = items.find((item) => item.id === currentDraggedItemId);
           if (draggedItem) {
@@ -1731,6 +1795,7 @@ const GridContent = forwardRef<
         dragPreview: null,
         currentHoveredCell: null,
         justFinishedDrag: true,
+        pendingExternalItem: null,
       });
       setTimeout(() => {
         store.getState().setJustFinishedDrag(false);
@@ -1897,8 +1962,9 @@ const GridContent = forwardRef<
       )}
       {/* Cursor preview for grid item dragged outside bounds */}
       {!cursorPreview && draggedItemId && !dragPreview && cursorPosition && grabOffset && (() => {
-        const draggedItem = items.find((item) => item.id === draggedItemId);
-        if (!draggedItem) return null;
+        // Check both items and pendingExternalItem
+        const draggedItem = items.find((item) => item.id === draggedItemId) || pendingExternalItem;
+        if (!draggedItem || draggedItem.id !== draggedItemId) return null;
         return (
           <CursorPreviewComponent
             item={draggedItem}

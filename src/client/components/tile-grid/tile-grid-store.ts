@@ -99,6 +99,9 @@ export interface GridStore {
     grabOffset: GridPosition;
   } | null;
   cursorPosition: { clientX: number; clientY: number } | null;
+  // Pending external item - item being dragged from tray, not yet added to grid
+  // Only added to items when user releases in a valid position
+  pendingExternalItem: DraggableItem | null;
 
   // Tap-Drag State
   tapDragActiveItemId: string | null;
@@ -388,6 +391,7 @@ export const createGridStore = (config: GridStoreConfig) => {
     currentHoveredCell: null,
     cursorPreview: null,
     cursorPosition: null,
+    pendingExternalItem: null,
     tapDragActiveItemId: null,
     tapDragOriginalPosition: null,
     justFinishedDrag: false,
@@ -517,26 +521,39 @@ export const createGridStore = (config: GridStoreConfig) => {
 
       const isValid = withinBounds && !isOnBlockedTile;
 
-      // Add item to grid and set up drag state
-      set((s) => ({
-        items: [...s.items, newItem],
-        cursorPreview: null,
-        grabOffset: grabOffset,
-        draggedItemId: itemId,
-        tapDragActiveItemId: dragMode === 'tap-to-drag' ? itemId : null,
-        tapDragOriginalPosition: null,
-        dragPreview: {
-          item: newItem,
-          position: gridPosition,
-          isValid,
-        },
-      }));
-
-      if (dragMode === 'tap-to-drag') {
+      if (dragMode === 'hold-to-drag') {
+        // In hold-to-drag mode, DON'T add to items yet - keep as pending
+        // Item will only be added when user releases in a valid position
+        set({
+          cursorPreview: null,
+          pendingExternalItem: newItem,
+          grabOffset: grabOffset,
+          draggedItemId: itemId,
+          dragPreview: {
+            item: newItem,
+            position: gridPosition,
+            isValid,
+          },
+        });
+      } else {
+        // In tap-to-drag mode, add to items (existing behavior)
+        set((s) => ({
+          items: [...s.items, newItem],
+          cursorPreview: null,
+          pendingExternalItem: null,
+          grabOffset: grabOffset,
+          draggedItemId: itemId,
+          tapDragActiveItemId: itemId,
+          tapDragOriginalPosition: null,
+          dragPreview: {
+            item: newItem,
+            position: gridPosition,
+            isValid,
+          },
+        }));
         callbacks.onDragStateChange?.(true);
+        get()._recomputeDerivedState();
       }
-
-      get()._recomputeDerivedState();
     },
 
     // Tap-drag actions
@@ -786,7 +803,7 @@ export const createGridStore = (config: GridStoreConfig) => {
         pointerPosition.clientY <= gridBounds.bottom;
 
       if (isWithinGrid && gridBounds) {
-        // Cursor is already over the grid - add item directly
+        // Cursor is already over the grid
         const pointerX = pointerPosition.clientX - gridBounds.left;
         const pointerY = pointerPosition.clientY - gridBounds.top;
         const cellX = Math.floor(pointerX / (cellSize.width + spacing));
@@ -830,22 +847,38 @@ export const createGridStore = (config: GridStoreConfig) => {
 
         const isValid = withinBounds && !isOnBlockedTile;
 
-        set((s) => ({
-          items: [...s.items, newItem],
-          grabOffset: clampedGrabOffset,
-          draggedItemId: newItemId,
-          tapDragActiveItemId: dragMode === 'tap-to-drag' ? newItemId : null,
-          tapDragOriginalPosition: null,
-          dragPreview: {
-            item: newItem,
-            position: initialPosition,
-            isValid,
-          },
-          cursorPreview: null,
-          cursorPosition: null,
-        }));
-
-        if (dragMode === 'tap-to-drag') {
+        if (dragMode === 'hold-to-drag') {
+          // In hold-to-drag mode, DON'T add to items yet - keep as pending
+          // Item will only be added when user releases in a valid position
+          set({
+            pendingExternalItem: newItem,
+            grabOffset: clampedGrabOffset,
+            draggedItemId: newItemId,
+            dragPreview: {
+              item: newItem,
+              position: initialPosition,
+              isValid,
+            },
+            cursorPreview: null,
+            cursorPosition: null,
+          });
+        } else {
+          // In tap-to-drag mode, add to items (existing behavior)
+          set((s) => ({
+            items: [...s.items, newItem],
+            pendingExternalItem: null,
+            grabOffset: clampedGrabOffset,
+            draggedItemId: newItemId,
+            tapDragActiveItemId: newItemId,
+            tapDragOriginalPosition: null,
+            dragPreview: {
+              item: newItem,
+              position: initialPosition,
+              isValid,
+            },
+            cursorPreview: null,
+            cursorPosition: null,
+          }));
           state.callbacks.onDragStateChange?.(true);
         }
       } else {
