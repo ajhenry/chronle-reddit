@@ -727,8 +727,8 @@ export const PieceTray = forwardRef<PieceTrayRef, PieceTrayProps>(
       requestAnimationFrame(animateBounce);
     }, []);
 
-    // Scroll to center a specific piece by ID
-    const scrollToPieceById = useCallback(
+    // Scroll to make a specific piece the leftmost visible item
+    const scrollToPieceAsFirst = useCallback(
       (pieceId: string) => {
         const container = scrollContainerRef.current;
         if (!container) return;
@@ -736,97 +736,135 @@ export const PieceTray = forwardRef<PieceTrayRef, PieceTrayProps>(
         const pieceElement = pieceRefs.current.get(pieceId);
         if (!pieceElement) return;
 
-        // Calculate scroll position to center the piece
+        // Calculate scroll position to make the piece the leftmost item
         const containerRect = container.getBoundingClientRect();
         const pieceRect = pieceElement.getBoundingClientRect();
 
-        const pieceCenter = pieceRect.left + pieceRect.width / 2;
-        const containerCenter = containerRect.left + containerRect.width / 2;
-        const scrollOffset = pieceCenter - containerCenter;
+        // We want the piece's left edge to align with the container's left edge
+        const scrollOffset = pieceRect.left - containerRect.left;
         const targetScrollLeft = container.scrollLeft + scrollOffset;
 
-        // Fast smooth scroll (150ms)
-        smoothScrollTo(container, targetScrollLeft, 150);
+        // Smooth scroll for page navigation (300ms)
+        smoothScrollTo(container, targetScrollLeft, 300);
       },
       [smoothScrollTo]
     );
 
-    // Find the first visible piece to the left/right of current scroll position
-    const findNextVisiblePiece = useCallback(
+    // Find the first piece that is not completely visible in the given direction
+    // For pagination: returns the piece that should become the leftmost item on next/prev page
+    const findNextPagePiece = useCallback(
       (direction: 'left' | 'right'): string | null => {
         const container = scrollContainerRef.current;
         if (!container || visiblePieces.length === 0) return null;
 
         const containerRect = container.getBoundingClientRect();
-        const containerCenter = containerRect.left + containerRect.width / 2;
+        const containerLeft = containerRect.left;
+        const containerRight = containerRect.right;
 
-        // Get all visible piece positions
-        const piecePositions: { id: string; center: number }[] = [];
+        // Get all visible piece positions with their bounds
+        const piecePositions: { id: string; left: number; right: number }[] = [];
         for (const piece of visiblePieces) {
           const element = pieceRefs.current.get(piece.id);
           if (element) {
             const rect = element.getBoundingClientRect();
             piecePositions.push({
               id: piece.id,
-              center: rect.left + rect.width / 2,
+              left: rect.left,
+              right: rect.right,
             });
           }
         }
 
-        // Sort by position
-        piecePositions.sort((a, b) => a.center - b.center);
+        // Sort by position (left to right)
+        piecePositions.sort((a, b) => a.left - b.left);
 
         if (direction === 'right') {
-          // Find the first piece whose center is to the right of container center
+          // Find the first piece that is not completely visible on the right
+          // (its right edge extends beyond the container's right edge)
           for (const pos of piecePositions) {
-            if (pos.center > containerCenter + 10) {
+            if (pos.right > containerRight + 1) {
               return pos.id;
             }
           }
           // If none found, we're at the end
           return null;
         } else {
-          // Find the last piece whose center is to the left of container center
-          for (let i = piecePositions.length - 1; i >= 0; i--) {
+          // For previous page: find the first piece that is cut off on the left
+          // Then we need to scroll so that a "page" worth of pieces before becomes visible
+
+          // First, find the current leftmost visible piece
+          let currentLeftmostIndex = -1;
+          for (let i = 0; i < piecePositions.length; i++) {
             const pos = piecePositions[i];
-            if (pos && pos.center < containerCenter - 10) {
-              return pos.id;
+            if (pos && pos.right > containerLeft) {
+              currentLeftmostIndex = i;
+              break;
             }
           }
-          // If none found, we're at the start
-          return null;
+
+          if (currentLeftmostIndex <= 0) {
+            // Already at the start
+            return null;
+          }
+
+          // Count how many pieces fit in the container width
+          const containerWidth = containerRect.width;
+          let piecesPerPage = 0;
+          let accumulatedWidth = 0;
+
+          // Estimate pieces per page using the first few visible pieces
+          for (
+            let i = currentLeftmostIndex;
+            i < piecePositions.length && i < currentLeftmostIndex + 10;
+            i++
+          ) {
+            const pos = piecePositions[i];
+            if (!pos) break;
+            const pieceWidth = pos.right - pos.left;
+            if (accumulatedWidth + pieceWidth <= containerWidth) {
+              accumulatedWidth += pieceWidth + 16; // 16 for margin
+              piecesPerPage++;
+            } else {
+              break;
+            }
+          }
+
+          // Go back by approximately one page worth of pieces
+          const targetIndex = Math.max(0, currentLeftmostIndex - Math.max(1, piecesPerPage));
+          const targetPiece = piecePositions[targetIndex];
+          return targetPiece ? targetPiece.id : null;
         }
       },
       [visiblePieces]
     );
 
-    // Navigate to previous visible piece
+    // Navigate to previous page of pieces
     const handlePrevious = useCallback(() => {
       const container = scrollContainerRef.current;
       if (!container) return;
 
-      const nextPieceId = findNextVisiblePiece('left');
-      if (nextPieceId) {
-        scrollToPieceById(nextPieceId);
+      const targetPieceId = findNextPagePiece('left');
+      if (targetPieceId) {
+        scrollToPieceAsFirst(targetPieceId);
       } else {
         // Already at start, bounce
         bounceAtLimit(container, 'left');
       }
-    }, [findNextVisiblePiece, scrollToPieceById, bounceAtLimit]);
+    }, [findNextPagePiece, scrollToPieceAsFirst, bounceAtLimit]);
 
-    // Navigate to next visible piece
+    // Navigate to next page of pieces
     const handleNext = useCallback(() => {
       const container = scrollContainerRef.current;
       if (!container) return;
 
-      const nextPieceId = findNextVisiblePiece('right');
-      if (nextPieceId) {
-        scrollToPieceById(nextPieceId);
+      const targetPieceId = findNextPagePiece('right');
+      if (targetPieceId) {
+        scrollToPieceAsFirst(targetPieceId);
       } else {
         // Already at end, bounce
         bounceAtLimit(container, 'right');
       }
-    }, [findNextVisiblePiece, scrollToPieceById, bounceAtLimit]);
+    }, [findNextPagePiece, scrollToPieceAsFirst, bounceAtLimit]);
 
     // Register piece ref
     const setPieceRef = useCallback((pieceId: string, element: HTMLDivElement | null) => {
@@ -872,7 +910,7 @@ export const PieceTray = forwardRef<PieceTrayRef, PieceTrayProps>(
             className={cn(
               'flex items-center',
               'transition-all duration-300 ease-out',
-              wrap ? 'flex-wrap justify-center gap-y-4' : 'h-full'
+              wrap ? 'flex-wrap gap-y-4 justify-center' : 'h-full'
             )}
             style={{
               justifyContent: wrap ? 'center' : 'flex-start',
@@ -889,7 +927,7 @@ export const PieceTray = forwardRef<PieceTrayRef, PieceTrayProps>(
                   {/* Insertion gap indicator */}
                   {showInsertionGapBefore && (
                     <div
-                      className="flex-shrink-0 animate-in fade-in zoom-in-95 duration-200"
+                      className="flex-shrink-0 duration-200 animate-in fade-in zoom-in-95"
                       style={{
                         width: INSERTION_GAP_SIZE,
                         height: '100%',
@@ -905,7 +943,9 @@ export const PieceTray = forwardRef<PieceTrayRef, PieceTrayProps>(
                       'transition-all duration-300 ease-out origin-center',
                       // Entrance animation when piece first appears (not hidden)
                       // Disable animations during drag to prevent vibration
-                      !isHidden && !dragPreview && 'animate-in fade-in zoom-in-90 slide-in-from-bottom-2 duration-300'
+                      !isHidden &&
+                        !dragPreview &&
+                        'animate-in fade-in zoom-in-90 slide-in-from-bottom-2 duration-300'
                     )}
                     // Use CSS to hide instead of filtering from DOM
                     // This keeps touch handlers active during drag
@@ -938,7 +978,7 @@ export const PieceTray = forwardRef<PieceTrayRef, PieceTrayProps>(
             {/* Insertion gap at end */}
             {dragPreview && dragPreview.insertionIndex >= pieces.length && (
               <div
-                className="flex-shrink-0 animate-in fade-in zoom-in-95 duration-200"
+                className="flex-shrink-0 duration-200 animate-in fade-in zoom-in-95"
                 style={{
                   width: INSERTION_GAP_SIZE,
                   height: '100%',
@@ -990,7 +1030,7 @@ export const PieceTray = forwardRef<PieceTrayRef, PieceTrayProps>(
               size="icon"
               onClick={handlePrevious}
               disabled={!canScrollLeft}
-              aria-label="Previous piece"
+              aria-label="Previous page"
             >
               <ChevronLeft className="w-5 h-5" />
             </Button>
@@ -999,7 +1039,7 @@ export const PieceTray = forwardRef<PieceTrayRef, PieceTrayProps>(
               size="icon"
               onClick={handleNext}
               disabled={!canScrollRight}
-              aria-label="Next piece"
+              aria-label="Next page"
             >
               <ChevronRight className="w-5 h-5" />
             </Button>
