@@ -11,14 +11,14 @@ export const RESPONSIVE_CELL_SIZES: Record<
     sm: { width: 32, height: 32 },
     md: { width: 32, height: 32 },
     lg: { width: 32, height: 32 },
-    xl: { width: 50, height: 50 },
+    xl: { width: 42, height: 42 },
   },
   8: {
     xs: { width: 38, height: 38 },
     sm: { width: 38, height: 38 },
     md: { width: 38, height: 38 },
     lg: { width: 38, height: 38 },
-    xl: { width: 62, height: 62 },
+    xl: { width: 48, height: 48 },
   },
 };
 

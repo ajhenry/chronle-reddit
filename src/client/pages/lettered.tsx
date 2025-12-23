@@ -1568,12 +1568,10 @@ export const LetteredPage = ({
           const gridRows = gameData.grid.length;
           const boardWidth =
             gridCols * responsiveCellSize.width + (gridCols - 1) * responsiveCellSpacing;
-          const boardHeight =
-            gridRows * responsiveCellSize.height + (gridRows - 1) * responsiveCellSpacing;
 
           return (
-            <div className="flex gap-6 justify-center items-start">
-              {/* Left Piece Tray - can grow independently */}
+            <div className="flex gap-6 justify-center items-stretch">
+              {/* Left Piece Tray - stretches to match center column height */}
               <SidePieceTray
                 ref={leftTrayRef}
                 pieces={leftTrayPieces}
@@ -1587,7 +1585,6 @@ export const LetteredPage = ({
                 hiddenPieceIds={pieceDraggingFromTray ? [pieceDraggingFromTray] : []}
                 side="left"
                 onPieceDropped={handlePieceDroppedToTray}
-                minHeight={boardHeight}
               />
 
               {/* Center column: Grid + Bottom Tray (bottom tray stays directly below grid) */}
@@ -1645,7 +1642,7 @@ export const LetteredPage = ({
                 </div>
               </div>
 
-              {/* Right Piece Tray - can grow independently */}
+              {/* Right Piece Tray - stretches to match center column height */}
               <SidePieceTray
                 ref={rightTrayRef}
                 pieces={rightTrayPieces}
@@ -1659,7 +1656,6 @@ export const LetteredPage = ({
                 hiddenPieceIds={pieceDraggingFromTray ? [pieceDraggingFromTray] : []}
                 side="right"
                 onPieceDropped={handlePieceDroppedToTray}
-                minHeight={boardHeight}
               />
             </div>
           );
