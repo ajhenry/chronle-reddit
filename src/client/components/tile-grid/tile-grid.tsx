@@ -1949,7 +1949,12 @@ const GridContent = forwardRef<
       />
 
       <BottomBanner
-        isVisible={!disabled && !hideBanner && dragMode === 'tap-to-drag' && (unplacedPieceCount > 0 || !!tapDragActiveItemId || !!cursorPreview)}
+        isVisible={
+          !disabled &&
+          !hideBanner &&
+          dragMode === 'tap-to-drag' &&
+          (unplacedPieceCount > 0 || !!tapDragActiveItemId || !!cursorPreview)
+        }
         isDragMode={!!tapDragActiveItemId || !!cursorPreview}
         onPlace={handlePlacePiece}
         onRemove={handleRemovePiece}
@@ -1968,21 +1973,27 @@ const GridContent = forwardRef<
         />
       )}
       {/* Cursor preview for grid item dragged outside bounds */}
-      {!cursorPreview && draggedItemId && !dragPreview && cursorPosition && grabOffset && (() => {
-        // Check both items and pendingExternalItem
-        const draggedItem = items.find((item) => item.id === draggedItemId) || pendingExternalItem;
-        if (!draggedItem || draggedItem.id !== draggedItemId) return null;
-        return (
-          <CursorPreviewComponent
-            item={draggedItem}
-            cursorPosition={cursorPosition}
-            grabOffset={grabOffset}
-            cellSize={cellSize}
-            spacing={spacing}
-            defaultClassName={defaultItemClassName}
-          />
-        );
-      })()}
+      {!cursorPreview &&
+        draggedItemId &&
+        !dragPreview &&
+        cursorPosition &&
+        grabOffset &&
+        (() => {
+          // Check both items and pendingExternalItem
+          const draggedItem =
+            items.find((item) => item.id === draggedItemId) || pendingExternalItem;
+          if (!draggedItem || draggedItem.id !== draggedItemId) return null;
+          return (
+            <CursorPreviewComponent
+              item={draggedItem}
+              cursorPosition={cursorPosition}
+              grabOffset={grabOffset}
+              cellSize={cellSize}
+              spacing={spacing}
+              defaultClassName={defaultItemClassName}
+            />
+          );
+        })()}
 
       <div className={cn('inline-block', className)}>
         <div
