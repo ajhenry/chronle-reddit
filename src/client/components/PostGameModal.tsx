@@ -20,6 +20,10 @@ export interface PostGameModalProps {
   // Theme/prompt
   theme: string;
 
+  // Streak data
+  currentStreak?: number;
+  bestStreak?: number;
+
   // Leaderboard data
   leaderboard?: Array<{
     username: string;
@@ -60,6 +64,8 @@ export const PostGameModal: React.FC<PostGameModalProps> = ({
   time,
   moves,
   theme,
+  currentStreak,
+  bestStreak,
   leaderboard = [],
   playerRank,
   totalPlayers,
@@ -136,6 +142,24 @@ export const PostGameModal: React.FC<PostGameModalProps> = ({
               </div>
             </div>
           </div>
+
+          {/* Daily Streak */}
+          {(currentStreak !== undefined || loading) && (
+            <div className="p-4 text-center bg-[#F7C846] rounded-lg">
+              <div className="text-xl font-black tracking-tight text-black">
+                {loading ? (
+                  <Skeleton className="mx-auto w-64 h-7 bg-black/20" />
+                ) : (
+                  `CURRENT DAYS PLAYED IN A ROW ${currentStreak}`
+                )}
+              </div>
+              {!loading && bestStreak !== undefined && bestStreak > (currentStreak ?? 0) && (
+                <div className="mt-1 text-sm text-black/60">
+                  Your longest streak is {bestStreak}
+                </div>
+              )}
+            </div>
+          )}
 
           {/* Theme Display */}
           <div className="p-4 text-center bg-[#F7C846] rounded-lg">

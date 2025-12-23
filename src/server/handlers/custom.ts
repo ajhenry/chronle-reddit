@@ -17,6 +17,8 @@ import {
   getPlayerRankInGame,
 } from '../database/redis';
 import { CustomGameScore } from '../../shared/types/api';
+import { updateDailyStreak } from '../lib/leaderboard-helpers';
+import { ensureUserExistsAndGetId } from '../lib/user-helpers';
 
 const router: Router = Router();
 
@@ -399,6 +401,17 @@ router.post('/api/custom/lettered/:gameId/complete', async (req, res): Promise<v
     await addScoreToGameLeaderboard(gameId, completionEntry);
     await addScoreToPlayerHistory(username, completionEntry);
     await addScoreToGlobalLeaderboard(completionEntry);
+
+    // Update daily streak for the user (custom games count toward streak)
+    try {
+      const userId = await ensureUserExistsAndGetId();
+      if (userId) {
+        await updateDailyStreak(userId);
+      }
+    } catch (streakError) {
+      // Don't fail the completion if streak update fails
+      console.error('Failed to update daily streak for custom game:', streakError);
+    }
 
     console.log(
       `Stored custom game completion: ${username} completed game ${gameId} in ${timeElapsed}ms with ${moves} moves`

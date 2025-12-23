@@ -152,6 +152,7 @@ router.get('/api/stats/user', async (_req, res): Promise<void> => {
         bestDailyStreak: 0,
         currentDailyLetteredStreak: 0,
         bestDailyLetteredStreak: 0,
+        lastGameCompletedDate: null,
         totalPoints: 0,
         totalGamesPlayed: 0,
         totalLetteredGamesPlayed: 0,

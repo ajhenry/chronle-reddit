@@ -9,7 +9,13 @@ import { Button } from '../components/ui/button';
 import { PostGameModal } from '../components/PostGameModal';
 import { LetteredLoadingAnimation } from '../components/LetteredLoadingAnimation';
 import { LetteredInstructionsDialog } from '../components/LetteredInstructionsDialog';
-import { LetteredGameData, GridPosition, LetterPiece, GridCell } from '../../shared/types/api';
+import {
+  LetteredGameData,
+  GridPosition,
+  LetterPiece,
+  GridCell,
+  UserStats,
+} from '../../shared/types/api';
 import { getResponsiveCellSize, getResponsiveCellSpacing } from '../lib/lettered-utils';
 import { useViewport } from '../hooks/useViewport';
 import { Grid, DraggableItem, GridRef } from '../components/tile-grid/tile-grid';
@@ -230,6 +236,9 @@ export const LetteredPage = ({
   const [postGameStats, setPostGameStats] = useState<LetteredPostGameResponse | null>(null);
   const [postGameStatsLoading, setPostGameStatsLoading] = useState(false);
   const [postGameStatsError, setPostGameStatsError] = useState<string | null>(null);
+
+  // User stats state (for streak display)
+  const [userStats, setUserStats] = useState<UserStats | null>(null);
 
   // Session ID for debug display
   const [sessionId, setSessionId] = useState<string | null>(null);
@@ -573,6 +582,19 @@ export const LetteredPage = ({
     }
   }, [gameId]);
 
+  // Function to load user stats (for streak display)
+  const loadUserStats = useCallback(async () => {
+    try {
+      const response = await apiFetch('/api/stats/user');
+      if (response.ok) {
+        const data = await response.json();
+        setUserStats(data.stats);
+      }
+    } catch (error) {
+      console.error('Error loading user stats:', error);
+    }
+  }, []);
+
   // Fetch postgame stats when game is complete (for restored completed games)
   useEffect(() => {
     // Fetch stats for completed games - this handles both restored and fresh completions
@@ -583,8 +605,9 @@ export const LetteredPage = ({
         postType: gameData?.postType,
       });
       void loadPostGameStats();
+      void loadUserStats();
     }
-  }, [gameId, gameComplete, loading, gameData?.postType, loadPostGameStats]);
+  }, [gameId, gameComplete, loading, gameData?.postType, loadPostGameStats, loadUserStats]);
 
   // Load postgame stats when modal opens
   useEffect(() => {
@@ -612,8 +635,16 @@ export const LetteredPage = ({
       setPostGameStats(null);
       setPostGameStatsError(null);
       void loadPostGameStats();
+      void loadUserStats();
     }
-  }, [uiState.showGameOverModal, gameComplete, gameId, gameData?.postType, loadPostGameStats]);
+  }, [
+    uiState.showGameOverModal,
+    gameComplete,
+    gameId,
+    gameData?.postType,
+    loadPostGameStats,
+    loadUserStats,
+  ]);
 
   // Generate a unique signature for a piece based on its letters and shape
   // Pieces with the same signature are interchangeable
@@ -1720,6 +1751,8 @@ export const LetteredPage = ({
         time={postGameStats?.timeElapsed ?? elapsedTime}
         moves={postGameStats?.movesUsed ?? moves}
         theme={postGameStats?.game.phrase ?? '—'}
+        currentStreak={userStats?.currentDailyStreak}
+        bestStreak={userStats?.bestDailyStreak}
         leaderboard={postGameStats?.leaderboard}
         playerRank={postGameStats?.rank}
         totalPlayers={postGameStats?.totalPlayers}
