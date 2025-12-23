@@ -1639,8 +1639,13 @@ const GridContent = forwardRef<
               store.setState({ pendingExternalItem: null });
               onExternalDragInvalid?.(currentDraggedItemId);
               placedValidly = false;
-            } else if (!isInTapDragMode) {
-              // Only return to original in non-tap-drag mode
+            } else if (isInTapDragMode) {
+              // In tap-to-drag mode, keep the piece at the drop position
+              // (even though it's on a blocked tile - validation happens on "Place")
+              store.getState().moveItem(currentDraggedItemId, dropPosition);
+              placedValidly = true;
+            } else {
+              // In non-tap-drag mode, return to original position
               if (tapDragOriginalPosition) {
                 store
                   .getState()
@@ -1756,19 +1761,21 @@ const GridContent = forwardRef<
           onExternalDragInvalid?.(currentDraggedItemId);
           placedValidly = false;
         } else if (isInTapDragMode) {
-          // In tap-to-drag mode, keep piece on grid at a clamped position
+          // In tap-to-drag mode, keep piece on grid at a position based on cursor
           const draggedItem = items.find((item) => item.id === currentDraggedItemId);
-          if (draggedItem) {
-            // Clamp position to stay within grid
+          if (draggedItem && gridBounds && grabOffset) {
+            // Calculate position based on cursor location, then clamp to valid bounds
+            const pointerX = coords.clientX - gridBounds.left;
+            const pointerY = coords.clientY - gridBounds.top;
+            const rawCellX = Math.floor(pointerX / (cellSize.width + spacing));
+            const rawCellY = Math.floor(pointerY / (cellSize.height + spacing));
+            const rawDropX = rawCellX - grabOffset.x;
+            const rawDropY = rawCellY - grabOffset.y;
+
+            // Clamp to valid grid bounds
             const clampedPosition = {
-              x: Math.max(
-                0,
-                Math.min(draggedItem.position.x, gridSize.width - draggedItem.shape.width)
-              ),
-              y: Math.max(
-                0,
-                Math.min(draggedItem.position.y, gridSize.height - draggedItem.shape.height)
-              ),
+              x: Math.max(0, Math.min(rawDropX, gridSize.width - draggedItem.shape.width)),
+              y: Math.max(0, Math.min(rawDropY, gridSize.height - draggedItem.shape.height)),
             };
             store.getState().moveItem(currentDraggedItemId, clampedPosition);
             // Keep piece on grid - validation happens on "Place"
