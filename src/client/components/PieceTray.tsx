@@ -922,6 +922,12 @@ export const PieceTray = forwardRef<PieceTrayRef, PieceTrayProps>(
               // Show insertion gap before this piece if drag preview is at this index
               const showInsertionGapBefore = dragPreview && dragPreview.insertionIndex === index;
 
+              // Calculate actual piece width based on shape
+              const minCol = Math.min(...piece.shape.map((pos: GridPosition) => pos.col));
+              const maxCol = Math.max(...piece.shape.map((pos: GridPosition) => pos.col));
+              const pieceWidth = maxCol - minCol + 1;
+              const pieceWidthPx = pieceWidth * cellSize.width + (pieceWidth - 1) * cellSpacing;
+
               return (
                 <React.Fragment key={piece.id}>
                   {/* Insertion gap indicator */}
@@ -954,7 +960,7 @@ export const PieceTray = forwardRef<PieceTrayRef, PieceTrayProps>(
                     style={{
                       opacity: isHidden ? 0 : 1,
                       transform: isHidden ? 'scale(0.8)' : 'scale(1)',
-                      maxWidth: isHidden ? 0 : 200,
+                      maxWidth: isHidden ? 0 : pieceWidthPx,
                       marginLeft: isHidden ? 0 : 8,
                       marginRight: isHidden ? 0 : 8,
                       overflow: 'hidden',
