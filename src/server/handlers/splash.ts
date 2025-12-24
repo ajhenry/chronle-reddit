@@ -3,6 +3,7 @@ import { getRedisClient } from '../lib/redis-provider';
 import { RedisKeys, deserialize } from '../../shared/types/redis';
 import { getGameStats } from '../database/lettered';
 import { SplashStatsResponse, LetteredGameData } from '../../shared/types/api';
+import { getLetteredGameNumber } from '../../shared/utils';
 
 const router: RouterType = Router();
 
@@ -107,7 +108,9 @@ router.get('/api/splash/:gameId', async (req, res): Promise<void> => {
     // Add type-specific fields
     if (isDaily) {
       // For daily games, format the date from the game ID (which is the date string)
-      response.formattedDate = formatDateWithOrdinal(gameId);
+      // Include the game number (e.g., "December 23rd, 2025 (#21)")
+      const gameNumber = getLetteredGameNumber(gameId);
+      response.formattedDate = `${formatDateWithOrdinal(gameId)} (#${gameNumber})`;
     } else {
       // For custom games, include creator info
       response.title = gameData.category;
