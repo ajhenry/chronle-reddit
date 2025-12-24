@@ -23,6 +23,7 @@ import { cn } from '@sglara/cn';
 import { LetteredGameStateManager } from '../lib/lettered-game-state';
 import { apiFetch } from '../lib/utils';
 import { LetteredDailyGameResponse, LetteredPostGameResponse } from '../../shared/types/api';
+import { getDailyGameTitle } from '../../shared/utils';
 import { useTheme } from 'src/components/theme-provider';
 import { InGameCustomButton } from 'src/components/InGameCustomButton';
 import { useDragMode } from '../hooks/useDragMode';
@@ -1377,9 +1378,13 @@ export const LetteredPage = ({
     );
   }
 
+  // Compute the game title - for daily games, show "Lettered #N - Date", otherwise just "Lettered"
+  const gameTitle =
+    gameData.postType === 'daily' ? getDailyGameTitle(gameData.createdAt) : 'Lettered';
+
   return (
     <GameLayout
-      gameTitle="Lettered"
+      gameTitle={gameTitle}
       time={elapsedTime}
       moves={moves}
       onBack={handleBackToMenu}

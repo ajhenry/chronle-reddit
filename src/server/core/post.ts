@@ -2,6 +2,7 @@ import { context } from '@devvit/web/server';
 import { reddit } from '../lib/reddit-provider';
 import { getOrCreateTodaysLetteredGame } from '../lib/lettered-game-helpers';
 import { setPostToGameMapping } from '../database/redis';
+import { getDailyGameTitle } from '../../shared/utils';
 
 const splashConfig = {
   appDisplayName: 'Lettered',
@@ -27,7 +28,7 @@ export const createPost = async () => {
   const post = await reddit.submitCustomPost({
     splash: splashConfig,
     subredditName: subredditName,
-    title: `Lettered - ${new Date().toLocaleDateString('en-US', { timeZone: 'America/New_York', month: 'long', day: 'numeric', year: 'numeric' })}`,
+    title: getDailyGameTitle(),
     webviewMetadata: {
       gameId: gameId,
       gameType: 'lettered',
