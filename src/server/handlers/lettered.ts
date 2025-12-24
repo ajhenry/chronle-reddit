@@ -31,6 +31,7 @@ import { getRedisClient } from '../lib/redis-provider';
 import { RedisKeys, deserialize, serialize } from '../../shared/types/redis';
 import { LETTERED_PHRASES } from '../lib/phrase-lists';
 import { generateMockGame } from '../lib/lettered-game-generator';
+import { titleCase } from 'title-case';
 import { context } from '@devvit/web/server';
 import { reddit } from '../lib/reddit-provider';
 import { setPostToGameMapping } from '../database/redis';
@@ -124,20 +125,26 @@ const checkPlayerHasWon = (
   // For each group of identical pieces, check if placed positions match solution positions
   for (const [signature, groupPieces] of piecesBySignature) {
     // Get the solution positions for all pieces in this group
-    const solutionPositions = groupPieces.map((piece) => {
-      const pos = solution[piece.id];
-      return pos ? `${pos.row},${pos.col}` : null;
-    }).filter(Boolean).sort();
+    const solutionPositions = groupPieces
+      .map((piece) => {
+        const pos = solution[piece.id];
+        return pos ? `${pos.row},${pos.col}` : null;
+      })
+      .filter(Boolean)
+      .sort();
 
     // Get the placed positions for all pieces in this group
-    const placedPositions = groupPieces.map((piece) => {
-      const pos = placedPieces[piece.id];
-      // Only count positions within the main grid
-      if (pos && pos.row < mainGridHeight && pos.col < mainGridWidth) {
-        return `${pos.row},${pos.col}`;
-      }
-      return null;
-    }).filter(Boolean).sort();
+    const placedPositions = groupPieces
+      .map((piece) => {
+        const pos = placedPieces[piece.id];
+        // Only count positions within the main grid
+        if (pos && pos.row < mainGridHeight && pos.col < mainGridWidth) {
+          return `${pos.row},${pos.col}`;
+        }
+        return null;
+      })
+      .filter(Boolean)
+      .sort();
 
     // Check if the sets of positions match (order doesn't matter for identical pieces)
     if (solutionPositions.length !== placedPositions.length) {
@@ -180,7 +187,7 @@ router.get('/api/lettered/:gameId/game', async (req, res): Promise<void> => {
     // Get the lettered game by ID (works for daily date strings and custom game IDs)
     const redis = await getRedisClient();
     const gameDataRaw = await redis.get(RedisKeys.letteredGame.byId(gameId));
-    
+
     if (!gameDataRaw) {
       res.status(404).json({
         status: 'error',
@@ -789,11 +796,14 @@ router.post('/api/lettered/random', async (_req, res): Promise<void> => {
     const randomIndex = Math.floor(Math.random() * LETTERED_PHRASES.length);
     const phraseData = LETTERED_PHRASES[randomIndex]!;
 
-    console.log(`Creating random game with phrase: "${phraseData.phrase}" from category: ${phraseData.category}`);
+    console.log(
+      `Creating random game with phrase: "${phraseData.phrase}" from category: ${phraseData.category} (title cased)`
+    );
 
     // Generate a new game using the server-side generator with a random seed
     const seed = Math.floor(Math.random() * 1000000);
-    const gameData = generateMockGame(phraseData.category, phraseData.phrase, seed);
+    const titleCasedCategory = titleCase(phraseData.category);
+    const gameData = generateMockGame(titleCasedCategory, phraseData.phrase, seed);
 
     // Create a unique game ID for this random game
     const gameId = `random-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
@@ -824,7 +834,7 @@ router.post('/api/lettered/random', async (_req, res): Promise<void> => {
     // Create Reddit post with the random game
     const post = await reddit.submitCustomPost({
       subredditName: subredditName,
-      title: `Lettered - ${phraseData.category}`,
+      title: `Lettered - ${titleCasedCategory}`,
       splash: {
         appDisplayName: 'Lettered',
       },
@@ -834,7 +844,7 @@ router.post('/api/lettered/random', async (_req, res): Promise<void> => {
         gameType: 'lettered',
         postType: 'custom',
         autoLaunch: true,
-        theme: phraseData.category,
+        theme: titleCasedCategory,
       },
     });
 
@@ -848,7 +858,7 @@ router.post('/api/lettered/random', async (_req, res): Promise<void> => {
       gameId,
       postId: post.id,
       phrase: phraseData.phrase,
-      category: phraseData.category,
+      category: titleCasedCategory,
       seed,
       piecesCount: randomGame.pieces.length,
     });
@@ -859,7 +869,7 @@ router.post('/api/lettered/random', async (_req, res): Promise<void> => {
       postId: post.id,
       postPermalink: `https://reddit.com/r/${subredditName}/comments/${post.id}`,
       phrase: phraseData.phrase,
-      category: phraseData.category,
+      category: titleCasedCategory,
     });
   } catch (error) {
     console.error('Error creating random game:', error);
