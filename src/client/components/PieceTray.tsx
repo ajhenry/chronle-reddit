@@ -1067,7 +1067,8 @@ export const PieceTray = forwardRef<PieceTrayRef, PieceTrayProps>(
               wrap ? 'flex-wrap gap-y-4 justify-center' : 'h-full'
             )}
             style={{
-              justifyContent: wrap ? 'center' : 'flex-start',
+              // Center pieces when they all fit, otherwise align to start for scrolling
+              justifyContent: wrap ? 'center' : needsScrolling ? 'flex-start' : 'center',
               minWidth: wrap ? undefined : 'min-content',
             }}
           >
