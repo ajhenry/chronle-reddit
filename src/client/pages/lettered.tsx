@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import Confetti from 'react-confetti';
+import { Loader2 } from 'lucide-react';
 import { GameLayout } from '../components/GameLayout';
 import { toast } from 'sonner';
 import { CardContent } from '../components/ui/card';
@@ -211,6 +212,7 @@ export const LetteredPage = ({
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [isCheckingContext, setIsCheckingContext] = useState<boolean>(true);
+  const [isCreatingNewGame, setIsCreatingNewGame] = useState(false);
 
   // Game ID from context API (primary source of truth)
   const [contextGameId, setContextGameId] = useState<string | null>(null);
@@ -879,6 +881,7 @@ export const LetteredPage = ({
   // Create a random game and navigate to it locally (no Reddit post created yet)
   // The game can be shared later via the Share button
   const handlePlayAnother = async () => {
+    setIsCreatingNewGame(true);
     try {
       const response = await apiFetch('/api/lettered/random', {
         method: 'POST',
@@ -896,6 +899,8 @@ export const LetteredPage = ({
     } catch (error) {
       console.error('Error creating random game:', error);
       toast.error('Failed to create new game');
+    } finally {
+      setIsCreatingNewGame(false);
     }
   };
 
@@ -1537,13 +1542,21 @@ export const LetteredPage = ({
             >
               <Button
                 onClick={() => void handlePlayAnother()}
+                disabled={isCreatingNewGame}
                 className={cn(
-                  'w-full bg-[#F7C846] text-black hover:bg-[#E5B83D]',
+                  'w-full bg-[#F7C846] text-black hover:bg-[#E5B83D] disabled:opacity-70',
                   gameData.postType === 'daily' && 'sm:w-auto'
                 )}
                 type="button"
               >
-                Play Another
+                {isCreatingNewGame ? (
+                  <>
+                    <Loader2 className="mr-2 w-4 h-4 animate-spin" />
+                    Creating...
+                  </>
+                ) : (
+                  'Play Another'
+                )}
               </Button>
               <Button
                 onClick={() => setUIState((prev) => ({ ...prev, showGameOverModal: true }))}
