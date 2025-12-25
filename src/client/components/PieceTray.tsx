@@ -428,6 +428,13 @@ export const PieceTray = forwardRef<PieceTrayRef, PieceTrayProps>(
     const [canScrollLeft, setCanScrollLeft] = useState(false);
     const [canScrollRight, setCanScrollRight] = useState(false);
 
+    // Scroll metrics for custom scroll indicator thumb
+    const [scrollMetrics, setScrollMetrics] = useState({
+      scrollLeft: 0,
+      scrollWidth: 0,
+      clientWidth: 0,
+    });
+
     // Drag preview state for insertion indicator
     const [dragPreview, setDragPreview] = useState<{
       insertionIndex: number;
@@ -572,9 +579,6 @@ export const PieceTray = forwardRef<PieceTrayRef, PieceTrayProps>(
       return pieces.filter((piece) => !hiddenPieceIds.includes(piece.id));
     }, [pieces, hiddenPieceIds]);
 
-    // Check if all visible pieces fit in view (no scrolling needed)
-    const allPiecesVisible = !canScrollLeft && !canScrollRight;
-
     // Calculate the height of the tallest piece (with padding for borders)
     // Keep a minimum height so the tray remains visible when empty
     const trayHeight = useMemo(() => {
@@ -597,7 +601,7 @@ export const PieceTray = forwardRef<PieceTrayRef, PieceTrayProps>(
       return maxHeight * cellSize.height + (maxHeight - 1) * cellSpacing + TRAY_VERTICAL_PADDING;
     }, [pieces, cellSize.height, cellSpacing]);
 
-    // Update scroll button visibility based on scroll position
+    // Update scroll button visibility and metrics based on scroll position
     const updateScrollButtons = useCallback(() => {
       const container = scrollContainerRef.current;
       if (!container) return;
@@ -605,6 +609,7 @@ export const PieceTray = forwardRef<PieceTrayRef, PieceTrayProps>(
       const { scrollLeft, scrollWidth, clientWidth } = container;
       setCanScrollLeft(scrollLeft > 5);
       setCanScrollRight(scrollLeft < scrollWidth - clientWidth - 5);
+      setScrollMetrics({ scrollLeft, scrollWidth, clientWidth });
     }, []);
 
     // Update scroll buttons on mount and when pieces change
@@ -846,11 +851,14 @@ export const PieceTray = forwardRef<PieceTrayRef, PieceTrayProps>(
       const targetPieceId = findNextPagePiece('left');
       if (targetPieceId) {
         scrollToPieceAsFirst(targetPieceId);
+      } else if (container.scrollLeft > 0) {
+        // Near start but not at 0 - scroll all the way to the beginning
+        smoothScrollTo(container, 0, 300);
       } else {
         // Already at start, bounce
         bounceAtLimit(container, 'left');
       }
-    }, [findNextPagePiece, scrollToPieceAsFirst, bounceAtLimit]);
+    }, [findNextPagePiece, scrollToPieceAsFirst, bounceAtLimit, smoothScrollTo]);
 
     // Navigate to next page of pieces
     const handleNext = useCallback(() => {
@@ -865,6 +873,152 @@ export const PieceTray = forwardRef<PieceTrayRef, PieceTrayProps>(
         bounceAtLimit(container, 'right');
       }
     }, [findNextPagePiece, scrollToPieceAsFirst, bounceAtLimit]);
+
+    // Calculate custom scroll indicator thumb dimensions and position
+    const needsScrolling = scrollMetrics.scrollWidth > scrollMetrics.clientWidth;
+    const trackRef = useRef<HTMLDivElement>(null);
+
+    // Track if user is dragging the scrollbar thumb
+    const [isDraggingThumb, setIsDraggingThumb] = useState(false);
+    const thumbDragStartRef = useRef({ scrollLeft: 0, clientX: 0 });
+
+    const thumbWidth = useMemo(() => {
+      if (scrollMetrics.scrollWidth <= 0) return 0;
+      const ratio = scrollMetrics.clientWidth / scrollMetrics.scrollWidth;
+      // Minimum thumb width of 10%, maximum of full track width
+      // This allows the thumb to better represent the proportion of visible content
+      return Math.max(10, ratio * 100);
+    }, [scrollMetrics.clientWidth, scrollMetrics.scrollWidth]);
+
+    const thumbPosition = useMemo(() => {
+      const maxScroll = scrollMetrics.scrollWidth - scrollMetrics.clientWidth;
+      if (maxScroll <= 0) return 0;
+      // Position as percentage of track (accounting for thumb width)
+      const trackRange = 100 - thumbWidth;
+      return (scrollMetrics.scrollLeft / maxScroll) * trackRange;
+    }, [
+      scrollMetrics.scrollLeft,
+      scrollMetrics.scrollWidth,
+      scrollMetrics.clientWidth,
+      thumbWidth,
+    ]);
+
+    // Handle thumb drag start (mouse)
+    const handleThumbMouseDown = useCallback(
+      (e: React.MouseEvent) => {
+        e.preventDefault();
+        e.stopPropagation();
+        setIsDraggingThumb(true);
+        thumbDragStartRef.current = {
+          scrollLeft: scrollContainerRef.current?.scrollLeft ?? 0,
+          clientX: e.clientX,
+        };
+
+        const handleMouseMove = (moveEvent: MouseEvent) => {
+          if (!scrollContainerRef.current || !trackRef.current) return;
+
+          const trackRect = trackRef.current.getBoundingClientRect();
+          const deltaX = moveEvent.clientX - thumbDragStartRef.current.clientX;
+          const maxScroll =
+            scrollContainerRef.current.scrollWidth - scrollContainerRef.current.clientWidth;
+          const trackWidth = trackRect.width;
+          // Account for thumb width - thumb can only move within (trackWidth - thumbWidthPx)
+          const thumbWidthPx = trackWidth * (thumbWidth / 100);
+          const effectiveTrackRange = trackWidth - thumbWidthPx;
+          const scrollDelta = (deltaX / effectiveTrackRange) * maxScroll;
+
+          scrollContainerRef.current.scrollLeft =
+            thumbDragStartRef.current.scrollLeft + scrollDelta;
+        };
+
+        const handleMouseUp = () => {
+          setIsDraggingThumb(false);
+          document.removeEventListener('mousemove', handleMouseMove);
+          document.removeEventListener('mouseup', handleMouseUp);
+        };
+
+        document.addEventListener('mousemove', handleMouseMove);
+        document.addEventListener('mouseup', handleMouseUp);
+      },
+      [thumbWidth]
+    );
+
+    // Handle thumb drag start (touch)
+    const handleThumbTouchStart = useCallback(
+      (e: React.TouchEvent) => {
+        e.stopPropagation();
+        const touch = e.touches[0];
+        if (!touch) return;
+
+        setIsDraggingThumb(true);
+        thumbDragStartRef.current = {
+          scrollLeft: scrollContainerRef.current?.scrollLeft ?? 0,
+          clientX: touch.clientX,
+        };
+
+        const handleTouchMove = (moveEvent: TouchEvent) => {
+          if (!scrollContainerRef.current || !trackRef.current) return;
+          moveEvent.preventDefault();
+
+          const moveTouch = moveEvent.touches[0];
+          if (!moveTouch) return;
+
+          const trackRect = trackRef.current.getBoundingClientRect();
+          const deltaX = moveTouch.clientX - thumbDragStartRef.current.clientX;
+          const maxScroll =
+            scrollContainerRef.current.scrollWidth - scrollContainerRef.current.clientWidth;
+          const trackWidth = trackRect.width;
+          // Account for thumb width - thumb can only move within (trackWidth - thumbWidthPx)
+          const thumbWidthPx = trackWidth * (thumbWidth / 100);
+          const effectiveTrackRange = trackWidth - thumbWidthPx;
+          const scrollDelta = (deltaX / effectiveTrackRange) * maxScroll;
+
+          scrollContainerRef.current.scrollLeft =
+            thumbDragStartRef.current.scrollLeft + scrollDelta;
+        };
+
+        const handleTouchEnd = () => {
+          setIsDraggingThumb(false);
+          document.removeEventListener('touchmove', handleTouchMove);
+          document.removeEventListener('touchend', handleTouchEnd);
+          document.removeEventListener('touchcancel', handleTouchEnd);
+        };
+
+        document.addEventListener('touchmove', handleTouchMove, { passive: false });
+        document.addEventListener('touchend', handleTouchEnd);
+        document.addEventListener('touchcancel', handleTouchEnd);
+      },
+      [thumbWidth]
+    );
+
+    // Handle clicking on the track to jump to position
+    const handleTrackClick = useCallback(
+      (e: React.MouseEvent<HTMLDivElement>) => {
+        if (!scrollContainerRef.current || !trackRef.current) return;
+        // Ignore if clicking on the thumb itself
+        if ((e.target as HTMLElement).dataset.scrollThumb) return;
+
+        const trackRect = trackRef.current.getBoundingClientRect();
+        const clickX = e.clientX - trackRect.left;
+        const trackWidth = trackRect.width;
+
+        // Account for thumb width - calculate where center of thumb should be
+        const thumbWidthPx = trackWidth * (thumbWidth / 100);
+        const effectiveTrackRange = trackWidth - thumbWidthPx;
+
+        // Offset click by half thumb width so clicking centers the thumb there
+        const adjustedClickX = clickX - thumbWidthPx / 2;
+        const clampedClickX = Math.max(0, Math.min(adjustedClickX, effectiveTrackRange));
+
+        // Calculate scroll position from adjusted click position
+        const maxScroll =
+          scrollContainerRef.current.scrollWidth - scrollContainerRef.current.clientWidth;
+        const newScrollLeft = (clampedClickX / effectiveTrackRange) * maxScroll;
+
+        scrollContainerRef.current.scrollLeft = newScrollLeft;
+      },
+      [thumbWidth]
+    );
 
     // Register piece ref
     const setPieceRef = useCallback((pieceId: string, element: HTMLDivElement | null) => {
@@ -892,16 +1046,16 @@ export const PieceTray = forwardRef<PieceTrayRef, PieceTrayProps>(
         data-tray-drop-zone="true"
       >
         {/* Tray container - scrollable or wrapping based on wrap prop */}
+        {/* Full width scrollable area - buttons overlay on top */}
         <div
           ref={scrollContainerRef}
           className={cn(
-            'transition-all duration-300 ease-out',
+            'w-full transition-all duration-300 ease-out',
             wrap ? 'overflow-visible' : 'overflow-x-auto overflow-y-hidden scrollbar-themed'
           )}
           style={{
             height: wrap ? 'auto' : trayHeight,
             minHeight: wrap ? trayHeight : undefined,
-            maxWidth: '100%',
             touchAction: wrap ? 'none' : 'pan-x pan-y',
           }}
           onTouchMove={wrap ? undefined : handleScrollContainerTouchMove}
@@ -997,55 +1151,58 @@ export const PieceTray = forwardRef<PieceTrayRef, PieceTrayProps>(
           </div>
         </div>
 
-        {/* Scroll indicator - hidden when wrapping or all pieces visible */}
-        {!wrap && (
-          <div
-            className={cn(
-              'flex gap-2 justify-center items-center mt-2 text-muted-foreground',
-              'transition-opacity duration-200',
-              allPiecesVisible ? 'opacity-0 pointer-events-none' : 'opacity-100'
-            )}
-          >
-            <ChevronLeft
-              className={cn(
-                'w-4 h-4 transition-opacity duration-200',
-                canScrollLeft ? 'opacity-100' : 'opacity-0'
-              )}
-            />
-            <span className="text-xs font-medium">More Pieces</span>
-            <ChevronRight
-              className={cn(
-                'w-4 h-4 transition-opacity duration-200',
-                canScrollRight ? 'opacity-100' : 'opacity-0'
-              )}
-            />
-          </div>
-        )}
-
-        {/* Navigation buttons - hidden when wrapping or all pieces visible */}
-        {!wrap && (
-          <div
-            className={cn(
-              'flex gap-4 mt-2',
-              'transition-opacity duration-200',
-              allPiecesVisible ? 'opacity-0 pointer-events-none' : 'opacity-100'
-            )}
-          >
+        {/* Navigation controls - buttons with thumb indicator between them */}
+        {!wrap && needsScrolling && (
+          <div className="flex gap-2 items-center px-4 mx-auto mt-3 w-full max-w-md">
+            {/* Previous button */}
             <Button
               variant="outline"
               size="icon"
               onClick={handlePrevious}
               disabled={!canScrollLeft}
               aria-label="Previous page"
+              className={cn(
+                'flex-shrink-0 transition-opacity duration-200',
+                !canScrollLeft && 'opacity-30'
+              )}
             >
               <ChevronLeft className="w-5 h-5" />
             </Button>
+
+            {/* Scroll thumb track - fills space between buttons */}
+            <div
+              ref={trackRef}
+              className="relative flex-1 h-6 rounded-full cursor-pointer bg-muted"
+              onClick={handleTrackClick}
+            >
+              <div
+                data-scroll-thumb="true"
+                className={cn(
+                  'absolute top-0 h-full rounded-full',
+                  'bg-muted-foreground hover:bg-foreground/70',
+                  'transition-colors duration-150',
+                  isDraggingThumb ? 'cursor-grabbing bg-foreground/70' : 'cursor-grab'
+                )}
+                style={{
+                  width: `${thumbWidth}%`,
+                  left: `${thumbPosition}%`,
+                }}
+                onMouseDown={handleThumbMouseDown}
+                onTouchStart={handleThumbTouchStart}
+              />
+            </div>
+
+            {/* Next button */}
             <Button
               variant="outline"
               size="icon"
               onClick={handleNext}
               disabled={!canScrollRight}
               aria-label="Next page"
+              className={cn(
+                'flex-shrink-0 transition-opacity duration-200',
+                !canScrollRight && 'opacity-30'
+              )}
             >
               <ChevronRight className="w-5 h-5" />
             </Button>

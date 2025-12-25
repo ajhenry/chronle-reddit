@@ -1495,6 +1495,9 @@ export const LetteredPage = ({
                 <div>
                   Pieces Placed: {placedPieces.size}/{gameData?.pieces.length || 0}
                 </div>
+                <div>
+                  Screen: {viewportWidth}x{viewportHeight} ({breakpoint})
+                </div>
               </div>
               {/* Toggle Admin Mode */}
               {onToggleAdmin && (
