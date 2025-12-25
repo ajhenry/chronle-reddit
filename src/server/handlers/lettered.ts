@@ -789,7 +789,8 @@ router.get('/api/lettered/:gameId/postgame', async (req, res): Promise<void> => 
   }
 });
 
-// POST /api/lettered/random - Creates a new random game from the phrase list and creates a Reddit post
+// POST /api/lettered/random - Creates a new random game from the phrase list (does NOT create a Reddit post)
+// The game can be shared later via POST /api/lettered/:gameId/share
 router.post('/api/lettered/random', async (_req, res): Promise<void> => {
   try {
     // Pick a random phrase from the list
@@ -821,6 +822,57 @@ router.post('/api/lettered/random', async (_req, res): Promise<void> => {
     const redis = await getRedisClient();
     await redis.set(RedisKeys.letteredGame.byId(gameId), serialize(randomGame));
 
+    console.log('Successfully created random lettered game (no post yet):', {
+      gameId,
+      phrase: phraseData.phrase,
+      category: titleCasedCategory,
+      seed,
+      piecesCount: randomGame.pieces.length,
+    });
+
+    res.json({
+      status: 'success',
+      gameId,
+      phrase: phraseData.phrase,
+      category: titleCasedCategory,
+    });
+  } catch (error) {
+    console.error('Error creating random game:', error);
+    res.status(500).json({
+      status: 'error',
+      message: error instanceof Error ? error.message : 'Failed to create random game',
+    });
+  }
+});
+
+// POST /api/lettered/:gameId/share - Creates a Reddit post for an existing game
+// Used when sharing a game that was created locally (e.g., via Play Again)
+router.post('/api/lettered/:gameId/share', async (req, res): Promise<void> => {
+  try {
+    const { gameId } = req.params;
+
+    // Get the game data from Redis
+    const redis = await getRedisClient();
+    const gameDataRaw = await redis.get(RedisKeys.letteredGame.byId(gameId));
+
+    if (!gameDataRaw) {
+      res.status(404).json({
+        status: 'error',
+        message: 'Game not found',
+      });
+      return;
+    }
+
+    const gameData = deserialize<LetteredGameData>(gameDataRaw);
+
+    if (!gameData) {
+      res.status(500).json({
+        status: 'error',
+        message: 'Failed to parse game data',
+      });
+      return;
+    }
+
     // Get subreddit name from context
     const { subredditName } = context;
     if (!subredditName) {
@@ -831,10 +883,10 @@ router.post('/api/lettered/random', async (_req, res): Promise<void> => {
       return;
     }
 
-    // Create Reddit post with the random game
+    // Create Reddit post with the game
     const post = await reddit.submitCustomPost({
       subredditName: subredditName,
-      title: `Lettered - ${titleCasedCategory}`,
+      title: `Lettered - ${gameData.category}`,
       splash: {
         appDisplayName: 'Lettered',
       },
@@ -844,38 +896,29 @@ router.post('/api/lettered/random', async (_req, res): Promise<void> => {
         gameType: 'lettered',
         postType: 'custom',
         autoLaunch: true,
-        theme: titleCasedCategory,
+        theme: gameData.category,
       },
     });
 
-    console.log(`Created random lettered post: ${post.id}`);
+    console.log(`Created lettered post for game ${gameId}: ${post.id}`);
     console.log(`Post URL: ${post.url}`);
 
     // Store mapping from post ID to game ID in Redis for context detection
     await setPostToGameMapping(post.id, gameId);
 
-    console.log('Successfully created random lettered game with post:', {
-      gameId,
-      postId: post.id,
-      phrase: phraseData.phrase,
-      category: titleCasedCategory,
-      seed,
-      piecesCount: randomGame.pieces.length,
-    });
+    const postPermalink = `https://reddit.com/r/${subredditName}/comments/${post.id}`;
 
     res.json({
       status: 'success',
       gameId,
       postId: post.id,
-      postPermalink: `https://reddit.com/r/${subredditName}/comments/${post.id}`,
-      phrase: phraseData.phrase,
-      category: titleCasedCategory,
+      postPermalink,
     });
   } catch (error) {
-    console.error('Error creating random game:', error);
+    console.error('Error sharing game:', error);
     res.status(500).json({
       status: 'error',
-      message: error instanceof Error ? error.message : 'Failed to create random game',
+      message: error instanceof Error ? error.message : 'Failed to share game',
     });
   }
 });

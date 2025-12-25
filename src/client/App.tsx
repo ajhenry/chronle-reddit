@@ -111,6 +111,16 @@ export const App = () => {
         <Route path="/privacy" element={<PrivacyPage />} />
         <Route path="/admin" element={<AdminPage />} />
         <Route
+          path="/game/:gameId"
+          element={
+            <LetteredPage
+              onBack={handleBackToMenu}
+              isAdmin={showAdminUI && (userInfo?.admin ?? false)}
+              onToggleAdmin={() => setShowAdminUI(false)}
+            />
+          }
+        />
+        <Route
           path="*"
           element={
             <LetteredPage

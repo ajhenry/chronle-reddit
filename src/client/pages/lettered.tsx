@@ -1,6 +1,5 @@
 import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { navigateTo } from '@devvit/web/client';
 import Confetti from 'react-confetti';
 import { GameLayout } from '../components/GameLayout';
 import { toast } from 'sonner';
@@ -219,8 +218,9 @@ export const LetteredPage = ({
   const [postId, setPostId] = useState<string | null>(null);
   const [subredditName, setSubredditName] = useState<string | null>(null);
 
-  // Effective game ID - prefer context, fallback to URL param
-  const gameId = contextGameId || urlGameId;
+  // Effective game ID - prefer URL param (for direct navigation like Play Again),
+  // fallback to context (for when loaded from a Reddit post)
+  const gameId = urlGameId || contextGameId;
 
   // UI-specific state
   const [uiState, setUIState] = useState<UIState>({
@@ -281,7 +281,14 @@ export const LetteredPage = ({
   // Track piece order within each tray (allows reordering when pieces are dropped)
   const [pieceOrder, setPieceOrder] = useState<string[]>([]);
 
-  // Initialize tray assignments when game data loads (only once)
+  // Reset tray assignments when game changes (new gameId)
+  // Then initialize them when game data loads
+  useEffect(() => {
+    // Reset tray assignments when gameId changes
+    setTrayAssignments(new Map());
+  }, [gameId]);
+
+  // Initialize tray assignments when game data loads
   useEffect(() => {
     if (!gameData || trayAssignments.size > 0) return;
 
@@ -522,14 +529,15 @@ export const LetteredPage = ({
 
   useEffect(() => {
     const initializeGame = async () => {
-      // Wait for context checking to complete before loading the game
-      if (!isCheckingContext) {
+      // If we have a URL gameId, we can load immediately (no need to wait for context)
+      // Otherwise, wait for context checking to complete
+      if (urlGameId || !isCheckingContext) {
         await loadGame();
       }
     };
 
     void initializeGame();
-  }, [loadGame, isCheckingContext]);
+  }, [loadGame, isCheckingContext, urlGameId]);
 
   // Subscribe to first-time completion events (only fires on fresh wins)
   useEffect(() => {
@@ -868,7 +876,8 @@ export const LetteredPage = ({
     void navigate('/custom');
   };
 
-  // Create a random game and navigate to its Reddit post
+  // Create a random game and navigate to it locally (no Reddit post created yet)
+  // The game can be shared later via the Share button
   const handlePlayAnother = async () => {
     try {
       const response = await apiFetch('/api/lettered/random', {
@@ -882,13 +891,8 @@ export const LetteredPage = ({
       const data = await response.json();
       console.log('Created random game:', data);
 
-      // Navigate to the new Reddit post using Devvit's navigateTo
-      if (data.postPermalink) {
-        navigateTo(data.postPermalink);
-      } else {
-        // Fallback to navigating within the app
-        void navigate(`/game/${data.gameId}`);
-      }
+      // Navigate to the new game locally within the webview
+      void navigate(`/game/${data.gameId}`);
     } catch (error) {
       console.error('Error creating random game:', error);
       toast.error('Failed to create new game');
@@ -1395,6 +1399,8 @@ export const LetteredPage = ({
       onHeaderInteraction={() => gridRef.current?.placeTapDragItem()}
       postId={postId}
       subredditName={subredditName}
+      gameId={gameId}
+      contextGameId={contextGameId}
       logoSrc="/lettered-logo.svg"
       gameComplete={gameComplete}
     >
@@ -1552,6 +1558,8 @@ export const LetteredPage = ({
                 className={cn('w-full', gameData.postType === 'daily' && 'sm:w-auto')}
                 postId={postId}
                 subredditName={subredditName}
+                gameId={gameId}
+                contextGameId={contextGameId}
               />
             </div>
           </div>

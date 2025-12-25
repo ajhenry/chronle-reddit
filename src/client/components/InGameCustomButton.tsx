@@ -1,20 +1,27 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { Button } from './ui/button';
 import { useNavigate } from 'react-router-dom';
-import { Plus, Share2 } from 'lucide-react';
+import { Plus, Share2, Loader2 } from 'lucide-react';
+import { toast } from 'sonner';
+import { apiFetch } from '../lib/utils';
 
 interface InGameCustomButtonProps {
   className?: string;
   postId?: string | null;
   subredditName?: string | null;
+  gameId?: string | null;
+  contextGameId?: string | null;
 }
 
 export const InGameCustomButton: React.FC<InGameCustomButtonProps> = ({
   className,
   postId,
   subredditName,
+  gameId,
+  contextGameId,
 }) => {
   const navigate = useNavigate();
+  const [isSharing, setIsSharing] = useState(false);
 
   const handleClick = () => {
     void navigate('/custom');
@@ -27,9 +34,41 @@ export const InGameCustomButton: React.FC<InGameCustomButtonProps> = ({
     return `https://www.reddit.com/r/${subredditName}/comments/${cleanPostId}/`;
   };
 
+  // Check if this game needs a post to be created before sharing
+  // (i.e., it was created via "Play Again" and hasn't been shared yet)
+  const needsPostCreation = gameId && (!contextGameId || gameId !== contextGameId);
+
   const handleShare = async () => {
-    const redditUrl = getRedditPostUrl();
-    const shareUrl = redditUrl || window.location.href;
+    let shareUrl: string;
+
+    if (needsPostCreation) {
+      // Create a Reddit post for this game first
+      setIsSharing(true);
+      try {
+        const response = await apiFetch(`/api/lettered/${gameId}/share`, {
+          method: 'POST',
+        });
+
+        if (!response.ok) {
+          throw new Error('Failed to create share post');
+        }
+
+        const data = await response.json();
+        shareUrl = data.postPermalink;
+        toast.success('Post created! Sharing...');
+      } catch (error) {
+        console.error('Error creating share post:', error);
+        toast.error('Failed to create share link');
+        setIsSharing(false);
+        return;
+      } finally {
+        setIsSharing(false);
+      }
+    } else {
+      // Use existing post URL
+      const redditUrl = getRedditPostUrl();
+      shareUrl = redditUrl || window.location.href;
+    }
 
     const shareData = {
       title: 'Lettered',
@@ -43,6 +82,7 @@ export const InGameCustomButton: React.FC<InGameCustomButtonProps> = ({
       } else {
         // Fallback: copy to clipboard
         await navigator.clipboard.writeText(shareUrl);
+        toast.success('Link copied to clipboard!');
       }
     } catch (err) {
       // User cancelled or share failed - ignore
@@ -61,10 +101,20 @@ export const InGameCustomButton: React.FC<InGameCustomButtonProps> = ({
       </Button>
       <Button
         onClick={() => void handleShare()}
-        className="flex-1 bg-[#F7C846] text-black border-[#F7C846] hover:bg-[#E5B83D] hover:border-[#E5B83D]"
+        disabled={isSharing}
+        className="flex-1 bg-[#F7C846] text-black border-[#F7C846] hover:bg-[#E5B83D] hover:border-[#E5B83D] disabled:opacity-70"
       >
-        <Share2 className="mr-1 w-4 h-4" />
-        Share
+        {isSharing ? (
+          <>
+            <Loader2 className="mr-1 w-4 h-4 animate-spin" />
+            Creating...
+          </>
+        ) : (
+          <>
+            <Share2 className="mr-1 w-4 h-4" />
+            Share
+          </>
+        )}
       </Button>
     </div>
   );
