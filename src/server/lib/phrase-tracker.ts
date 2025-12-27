@@ -4,7 +4,7 @@
  */
 
 import { getRedisClient } from './redis-provider';
-import { RANDOM_LETTERED_PHRASES, type PhraseData } from './phrase-lists';
+import { DAILY_LETTERED_PHRASES, type PhraseData } from './phrase-lists';
 
 const LETTERED_INDEX_KEY = 'daily:lettered:phrase_index';
 
@@ -19,10 +19,10 @@ export async function getNextLetteredPhrase(): Promise<PhraseData> {
     const currentIndexStr = await redis.get(LETTERED_INDEX_KEY);
     const currentIndex = currentIndexStr ? parseInt(currentIndexStr, 10) : 0;
 
-    const nextIndex = currentIndex % RANDOM_LETTERED_PHRASES.length;
-    const phrase = RANDOM_LETTERED_PHRASES[nextIndex]!;
+    const nextIndex = currentIndex % DAILY_LETTERED_PHRASES.length;
+    const phrase = DAILY_LETTERED_PHRASES[nextIndex]!;
 
-    const newIndex = (currentIndex + 1) % RANDOM_LETTERED_PHRASES.length;
+    const newIndex = (currentIndex + 1) % DAILY_LETTERED_PHRASES.length;
     await redis.set(LETTERED_INDEX_KEY, newIndex.toString());
 
     console.log(
@@ -33,7 +33,7 @@ export async function getNextLetteredPhrase(): Promise<PhraseData> {
     return phrase;
   } catch (error) {
     console.error('Error getting next lettered phrase:', error);
-    return RANDOM_LETTERED_PHRASES[0]!;
+    return DAILY_LETTERED_PHRASES[0]!;
   }
 }
 
@@ -70,8 +70,8 @@ export async function resetLetteredIndex(index: number = 0): Promise<void> {
 export function getPhraseListInfo() {
   return {
     letteredPhrases: {
-      total: RANDOM_LETTERED_PHRASES.length,
-      categories: [...new Set(RANDOM_LETTERED_PHRASES.map((p) => p.category))],
+      total: DAILY_LETTERED_PHRASES.length,
+      categories: [...new Set(DAILY_LETTERED_PHRASES.map((p) => p.category))],
     },
   };
 }

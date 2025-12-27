@@ -195,10 +195,6 @@ export const DAILY_LETTERED_PHRASES: PhraseData[] = [
     category: 'now we are both awkward',
   },
   {
-    phrase: 'buying clearance items you really dont need',
-    category: 'but it was seventy percent off',
-  },
-  {
     phrase: 'faking like you know the song lyrics and mumbling',
     category: 'nobody will notice right',
   },
@@ -224,7 +220,7 @@ export const DAILY_LETTERED_PHRASES: PhraseData[] = [
   },
   {
     phrase: 'leaving dishes to soak for three days straight',
-    category: 'they will clean themselves later',
+    category: 'things that clean themselves',
   },
   {
     phrase: 'hitting reply all on an email by accident',
@@ -232,7 +228,7 @@ export const DAILY_LETTERED_PHRASES: PhraseData[] = [
   },
   {
     phrase: 'eating cereal with water because the milk expired',
-    category: 'rock bottom moments',
+    category: 'rock bottom',
   },
   {
     phrase: 'saying you too when the waiter says enjoy your meal',
@@ -275,10 +271,6 @@ export const DAILY_LETTERED_PHRASES: PhraseData[] = [
     category: 'five second rule extended',
   },
   {
-    phrase: 'liking your own post because nobody else will',
-    category: 'pity party for one',
-  },
-  {
     phrase: 'adding items to your cart and never checking out',
     category: 'just browsing forever',
   },
@@ -292,14 +284,14 @@ export const DAILY_LETTERED_PHRASES: PhraseData[] = [
   },
   {
     phrase: 'turning the music down to see better while driving',
-    category: 'somehow this helps',
+    category: 'odd things that help',
   },
   {
     phrase: 'using your phone light to find your phone',
     category: 'wait a minute',
   },
   {
-    phrase: 'eating breakfast food for dinner on purpose',
+    phrase: 'eating breakfast food for dinner',
     category: 'superior meal choice',
   },
   {
@@ -307,8 +299,8 @@ export const DAILY_LETTERED_PHRASES: PhraseData[] = [
     category: 'what could go wrong',
   },
   {
-    phrase: 'putting toilet paper roll on backwards by mistake',
-    category: 'grounds for divorce',
+    phrase: 'putting toilet paper roll on backwards',
+    category: 'split population',
   },
   {
     phrase: 'smelling the milk to see if it went bad already',
@@ -323,14 +315,6 @@ export const DAILY_LETTERED_PHRASES: PhraseData[] = [
     category: 'zero remorse',
   },
   {
-    phrase: 'using amazon prime for two day delivery anxiety',
-    category: 'where is my package',
-  },
-  {
-    phrase: 'blowing on hot food even when its already cold',
-    category: 'force of habit',
-  },
-  {
     phrase: 'checking your bank account hoping for more money',
     category: 'maybe this time',
   },
@@ -339,27 +323,19 @@ export const DAILY_LETTERED_PHRASES: PhraseData[] = [
     category: 'terrible life choices',
   },
   {
-    phrase: 'closing all tabs with important stuff you needed',
-    category: 'immediate regret',
-  },
-  {
     phrase: 'singing in the car at a red light proudly',
     category: 'free show for everyone',
   },
   {
-    phrase: 'eating an entire jar of pickles in one session',
-    category: 'no stopping me now',
+    phrase: 'saving a pickle jar because it looks cool',
+    category: 'things people collect',
   },
   {
-    phrase: 'searching how to spell a really simple word',
-    category: 'dont tell anyone',
-  },
-  {
-    phrase: 'saving extra food you know you will never eat',
+    phrase: 'taking leftover dinner to work the next day',
     category: 'future me will want this',
   },
   {
-    phrase: 'turning off alarm and going back to sleep',
+    phrase: 'turning off the alarm and going back to bed',
     category: 'future me problem',
   },
   {
@@ -371,15 +347,11 @@ export const DAILY_LETTERED_PHRASES: PhraseData[] = [
     category: 'taste buds dont work',
   },
   {
-    phrase: 'looking at your phone within five seconds of waking',
-    category: 'first thing every morning',
+    phrase: 'wearing shoes without socks in the summer',
+    category: 'sweating the dogs',
   },
   {
-    phrase: 'wearing shoes without socks in the summer heat',
-    category: 'asking for blisters',
-  },
-  {
-    phrase: 'eating an entire family size bag of chips alone',
+    phrase: 'eating an whole family size bag of chips alone',
     category: 'i am the family',
   },
   {
@@ -387,15 +359,15 @@ export const DAILY_LETTERED_PHRASES: PhraseData[] = [
     category: 'saving a buck',
   },
   {
-    phrase: 'only eating a sleeve of crackers and spray cheese',
+    phrase: 'only eating a sleeve of ritz and spray cheese',
     category: 'girl dinner',
   },
   {
-    phrase: 'pushing pull doors and pulling push doors always',
-    category: 'every single time',
+    phrase: 'pushing pull doors and pulling push doors',
+    category: 'bad designs',
   },
   {
-    phrase: 'eating nutella right from the jar with a spoon',
+    phrase: 'finishing a jar of nutella with only a spoon',
     category: 'living my best life',
   },
   {
@@ -411,16 +383,16 @@ export const DAILY_LETTERED_PHRASES: PhraseData[] = [
     category: 'day in the life of a college student',
   },
   {
-    phrase: 'using the same towel for way too many days',
-    category: 'laundry day is distant',
+    phrase: 'coming home to a clean home after vacation',
+    category: 'high upfront cost',
   },
   {
     phrase: 'testing the fridge light still works fine',
     category: 'does it actually turn off',
   },
   {
-    phrase: 'eating ice cream right from the carton tonight',
-    category: 'no dishes required',
+    phrase: 'eating cherry garcia right from the carton',
+    category: 'spoon optional',
   },
   {
     phrase: 'saying almost there when you just left the house',
@@ -428,7 +400,7 @@ export const DAILY_LETTERED_PHRASES: PhraseData[] = [
   },
   {
     phrase: 'stopping to pet every single dog you see',
-    category: 'dog lover problems',
+    category: 'the dog magnet',
   },
   {
     phrase: 'dipping french fries in a chocolate frosty',
@@ -439,10 +411,6 @@ export const DAILY_LETTERED_PHRASES: PhraseData[] = [
     category: 'but look at the price',
   },
   {
-    phrase: 'opening a new tab to search a thing super dumb',
-    category: 'clear history later',
-  },
-  {
     phrase: 'eating peanut butter with a spoon from the jar',
     category: "calories don't count at midnight",
   },
@@ -451,7 +419,7 @@ export const DAILY_LETTERED_PHRASES: PhraseData[] = [
     category: 'cheese makes it better',
   },
   {
-    phrase: 'wearing the same pants four days in a row proudly',
+    phrase: 'wearing the same pants four days in a row',
     category: 'uniform of choice',
   },
   {
@@ -470,9 +438,6 @@ export const DAILY_LETTERED_PHRASES: PhraseData[] = [
     phrase: 'reheating pizza in the microwave instead of oven',
     category: 'three minutes max',
   },
-];
-
-const temp = [
   {
     phrase: 'eating an entire box of thin mints with milk',
     category: 'supporting local troops right',
@@ -980,7 +945,7 @@ const temp = [
   },
   {
     phrase: 'buying a slow cooker to make one pot of chili ever',
-    category: 'countertop decoration now',
+    category: 'countertop decorations',
   },
   {
     phrase: 'leaving your library books until they are overdue',
