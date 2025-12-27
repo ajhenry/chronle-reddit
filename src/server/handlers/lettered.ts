@@ -29,7 +29,7 @@ import {
 } from '../database/lettered';
 import { getRedisClient } from '../lib/redis-provider';
 import { RedisKeys, deserialize, serialize } from '../../shared/types/redis';
-import { LETTERED_PHRASES } from '../lib/phrase-lists';
+import { RANDOM_LETTERED_PHRASES } from '../lib/phrase-lists';
 import { generateMockGame } from '../lib/lettered-game-generator';
 import { titleCase } from 'title-case';
 import { context } from '@devvit/web/server';
@@ -794,8 +794,8 @@ router.get('/api/lettered/:gameId/postgame', async (req, res): Promise<void> => 
 router.post('/api/lettered/random', async (_req, res): Promise<void> => {
   try {
     // Pick a random phrase from the list
-    const randomIndex = Math.floor(Math.random() * LETTERED_PHRASES.length);
-    const phraseData = LETTERED_PHRASES[randomIndex]!;
+    const randomIndex = Math.floor(Math.random() * RANDOM_LETTERED_PHRASES.length);
+    const phraseData = RANDOM_LETTERED_PHRASES[randomIndex]!;
 
     console.log(
       `Creating random game with phrase: "${phraseData.phrase}" from category: ${phraseData.category} (title cased)`
