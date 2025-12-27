@@ -2,8 +2,18 @@ import { Router } from 'express';
 import { context } from '@devvit/web/server';
 import { getRedisClient } from '../lib/redis-provider';
 import { isDevelopment } from '../../shared/utils';
+import { setPostToGameMapping } from '../database/redis';
 
 const router = Router();
+
+/**
+ * Get today's game ID in ISO format (YYYY-MM-DD)
+ * This matches the format used by getOrCreateTodaysLetteredGame
+ */
+function getTodaysGameId(): string {
+  const today = new Date();
+  return today.toISOString().split('T')[0]!;
+}
 
 // Get post context and metadata
 router.get('/api/context', async (_req, res): Promise<void> => {
@@ -60,7 +70,25 @@ router.get('/api/context', async (_req, res): Promise<void> => {
 
     // Primary: Use Redis mapping (most reliable, works for both daily and custom)
     // Fallback: Use metadata fields (for backwards compatibility)
-    const gameId = gameIdFromRedis || metadata.gameId || metadata.customGameId;
+    let gameId = gameIdFromRedis || metadata.gameId || metadata.customGameId;
+
+    // Final fallback: If no game ID found and this isn't a custom game post,
+    // fall back to today's daily game. This handles:
+    // 1. Posts created before the post-to-game mapping feature
+    // 2. Posts whose mappings expired (7-day TTL)
+    // 3. Legacy posts without proper metadata
+    if (!gameId && !metadata.customGameId) {
+      const todaysGameId = getTodaysGameId();
+      console.log('No game ID found, falling back to today\'s daily game:', todaysGameId);
+      gameId = todaysGameId;
+
+      // Store the mapping for future requests (fire-and-forget)
+      if (postId) {
+        void setPostToGameMapping(postId, todaysGameId).catch((err) => {
+          console.error('Failed to store fallback post-to-game mapping:', err);
+        });
+      }
+    }
 
     res.json({
       status: 'success',
