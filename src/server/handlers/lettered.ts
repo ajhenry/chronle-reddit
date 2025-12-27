@@ -832,21 +832,21 @@ router.get('/api/lettered/:gameId/leaderboard', async (req, res): Promise<void> 
     let userEntry: (typeof entries)[0] | undefined = undefined;
     const userId = await ensureUserExistsAndGetId();
 
+    // Number of entries displayed in the UI leaderboard
+    const DISPLAYED_ENTRIES = 5;
+
     if (userId) {
-      const hasCompleted = await hasUserCompletedGame(userId, gameId);
+      const hasCompleted = await hasUserCompletedGame(gameId, userId);
       if (hasCompleted) {
         userRank = await getPlayerRankInGameLeaderboard(gameId, userId);
 
-        // If user is outside the top entries, find their specific entry
-        if (userRank && userRank > entries.length) {
+        // If user is outside the top displayed entries, find their specific entry
+        if (userRank && userRank > DISPLAYED_ENTRIES) {
           // Get user's session data to build their entry
           const session = await getOrCreateLetteredSession(userId, gameId);
           if (session.isCompleted) {
-            const redis = await getRedisClient();
-            const userDataRaw = await redis.hGet('users', userId);
-            const userData = userDataRaw ? deserialize<{ handle: string }>(userDataRaw) : null;
             userEntry = {
-              username: userData?.handle || 'Anonymous',
+              username: 'You',
               timeElapsed: session.timeElapsed,
               moves: session.moves,
               score: calculateLeaderboardScore(session.timeElapsed, session.moves),
