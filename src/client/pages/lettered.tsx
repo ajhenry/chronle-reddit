@@ -9,6 +9,14 @@ import { Button } from '../components/ui/button';
 import { PostGameModal } from '../components/PostGameModal';
 import { LetteredLoadingAnimation } from '../components/LetteredLoadingAnimation';
 import { LetteredInstructionsDialog } from '../components/LetteredInstructionsDialog';
+import { LeaderboardEntry } from '../components/GameLeaderboard';
+
+interface LeaderboardResponse {
+  entries: LeaderboardEntry[];
+  totalPlayers: number;
+  userRank?: number;
+  userEntry?: LeaderboardEntry;
+}
 import {
   LetteredGameData,
   GridPosition,
@@ -23,7 +31,6 @@ import { cn } from '@sglara/cn';
 import { LetteredGameStateManager } from '../lib/lettered-game-state';
 import { apiFetch } from '../lib/utils';
 import { LetteredDailyGameResponse, LetteredPostGameResponse } from '../../shared/types/api';
-import { getDailyGameTitle } from '../../shared/utils';
 import { useTheme } from 'src/components/theme-provider';
 import { InGameCustomButton } from 'src/components/InGameCustomButton';
 import { useDragMode } from '../hooks/useDragMode';
@@ -242,6 +249,10 @@ export const LetteredPage = ({
 
   // User stats state (for streak display)
   const [userStats, setUserStats] = useState<UserStats | null>(null);
+
+  // Leaderboard state (can be shown before completing)
+  const [leaderboardData, setLeaderboardData] = useState<LeaderboardResponse | null>(null);
+  const [leaderboardLoading, setLeaderboardLoading] = useState(false);
 
   // Session ID for debug display
   const [sessionId, setSessionId] = useState<string | null>(null);
@@ -606,6 +617,24 @@ export const LetteredPage = ({
     }
   }, []);
 
+  // Function to load leaderboard (works before completing the game)
+  const loadLeaderboard = useCallback(async () => {
+    if (!gameId) return;
+
+    setLeaderboardLoading(true);
+    try {
+      const response = await apiFetch(`/api/lettered/${gameId}/leaderboard`);
+      if (response.ok) {
+        const data: LeaderboardResponse = await response.json();
+        setLeaderboardData(data);
+      }
+    } catch (error) {
+      console.error('Error loading leaderboard:', error);
+    } finally {
+      setLeaderboardLoading(false);
+    }
+  }, [gameId]);
+
   // Fetch postgame stats when game is complete (for restored completed games)
   useEffect(() => {
     // Fetch stats for completed games - this handles both restored and fresh completions
@@ -617,8 +646,9 @@ export const LetteredPage = ({
       });
       void loadPostGameStats();
       void loadUserStats();
+      void loadLeaderboard();
     }
-  }, [gameId, gameComplete, loading, gameData?.postType, loadPostGameStats, loadUserStats]);
+  }, [gameId, gameComplete, loading, gameData?.postType, loadPostGameStats, loadUserStats, loadLeaderboard]);
 
   // Load postgame stats when modal opens
   useEffect(() => {
@@ -628,8 +658,9 @@ export const LetteredPage = ({
         postType: gameData?.postType,
       });
       void loadPostGameStats();
+      void loadLeaderboard();
     }
-  }, [uiState.showGameOverModal, gameComplete, gameId, gameData?.postType, loadPostGameStats]);
+  }, [uiState.showGameOverModal, gameComplete, gameId, gameData?.postType, loadPostGameStats, loadLeaderboard]);
 
   // Always refetch stats when modal becomes visible
   const prevModalState = useRef(false);
@@ -647,6 +678,7 @@ export const LetteredPage = ({
       setPostGameStatsError(null);
       void loadPostGameStats();
       void loadUserStats();
+      void loadLeaderboard();
     }
   }, [
     uiState.showGameOverModal,
@@ -655,6 +687,7 @@ export const LetteredPage = ({
     gameData?.postType,
     loadPostGameStats,
     loadUserStats,
+    loadLeaderboard,
   ]);
 
   // Generate a unique signature for a piece based on its letters and shape
@@ -855,6 +888,7 @@ export const LetteredPage = ({
             if (responseData.hasWon) {
               console.log('User won! Fetching postgame stats after session save...');
               void loadPostGameStats();
+              void loadLeaderboard();
             }
           }
         } catch (error) {
@@ -862,7 +896,7 @@ export const LetteredPage = ({
         }
       }
     },
-    [gameId, loadPostGameStats, viewportWidth, viewportHeight, breakpoint]
+    [gameId, loadPostGameStats, loadLeaderboard, viewportWidth, viewportHeight, breakpoint]
   );
 
   const handleBackToMenu = () => {
@@ -1387,9 +1421,8 @@ export const LetteredPage = ({
     );
   }
 
-  // Compute the game title - for daily games, show "Lettered #N - Date", otherwise just "Lettered"
-  const gameTitle =
-    gameData.postType === 'daily' ? getDailyGameTitle(gameData.createdAt) : 'Lettered';
+  // Game title is always just "Lettered"
+  const gameTitle = 'Lettered';
 
   return (
     <GameLayout
@@ -1398,7 +1431,14 @@ export const LetteredPage = ({
       moves={moves}
       onBack={handleBackToMenu}
       onReset={handleResetPieces}
-      onLeaderboard={() => setUIState((prev) => ({ ...prev, showGameOverModal: true }))}
+      onLeaderboard={() => {
+        setUIState((prev) => ({ ...prev, showGameOverModal: true }));
+        void loadLeaderboard();
+        if (gameComplete) {
+          void loadPostGameStats();
+          void loadUserStats();
+        }
+      }}
       onHelp={() => setShowInstructions(true)}
       onCreateGame={handleCreateGame}
       onHeaderInteraction={() => gridRef.current?.placeTapDragItem()}
@@ -1494,6 +1534,9 @@ export const LetteredPage = ({
                 <div>Game Complete: {gameComplete ? 'Yes' : 'No'}</div>
                 <div>
                   Pieces Placed: {placedPieces.size}/{gameData?.pieces.length || 0}
+                </div>
+                <div>
+                  Screen: {viewportWidth}x{viewportHeight} ({breakpoint})
                 </div>
               </div>
               {/* Toggle Admin Mode */}
@@ -1774,16 +1817,18 @@ export const LetteredPage = ({
         }}
         gameType="lettered"
         isCustomGame={gameData.postType === 'custom'}
-        loading={postGameStatsLoading}
+        loading={leaderboardLoading}
         error={postGameStatsError}
         time={postGameStats?.timeElapsed ?? elapsedTime}
         moves={postGameStats?.movesUsed ?? moves}
-        theme={postGameStats?.game.phrase ?? '—'}
+        theme={postGameStats?.game.phrase ?? gameData.category}
         currentStreak={userStats?.currentDailyStreak}
         bestStreak={userStats?.bestDailyStreak}
-        leaderboard={postGameStats?.leaderboard}
-        playerRank={postGameStats?.rank}
-        totalPlayers={postGameStats?.totalPlayers}
+        leaderboard={leaderboardData?.entries ?? postGameStats?.leaderboard}
+        playerRank={leaderboardData?.userRank ?? postGameStats?.rank}
+        totalPlayers={leaderboardData?.totalPlayers ?? postGameStats?.totalPlayers}
+        userEntry={leaderboardData?.userEntry ?? postGameStats?.userEntry}
+        isComplete={gameComplete}
         onClose={() => {
           setUIState((prev) => ({
             ...prev,
@@ -1791,6 +1836,7 @@ export const LetteredPage = ({
             showConfetti: false,
           }));
           setPostGameStats(null); // Reset stats when closing
+          setLeaderboardData(null); // Reset leaderboard when closing
           setPostGameStatsError(null);
           resetGame();
         }}

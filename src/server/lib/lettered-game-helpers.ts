@@ -12,10 +12,9 @@ export async function getOrCreateTodaysLetteredGame(): Promise<LetteredGameData>
   try {
     const redis = await getRedisClient();
 
-    // Calculate today's date in EST
+    // Calculate today's date in UTC (matches the Reddit post title format)
     const today = new Date();
-    const estDate = new Date(today.toLocaleString('en-US', { timeZone: 'America/New_York' }));
-    const gameId = estDate.toISOString().split('T')[0]!; // YYYY-MM-DD format (e.g., '2025-12-02')
+    const gameId = today.toISOString().split('T')[0]!; // YYYY-MM-DD format in UTC (e.g., '2025-12-02')
 
     // Try to get today's game from Redis
     const existingGameData = await redis.get(RedisKeys.letteredGame.byId(gameId));

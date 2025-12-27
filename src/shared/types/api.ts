@@ -226,6 +226,7 @@ export type LetteredPostGameResponse = {
   rank?: number;
   totalPlayers?: number;
   leaderboard?: GameLeaderboardEntryResponse[];
+  userEntry?: GameLeaderboardEntryResponse; // User's entry if outside top 5
 };
 
 // Splash screen stats response

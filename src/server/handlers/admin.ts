@@ -933,10 +933,9 @@ router.post('/api/admin/lettered/regenerate', async (_req, res): Promise<void> =
 
     const redis = await getRedisClient();
 
-    // Calculate today's date in EST (same logic as getOrCreateTodaysLetteredGame)
+    // Calculate today's date in UTC (same logic as getOrCreateTodaysLetteredGame)
     const today = new Date();
-    const estDate = new Date(today.toLocaleString('en-US', { timeZone: 'America/New_York' }));
-    const gameId = estDate.toISOString().split('T')[0]!; // YYYY-MM-DD format
+    const gameId = today.toISOString().split('T')[0]!; // YYYY-MM-DD format in UTC
 
     console.log('Regenerating lettered game for:', gameId);
 
