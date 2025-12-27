@@ -2,6 +2,7 @@ import React from 'react';
 import { Dialog, DialogContent, DialogClose } from './ui/dialog';
 import { Button } from './ui/button';
 import { Skeleton } from './ui/skeleton';
+import { GameLeaderboard, LeaderboardEntry } from './GameLeaderboard';
 
 export interface PostGameModalProps {
   open: boolean;
@@ -13,33 +14,32 @@ export interface PostGameModalProps {
   loading?: boolean;
   error?: string | null;
 
-  // Core stats
+  // Core stats (only shown when showUserStats is true)
   time: number; // elapsed time in milliseconds
   moves: number;
 
   // Theme/prompt
   theme: string;
 
-  // Streak data
+  // Streak data (only shown when showUserStats is true)
   currentStreak?: number;
   bestStreak?: number;
 
   // Leaderboard data
-  leaderboard?: Array<{
-    username: string;
-    timeElapsed: number;
-    moves: number;
-    score?: number; // Internal score for ranking (not displayed)
-    rank?: number;
-  }>;
+  leaderboard?: LeaderboardEntry[];
   playerRank?: number;
   totalPlayers?: number;
+  userEntry?: LeaderboardEntry; // User's entry if outside top 5
+  currentUsername?: string; // Current user's username for highlighting
 
   // Actions
   onClose: () => void;
 
   // Optional children for additional content (like answer lists)
   children?: React.ReactNode;
+
+  // Whether the game is complete (affects header text)
+  isComplete?: boolean;
 }
 
 // Format milliseconds to MM:SS or HH:MM:SS
@@ -69,8 +69,11 @@ export const PostGameModal: React.FC<PostGameModalProps> = ({
   leaderboard = [],
   playerRank,
   totalPlayers,
+  userEntry,
+  currentUsername,
   onClose,
   children,
+  isComplete = true,
 }) => {
   const handleOpenChange = (newOpen: boolean) => {
     onOpenChange(newOpen);
@@ -108,7 +111,7 @@ export const PostGameModal: React.FC<PostGameModalProps> = ({
             ))}
           </div>
           <p className="text-lg font-bold tracking-wider text-foreground">
-            {!playerRank ? 'Leaderboard' : 'Completed!'}
+            {isComplete ? 'Completed!' : 'Stats'}
           </p>
         </div>
 
@@ -154,53 +157,14 @@ export const PostGameModal: React.FC<PostGameModalProps> = ({
           </div>
 
           {/* Leaderboard Display */}
-          <div className="p-4 rounded-lg border bg-card border-border">
-            <div className="mb-3 text-sm font-bold tracking-wider text-center text-muted-foreground">
-              LEADERBOARD
-            </div>
-            {leaderboard && leaderboard.length > 0 ? (
-              <>
-                <div className="space-y-2">
-                  {leaderboard.slice(0, 5).map((entry, index) => (
-                    <div
-                      key={`${entry.username}-${entry.timeElapsed}-${entry.moves}`}
-                      className={`flex justify-between items-center p-2.5 rounded-md ${
-                        index === (playerRank ? playerRank - 1 : -1)
-                          ? 'bg-[#F7C846] text-black'
-                          : 'bg-muted text-foreground'
-                      }`}
-                    >
-                      <div className="flex flex-1 gap-2 items-center min-w-0">
-                        <span
-                          className={`font-black flex-shrink-0 ${index === (playerRank ? playerRank - 1 : -1) ? 'text-black' : 'text-[#F7C846]'}`}
-                        >
-                          #{index + 1}
-                        </span>
-                        <span className="font-bold truncate">{entry.username}</span>
-                      </div>
-                      <div className="flex gap-2 items-center">
-                        <span className="font-black">{formatTime(entry.timeElapsed)}</span>
-                        <span
-                          className={`text-xs font-bold ${index === (playerRank ? playerRank - 1 : -1) ? 'text-black/70' : 'text-muted-foreground'}`}
-                        >
-                          ({entry.moves} moves)
-                        </span>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-                {playerRank && totalPlayers && (
-                  <div className="mt-3 text-sm font-bold text-center text-muted-foreground">
-                    Your Rank: #{playerRank} of {totalPlayers} players
-                  </div>
-                )}
-              </>
-            ) : (
-              <div className="py-4 text-sm text-center text-muted-foreground">
-                {loading ? 'Loading leaderboard...' : 'Be the first on the leaderboard!'}
-              </div>
-            )}
-          </div>
+          <GameLeaderboard
+            entries={leaderboard}
+            loading={loading}
+            playerRank={playerRank}
+            totalPlayers={totalPlayers}
+            userEntry={userEntry}
+            currentUsername={currentUsername}
+          />
 
           {/* Daily Streak */}
           {(currentStreak !== undefined || loading) && (

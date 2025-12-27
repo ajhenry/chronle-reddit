@@ -757,6 +757,21 @@ router.get('/api/lettered/:gameId/postgame', async (req, res): Promise<void> => 
       rank: index + 1,
     }));
 
+    // If user is outside the top entries (top 5), include their entry separately
+    let userEntry: (typeof leaderboard)[0] | undefined = undefined;
+    if (playerRank && playerRank > 5) {
+      const redis = await getRedisClient();
+      const userDataRaw = await redis.hGet('users', userId);
+      const userData = userDataRaw ? deserialize<{ handle: string }>(userDataRaw) : null;
+      userEntry = {
+        username: userData?.handle || 'Anonymous',
+        timeElapsed: session.timeElapsed,
+        moves: session.moves,
+        score: calculateLeaderboardScore(session.timeElapsed, session.moves),
+        rank: playerRank,
+      };
+    }
+
     const response: LetteredPostGameResponse = {
       type: 'lettered_post_game',
       game: game,
@@ -765,9 +780,10 @@ router.get('/api/lettered/:gameId/postgame', async (req, res): Promise<void> => 
       movesUsed: session.moves,
       timeElapsed: session.timeElapsed,
       score,
-      rank: playerRank ?? undefined,
       totalPlayers,
       leaderboard,
+      ...(playerRank !== null && { rank: playerRank }),
+      ...(userEntry && { userEntry }),
     };
 
     console.log('Postgame response:', {
@@ -785,6 +801,81 @@ router.get('/api/lettered/:gameId/postgame', async (req, res): Promise<void> => 
     res.status(500).json({
       status: 'error',
       message: 'Failed to get postgame results',
+    });
+  }
+});
+
+// GET /api/lettered/:gameId/leaderboard - Returns the leaderboard for a game (no auth required)
+// Can be viewed before completing the game
+router.get('/api/lettered/:gameId/leaderboard', async (req, res): Promise<void> => {
+  console.log('GET /api/lettered/:gameId/leaderboard', {
+    gameId: req.params.gameId,
+  });
+  try {
+    const { gameId } = req.params;
+
+    // Get leaderboard data (no auth required)
+    const leaderboardEntries = await getGameLeaderboard(gameId, 10);
+    const totalPlayers = await getGameLeaderboardTotalPlayers(gameId);
+
+    // Format leaderboard entries for response
+    const entries = leaderboardEntries.map((entry, index) => ({
+      username: entry.username,
+      timeElapsed: entry.timeElapsed,
+      moves: entry.moves,
+      score: entry.score,
+      rank: index + 1,
+    }));
+
+    // Check if user is authenticated and get their rank if they've completed the game
+    let userRank: number | null = null;
+    let userEntry: (typeof entries)[0] | undefined = undefined;
+    const userId = await ensureUserExistsAndGetId();
+
+    if (userId) {
+      const hasCompleted = await hasUserCompletedGame(userId, gameId);
+      if (hasCompleted) {
+        userRank = await getPlayerRankInGameLeaderboard(gameId, userId);
+
+        // If user is outside the top entries, find their specific entry
+        if (userRank && userRank > entries.length) {
+          // Get user's session data to build their entry
+          const session = await getOrCreateLetteredSession(userId, gameId);
+          if (session.isCompleted) {
+            const redis = await getRedisClient();
+            const userDataRaw = await redis.hGet('users', userId);
+            const userData = userDataRaw ? deserialize<{ handle: string }>(userDataRaw) : null;
+            userEntry = {
+              username: userData?.handle || 'Anonymous',
+              timeElapsed: session.timeElapsed,
+              moves: session.moves,
+              score: calculateLeaderboardScore(session.timeElapsed, session.moves),
+              rank: userRank,
+            };
+          }
+        }
+      }
+    }
+
+    console.log('Leaderboard response:', {
+      gameId,
+      entriesCount: entries.length,
+      totalPlayers,
+      userRank,
+      hasUserEntry: !!userEntry,
+    });
+
+    res.json({
+      entries,
+      totalPlayers,
+      userRank: userRank ?? undefined,
+      userEntry,
+    });
+  } catch (error) {
+    console.error('Error getting game leaderboard:', { error });
+    res.status(500).json({
+      status: 'error',
+      message: 'Failed to get game leaderboard',
     });
   }
 });

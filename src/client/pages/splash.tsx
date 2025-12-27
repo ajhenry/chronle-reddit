@@ -1,8 +1,17 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { requestExpandedMode, navigateTo } from '@devvit/web/client';
-import { Flame } from 'lucide-react';
+import { Flame, Trophy } from 'lucide-react';
 import { apiFetch } from '../lib/utils';
 import type { SplashStatsResponse, UserStatsResponse } from '../../shared/types/api';
+import { Dialog, DialogContent, DialogClose } from '../components/ui/dialog';
+import { GameLeaderboard, LeaderboardEntry } from '../components/GameLeaderboard';
+
+interface LeaderboardResponse {
+  entries: LeaderboardEntry[];
+  totalPlayers: number;
+  userRank?: number;
+  userEntry?: LeaderboardEntry;
+}
 
 // Format time in MM:SS format
 function formatTime(ms: number): string {
@@ -81,6 +90,11 @@ export function Splash() {
   const [error, setError] = useState<string | null>(null);
   const [dailyStreak, setDailyStreak] = useState<number>(0);
 
+  // Leaderboard modal state
+  const [showLeaderboard, setShowLeaderboard] = useState(false);
+  const [leaderboardData, setLeaderboardData] = useState<LeaderboardResponse | null>(null);
+  const [leaderboardLoading, setLeaderboardLoading] = useState(false);
+
   // Fetch context to get gameId
   useEffect(() => {
     const fetchContext = async () => {
@@ -149,6 +163,30 @@ export function Splash() {
 
     void fetchSplashData();
   }, [gameId]);
+
+  // Fetch leaderboard data
+  const fetchLeaderboard = useCallback(async () => {
+    if (!gameId) return;
+
+    setLeaderboardLoading(true);
+    try {
+      const response = await apiFetch(`/api/lettered/${gameId}/leaderboard`);
+      if (response.ok) {
+        const data: LeaderboardResponse = await response.json();
+        setLeaderboardData(data);
+      }
+    } catch (err) {
+      console.error('Error fetching leaderboard:', err);
+    } finally {
+      setLeaderboardLoading(false);
+    }
+  }, [gameId]);
+
+  // Open leaderboard modal
+  const handleOpenLeaderboard = () => {
+    setShowLeaderboard(true);
+    void fetchLeaderboard();
+  };
 
   const handlePlay = (e: React.MouseEvent) => {
     void requestExpandedMode(e.nativeEvent, 'game');
@@ -233,13 +271,24 @@ export function Splash() {
 
         <PlayButton onClick={handlePlay} />
 
-        {/* Subscribe button */}
-        <button
-          onClick={() => navigateTo('https://www.reddit.com/r/lettered')}
-          className="mt-3 px-8 py-2 text-sm font-bold text-[#F7C846] bg-transparent border-2 border-[#F7C846] rounded cursor-pointer hover:bg-[#F7C846] hover:text-black transition-colors"
-        >
-          Subscribe
-        </button>
+        {/* Secondary buttons row */}
+        <div className="flex gap-3 mt-3">
+          {/* Leaderboard button */}
+          <button
+            onClick={handleOpenLeaderboard}
+            className="flex gap-2 items-center px-6 py-2 text-sm font-bold text-[#F7C846] bg-transparent border-2 border-[#F7C846] rounded cursor-pointer hover:bg-[#F7C846] hover:text-black transition-colors"
+          >
+            Leaderboard
+          </button>
+
+          {/* Subscribe button */}
+          <button
+            onClick={() => navigateTo('https://www.reddit.com/r/lettered')}
+            className="px-6 py-2 text-sm font-bold text-[#F7C846] bg-transparent border-2 border-[#F7C846] rounded cursor-pointer hover:bg-[#F7C846] hover:text-black transition-colors"
+          >
+            Subscribe
+          </button>
+        </div>
       </div>
 
       {/* Bottom section - Stats */}
@@ -274,6 +323,62 @@ export function Splash() {
           Create your own
         </button>
       </div>
+
+      {/* Leaderboard Modal */}
+      <Dialog open={showLeaderboard} onOpenChange={setShowLeaderboard}>
+        <DialogContent
+          className="flex overflow-y-visible flex-col p-0 w-full h-full border-0 bg-background sm:max-w-xl"
+          hideCloseButton
+        >
+          <DialogClose className="absolute top-4 right-4 z-30 text-foreground rounded-sm transition-colors hover:text-[#F7C846] focus:outline-none focus:ring-2 focus:ring-[#F7C846] focus:ring-offset-2 focus:ring-offset-background disabled:pointer-events-none">
+            <svg
+              className="w-5 h-5"
+              fill="none"
+              viewBox="0 0 24 24"
+              stroke="currentColor"
+              strokeWidth={2.5}
+            >
+              <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+            </svg>
+            <span className="sr-only">Close</span>
+          </DialogClose>
+
+          {/* Header */}
+          <div className="relative flex-shrink-0 py-8 text-center bg-background">
+            <div className="flex gap-1 justify-center mb-3">
+              {['L', 'E', 'A', 'D', 'E', 'R', 'S'].map((letter, index) => (
+                <div
+                  key={index}
+                  className="flex items-center justify-center w-9 h-9 sm:w-12 sm:h-12 bg-[#F7C846] text-black font-black text-xl sm:text-2xl rounded-sm"
+                >
+                  {letter}
+                </div>
+              ))}
+            </div>
+            <p className="text-lg font-bold tracking-wider text-foreground">Top Solvers</p>
+          </div>
+
+          <div className="overflow-y-auto flex-1 px-6 pb-6 space-y-5 min-h-auto bg-background">
+            <GameLeaderboard
+              entries={leaderboardData?.entries || []}
+              loading={leaderboardLoading}
+              playerRank={leaderboardData?.userRank}
+              totalPlayers={leaderboardData?.totalPlayers}
+              userEntry={leaderboardData?.userEntry}
+            />
+
+            {/* Close Button */}
+            <div className="flex justify-center pt-4">
+              <button
+                onClick={() => setShowLeaderboard(false)}
+                className="px-10 py-3 text-lg font-bold tracking-wide text-black bg-[#F7C846] rounded cursor-pointer hover:bg-[#E5B83D] transition-colors"
+              >
+                CLOSE
+              </button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
