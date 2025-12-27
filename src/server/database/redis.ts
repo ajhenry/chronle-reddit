@@ -52,13 +52,12 @@ export async function deleteCustomGame(gameId: string): Promise<void> {
   }
 }
 
-// Post-to-Game Mapping
+// Post-to-Game Mapping (no TTL - mappings should persist indefinitely)
 export async function setPostToGameMapping(postId: string, gameId: string): Promise<void> {
   try {
     const redis = await getRedisClient();
     const postToGameKey = `custom-lettered:post:${postId}`;
     await redis.set(postToGameKey, gameId);
-    await redis.expire(postToGameKey, 60 * 60 * 24 * 7); // Same expiration as game data
     console.log(`Stored post-to-game mapping: ${postId} -> ${gameId}`);
 
     // Also store without t3_ prefix if it exists
@@ -66,7 +65,6 @@ export async function setPostToGameMapping(postId: string, gameId: string): Prom
       const shortId = postId.replace('t3_', '');
       const altKey = `custom-lettered:post:${shortId}`;
       await redis.set(altKey, gameId);
-      await redis.expire(altKey, 60 * 60 * 24 * 7);
       console.log(`Stored alternate mapping: ${shortId} -> ${gameId}`);
     }
   } catch (error) {

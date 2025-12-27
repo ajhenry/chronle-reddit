@@ -38,20 +38,37 @@ const LeaderboardRow: React.FC<{
   time: string;
   moves: number;
   isCurrentUser?: boolean;
-}> = ({ rank, username, time, moves, isCurrentUser = false }) => {
+  variant?: 'gold' | 'white';
+}> = ({ rank, username, time, moves, isCurrentUser = false, variant = 'gold' }) => {
+  const isWhite = variant === 'white';
+
   return (
     <div
-      className={`flex items-center py-3 px-4 rounded-lg ${
-        isCurrentUser ? 'bg-[#F7C846] text-black' : 'bg-[#F7C846]/90 text-black'
+      className={`flex items-center py-3 px-3 sm:px-4 rounded-lg ${
+        isWhite
+          ? 'bg-white text-black border border-gray-200'
+          : isCurrentUser
+            ? 'bg-[#F7C846] text-black'
+            : 'bg-[#F7C846]/90 text-black'
       }`}
     >
-      <span className="w-10 text-lg font-black text-black/70">{rank}.</span>
-      <div className="flex-1 min-w-0">
-        <span className="font-bold truncate">{username}</span>
+      <span
+        className={`w-8 sm:w-10 text-base sm:text-lg font-black flex-shrink-0 ${isWhite ? 'text-gray-600' : 'text-black/70'}`}
+      >
+        {rank}.
+      </span>
+      <div className="flex-1 mr-2 min-w-0 sm:mr-3">
+        <span className="block font-bold truncate">{username}</span>
       </div>
-      <div className="flex gap-1 items-baseline">
-        <span className="text-xl font-black">{time}</span>
-        <span className="text-xs font-bold text-black/60">({moves} moves)</span>
+      <div className="flex flex-col flex-shrink-0 items-end sm:flex-row sm:gap-1 sm:items-baseline">
+        <span className={`text-lg sm:text-xl font-black ${isWhite ? 'text-black' : ''}`}>
+          {time}
+        </span>
+        <span
+          className={`text-[10px] sm:text-xs font-bold ${isWhite ? 'text-gray-500' : 'text-black/60'}`}
+        >
+          ({moves} moves)
+        </span>
       </div>
     </div>
   );
@@ -105,18 +122,14 @@ export const GameLeaderboard: React.FC<GameLeaderboardProps> = ({
 
       {/* Separator and user entry if outside top 5 */}
       {showUserAtBottom && (
-        <>
-          <div className="flex justify-center items-center py-1 text-muted-foreground">
-            <span className="text-lg font-bold tracking-widest">...</span>
-          </div>
-          <LeaderboardRow
-            rank={playerRank}
-            username={userEntry.username}
-            time={formatTime(userEntry.timeElapsed)}
-            moves={userEntry.moves}
-            isCurrentUser={true}
-          />
-        </>
+        <LeaderboardRow
+          rank={playerRank}
+          username={userEntry.username}
+          time={formatTime(userEntry.timeElapsed)}
+          moves={userEntry.moves}
+          isCurrentUser={true}
+          variant="white"
+        />
       )}
 
       {/* Total players count */}
