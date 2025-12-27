@@ -14,22 +14,15 @@ export const useCountdown = (): CountdownState => {
   });
 
   useEffect(() => {
-    const calculateTimeUntilMidnightEST = (): CountdownState => {
+    const calculateTimeUntilMidnightUTC = (): CountdownState => {
       const now = new Date();
 
-      // Get current time in EST
-      const estTime = new Date(now.toLocaleString('en-US', { timeZone: 'America/New_York' }));
+      // Calculate midnight UTC for next day
+      const midnightUTC = new Date(
+        Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() + 1, 0, 0, 0, 0)
+      );
 
-      // Calculate midnight EST for today
-      const midnightEST = new Date(estTime);
-      midnightEST.setHours(24, 0, 0, 0); // Set to midnight of next day
-
-      // If we've already passed midnight EST today, calculate for tomorrow
-      if (estTime >= midnightEST) {
-        midnightEST.setDate(midnightEST.getDate() + 1);
-      }
-
-      const timeDiff = midnightEST.getTime() - estTime.getTime();
+      const timeDiff = midnightUTC.getTime() - now.getTime();
 
       const hours = Math.floor(timeDiff / (1000 * 60 * 60));
       const minutes = Math.floor((timeDiff % (1000 * 60 * 60)) / (1000 * 60));
@@ -42,11 +35,11 @@ export const useCountdown = (): CountdownState => {
     };
 
     // Set initial countdown
-    setCountdown(calculateTimeUntilMidnightEST());
+    setCountdown(calculateTimeUntilMidnightUTC());
 
     // Update every minute
     const interval = setInterval(() => {
-      setCountdown(calculateTimeUntilMidnightEST());
+      setCountdown(calculateTimeUntilMidnightUTC());
     }, 60000); // Update every 60 seconds
 
     return () => clearInterval(interval);
