@@ -1,123 +1,56 @@
 # Lettered - The Phrase-Fitting Puzzle Game
 
-A daily word puzzle game built on Reddit's developer platform where players arrange letter pieces to complete phrases.
+A daily word puzzle game where players arrange letter pieces to complete hidden phrases.
 
-## How It Works
+## How to Play
 
-1. **Daily Puzzles**: Each day, a new phrase puzzle is generated for all players
-2. **Arrange Letters**: Players drag and drop letter pieces into a grid to spell out the hidden phrase
-3. **Race Against Time**: Complete the puzzle as quickly as possible with the fewest moves
-4. **Compete**: Track your performance on the leaderboard and build your streak
+1. **Discover the Phrase** - Each puzzle contains a hidden phrase with empty spaces waiting to be filled
+2. **Drag and Drop** - Arrange the scattered letter pieces into the correct positions on the grid
+3. **Complete the Puzzle** - Spell out the phrase correctly to solve the puzzle
 
-## Tech Stack
+## Features
 
-- [Devvit](https://developers.reddit.com/): Reddit's developer platform for building interactive experiences
-- [Vite](https://vite.dev/): Build tool for the webview
-- [React](https://react.dev/): UI framework
-- [Express](https://expressjs.com/): Backend server logic
-- [Tailwind](https://tailwindcss.com/): Styling
-- [TypeScript](https://www.typescriptlang.org/): Type safety
-- [shadcn/ui](https://ui.shadcn.com/): Pre-built components
+- **Daily Puzzles** - A fresh puzzle every day for your community to solve together
+- **Leaderboards** - See how you stack up against other players in your subreddit
+- **Streak Tracking** - Build and maintain your daily solving streak
+- **Quick Gameplay** - Puzzles are designed to be solved in just a few minutes
 
-## Getting Started
+## How Puzzles Are Generated
 
-> Make sure you have Node 22 installed before running!
+Each puzzle starts with a phrase that gets transformed into a playable board:
 
-1. Run `npm create devvit@latest --template=react`
-2. Go through the installation wizard and connect your Reddit account
-3. Copy the command on the success page into your terminal
+1. **Grid Layout** - The phrase is arranged onto a grid where each letter occupies a cell. Spaces between words create natural gaps in the layout.
 
-## Redis Setup
+2. **Anchor Letters** - A few letters are pre-filled on the board as hints to help players get started. These "anchors" give you a foothold to assist you in figuring out the rest of the phrase.
 
-This project uses Redis for game state and session management. In production, it uses Devvit's built-in Redis.
+3. **Piece Creation** - The remaining letters are grouped into draggable pieces. Shorter phrases create fewer, larger pieces while longer phrases create more pieces to manage. Each piece gets a unique color to help distinguish them.
 
-### Quick Start with Docker (Recommended)
+4. **Scrambled Start** - The pieces are shuffled and placed in a tray below the board, ready for you to drag them into position.
 
-```bash
-# Start Redis in the background
-npm run redis:start
+## User Generated Puzzles
 
-# View Redis logs
-npm run redis:logs
+Users can create their own puzzles by submitting a phrase and category. The phrase will be transformed into a playable board in the same way as daily puzzles. Subreddit moderators can manage all puzzles created by the app and users. There are protections in place to prevent abusive puzzles from being created.
 
-# Stop Redis
-npm run redis:stop
-```
+## Data Storage
 
-This starts a Redis 7 instance on port 6379 with persistent storage.
+Lettered uses Reddit's built-in database to store your game data securely within the platform:
 
-### Alternative: Install Redis Locally
+- **Player Profiles** - Your Reddit username and avatar are used to identify you on leaderboards
+- **Game Progress** - Your puzzle sessions, completion times, and move counts are saved
+- **Stats and Streaks** - Your overall statistics including best times, games played, and daily streaks are tracked
+- **Leaderboard Rankings** - Your scores are recorded for daily, weekly, and all-time leaderboards
 
-**macOS:**
+All data is stored within Reddit's infrastructure and is scoped to the subreddit where you play. Your information is **never** shared with third parties. Most user data is automatically deleted after 30 days of inactivity (some data is deleted upon account deletion instead of 30 days).
 
-```bash
-brew install redis
-redis-server
-```
+---
 
-**Linux (Ubuntu/Debian):**
+## Changelog
 
-```bash
-sudo apt-get update
-sudo apt-get install redis-server
-sudo systemctl start redis-server
-```
+### v1.0.0
 
-### Custom Redis Configuration
-
-```bash
-# Set custom Redis URL
-export REDIS_URL=redis://localhost:6379
-
-# Or with authentication
-export REDIS_URL=redis://username:password@your-redis-host:6379
-```
-
-### Production
-
-In production (when deployed to Reddit), the application automatically uses Devvit's built-in Redis service.
-
-## shadcn/ui Components
-
-Pre-installed components are located in `src/client/components/ui/`:
-
-- **Button** - Customizable button with variants
-- **Card** - Card container with header, content, and footer
-- **Badge** - Status indicators and labels
-- **Input** - Form input field
-- **Alert** - Notification messages
-
-### Adding New Components
-
-```bash
-npx shadcn@latest add [component-name]
-```
-
-## Theme Customization
-
-Theme colors are defined in `src/client/globals.css` using CSS variables. The app supports both light and dark modes.
-
-## Commands
-
-### Development
-
-- `npm run dev`: Starts development server with live reload on Reddit
-- `npm run local`: Runs locally with Express server (requires Redis)
-- `npm run build`: Builds client and server projects
-- `npm run check`: Type checks, lints, and formats code
-
-### Redis Management
-
-- `npm run redis:start`: Starts Redis using Docker Compose
-- `npm run redis:stop`: Stops Redis Docker container
-- `npm run redis:logs`: View Redis logs
-
-### Deployment
-
-- `npm run deploy`: Uploads a new version of your app
-- `npm run launch`: Publishes your app for review
-- `npm run login`: Logs your CLI into Reddit
-
-## Cursor Integration
-
-This template includes a pre-configured Cursor environment. [Download Cursor](https://www.cursor.com/downloads) and enable the `devvit-mcp` when prompted.
+- Initial release of the Lettered game!
+- Daily puzzle generation
+- User generated puzzle support
+- Responsive drag-and-drop letter placement
+- Leaderboard system
+- Streak tracking
