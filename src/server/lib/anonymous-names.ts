@@ -71,7 +71,6 @@ const NOUNS = [
   'Raven',
   'Fox',
   'Owl',
-  'Stag',
   'Serpent',
   'Griffin',
   'Knight',
@@ -118,4 +117,3 @@ export function generateAnonymousName(): string {
   const noun = NOUNS[Math.floor(Math.random() * NOUNS.length)];
   return `${adjective} ${noun}`;
 }
-
