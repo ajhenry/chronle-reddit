@@ -980,6 +980,10 @@ export const LetteredPage = ({
     void navigate('/custom');
   };
 
+  const handleSettings = () => {
+    void navigate('/settings');
+  };
+
   // Create a random game and navigate to it locally (no Reddit post created yet)
   // The game can be shared later via the Share button
   const handlePlayAnother = async () => {
@@ -1509,6 +1513,7 @@ export const LetteredPage = ({
       }}
       onHelp={() => setShowInstructions(true)}
       onCreateGame={handleCreateGame}
+      onSettings={handleSettings}
       onHeaderInteraction={() => gridRef.current?.placeTapDragItem()}
       postId={postId}
       subredditName={subredditName}

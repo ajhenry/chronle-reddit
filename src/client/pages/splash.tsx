@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { requestExpandedMode, navigateTo } from '@devvit/web/client';
-import { Flame } from 'lucide-react';
+import { Flame, Trash2, Loader2 } from 'lucide-react';
 import { apiFetch } from '../lib/utils';
 import type { SplashStatsResponse, UserStatsResponse } from '../../shared/types/api';
 import { Dialog, DialogContent, DialogClose } from '../components/ui/dialog';
@@ -100,6 +100,10 @@ export function Splash() {
   const [isCurrentUserAnonymous, setIsCurrentUserAnonymous] = useState(false);
   const [isTogglingAnonymous, setIsTogglingAnonymous] = useState(false);
   const [hasUserCompleted, setHasUserCompleted] = useState(false);
+
+  // Delete puzzle state
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
 
   // Fetch context to get gameId
   useEffect(() => {
@@ -250,6 +254,34 @@ export function Splash() {
     void requestExpandedMode(e.nativeEvent, 'game');
   };
 
+  // Handle delete puzzle
+  const handleDeletePuzzle = async () => {
+    if (!gameId) return;
+
+    setIsDeleting(true);
+    try {
+      const response = await apiFetch(`/api/splash/${gameId}`, {
+        method: 'DELETE',
+      });
+
+      if (response.ok) {
+        toast.success('Puzzle deleted');
+        // Navigate away or show a deleted state
+        setError('This puzzle has been deleted');
+        setSplashData(null);
+      } else {
+        const data = await response.json().catch(() => ({}));
+        toast.error(data.message || 'Failed to delete puzzle');
+      }
+    } catch (err) {
+      console.error('Error deleting puzzle:', err);
+      toast.error('Failed to delete puzzle');
+    } finally {
+      setIsDeleting(false);
+      setShowDeleteConfirm(false);
+    }
+  };
+
   // Loading state
   if (loading || !splashData) {
     return <SplashSkeleton onPlay={handlePlay} />;
@@ -287,7 +319,20 @@ export function Splash() {
   console.log(splashData);
 
   return (
-    <div className="flex flex-col gap-8 justify-center items-center px-6 py-8 min-h-screen bg-black">
+    <div className="flex relative flex-col gap-8 justify-center items-center px-6 py-8 min-h-screen bg-black">
+      {/* Delete button for puzzle creators (top right) */}
+      {splashData.isCreator && !isDaily && (
+        <button
+          onClick={() => setShowDeleteConfirm(true)}
+          disabled={isDeleting}
+          className="flex absolute top-4 right-4 gap-1 items-center px-3 py-2 text-sm font-semibold text-red-400 rounded border border-red-800 transition-colors bg-red-900/30 hover:bg-red-900/50 disabled:opacity-50"
+          title="Delete Puzzle"
+        >
+          {isDeleting && <Loader2 className="w-4 h-4 animate-spin" />}
+          <span>Delete Puzzle</span>
+        </button>
+      )}
+
       {/* Top section - Logo and tagline */}
       <div className="flex flex-col items-center">
         <LetteredLogo />
@@ -437,6 +482,67 @@ export function Splash() {
                 className="px-10 py-3 text-lg font-bold tracking-wide text-black bg-[#F7C846] rounded cursor-pointer hover:bg-[#E5B83D] transition-colors"
               >
                 CLOSE
+              </button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Delete Confirmation Dialog */}
+      <Dialog open={showDeleteConfirm} onOpenChange={setShowDeleteConfirm}>
+        <DialogContent
+          className="flex overflow-y-visible flex-col p-0 w-full h-full border-0 bg-background sm:max-w-md"
+          hideCloseButton
+        >
+          <DialogClose className="absolute top-4 right-4 z-30 text-foreground rounded-sm transition-colors hover:text-[#F7C846] focus:outline-none focus:ring-2 focus:ring-[#F7C846] focus:ring-offset-2 focus:ring-offset-background disabled:pointer-events-none">
+            <svg
+              className="w-5 h-5"
+              fill="none"
+              viewBox="0 0 24 24"
+              stroke="currentColor"
+              strokeWidth={2.5}
+            >
+              <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+            </svg>
+            <span className="sr-only">Close</span>
+          </DialogClose>
+
+          {/* Header */}
+          <div className="relative flex-shrink-0 py-8 text-center bg-background">
+            <div className="flex gap-1 justify-center mb-3">
+              {['L', 'E', 'T', 'T', 'E', 'R', 'E', 'D'].map((letter, index) => (
+                <div
+                  key={index}
+                  className="flex items-center justify-center w-8 h-8 sm:w-10 sm:h-10 bg-[#F7C846] text-black font-black text-lg sm:text-xl rounded-sm"
+                >
+                  {letter}
+                </div>
+              ))}
+            </div>
+            <p className="text-lg font-bold tracking-wider text-foreground">Delete Puzzle</p>
+          </div>
+
+          <div className="px-6 pb-6 space-y-4 bg-background">
+            <p className="text-center text-muted-foreground">
+              This will permanently delete your puzzle and the Reddit post. All leaderboard data
+              will also be removed. This action cannot be undone.
+            </p>
+
+            {/* Action Buttons */}
+            <div className="flex gap-3 justify-center pt-2">
+              <button
+                onClick={() => setShowDeleteConfirm(false)}
+                className="px-6 py-2 text-sm font-bold tracking-wide text-[#F7C846] rounded border-2 border-[#F7C846] transition-colors cursor-pointer hover:bg-[#F7C846] hover:text-black"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleDeletePuzzle}
+                disabled={isDeleting}
+                className="flex gap-2 justify-center items-center px-6 py-2 text-sm font-bold tracking-wide text-white bg-red-600 rounded transition-colors cursor-pointer hover:bg-red-700 disabled:opacity-50"
+              >
+                {isDeleting && <Loader2 className="w-4 h-4 animate-spin" />}
+                {isDeleting ? 'Deleting...' : 'Delete'}
               </button>
             </div>
           </div>

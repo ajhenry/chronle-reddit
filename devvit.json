@@ -33,7 +33,9 @@
     ]
   },
   "triggers": {
-    "onAppInstall": "/internal/on-app-install"
+    "onAppInstall": "/internal/on-app-install",
+    "onPostDelete": "/internal/triggers/post-delete",
+    "onCommentDelete": "/internal/triggers/comment-delete"
   },
   "permissions": {
     "http": {

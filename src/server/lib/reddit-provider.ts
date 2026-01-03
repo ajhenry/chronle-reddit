@@ -13,25 +13,11 @@ import { User } from '@devvit/web/server';
 import { redditStub, RedditStub } from './reddit-stub';
 
 /**
- * Interface for the real Reddit API (subset of what we use)
- */
-interface RealRedditAPI {
-  getCurrentUser(): Promise<User | undefined>;
-  getCurrentUsername(): Promise<string | undefined>;
-  submitCustomPost(options: {
-    title?: string;
-    subredditName: string;
-    height?: number;
-    width?: number;
-    splash?: Record<string, unknown>;
-    webviewMetadata?: Record<string, unknown>;
-  }): Promise<{ id: string; url: string }>;
-}
-
-/**
  * Union type for both stubbed and real Reddit providers
+ * We use 'any' for the real API since we only use a subset of methods
  */
-type RedditProvider = RedditStub | RealRedditAPI;
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+type RedditProvider = RedditStub | any;
 
 /**
  * Check if we should use stubbed Reddit API
@@ -121,6 +107,25 @@ export const reddit = {
   }): Promise<{ id: string; url: string }> {
     const provider = await getCachedRedditProvider();
     return provider.submitCustomPost(options);
+  },
+
+  async deletePost(postId: string): Promise<void> {
+    if (isLocalDevelopment()) {
+      console.log('[REDDIT PROVIDER] Mock delete post:', postId);
+      return;
+    }
+
+    try {
+      const { reddit: realReddit } = await import('@devvit/web/server');
+      // Ensure postId has t3_ prefix
+      const fullPostId = postId.startsWith('t3_') ? postId : `t3_${postId}`;
+      const post = await realReddit.getPostById(fullPostId as `t3_${string}`);
+      await post.delete();
+      console.log('[REDDIT PROVIDER] Post deleted:', fullPostId);
+    } catch (error) {
+      console.error('[REDDIT PROVIDER] Failed to delete post:', error);
+      throw error;
+    }
   },
 };
 

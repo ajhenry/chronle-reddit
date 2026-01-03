@@ -7,6 +7,7 @@ import { AdminPage } from './pages/admin';
 import { CustomGamePage } from './pages/custom';
 import { LeaderboardPage } from './pages/leaderboard';
 import { TutorialPage } from './pages/tutorial';
+import { SettingsPage } from './pages/settings';
 import { ScrollToTop } from './components/ScrollToTop';
 import { AdminBanner } from './components/AdminBanner';
 import { apiFetch } from './lib/utils';
@@ -109,6 +110,7 @@ export const App = () => {
         />
         <Route path="/terms" element={<TermsPage />} />
         <Route path="/privacy" element={<PrivacyPage />} />
+        <Route path="/settings" element={<SettingsPage />} />
         <Route path="/admin" element={<AdminPage />} />
         <Route
           path="/game/:gameId"

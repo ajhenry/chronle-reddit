@@ -9,7 +9,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from './ui/dropdown-menu';
-import { Menu, Plus, Share2, HelpCircle, RotateCcw, Trophy, Loader2 } from 'lucide-react';
+import { Menu, Plus, Share2, HelpCircle, RotateCcw, Trophy, Loader2, Settings } from 'lucide-react';
 import { toast } from 'sonner';
 
 interface GameLayoutProps {
@@ -22,6 +22,7 @@ interface GameLayoutProps {
   onLeaderboard?: () => void;
   onHelp?: () => void;
   onCreateGame?: () => void;
+  onSettings?: () => void;
   onHeaderInteraction?: () => void; // Called when any header button is clicked (e.g., to deactivate drag mode)
   postId?: string | null;
   subredditName?: string | null;
@@ -63,6 +64,7 @@ export const GameLayout = ({
   onLeaderboard,
   onHelp,
   onCreateGame,
+  onSettings,
   onHeaderInteraction,
   postId,
   subredditName,
@@ -269,6 +271,17 @@ export const GameLayout = ({
                       Share
                     </>
                   )}
+                </DropdownMenuItem>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem
+                  onClick={() => {
+                    onHeaderInteraction?.();
+                    onSettings?.();
+                  }}
+                  className="cursor-pointer py-3 text-base hover:bg-[#F7C846] hover:text-black focus:bg-[#F7C846] focus:text-black"
+                >
+                  <Settings className="mr-3 w-5 h-5" />
+                  Settings
                 </DropdownMenuItem>
                 <DropdownMenuSeparator />
                 <DropdownMenuItem

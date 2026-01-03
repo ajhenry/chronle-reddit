@@ -241,6 +241,7 @@ export interface SplashStatsResponse {
   title?: string; // category/theme
   creatorUsername?: string;
   creatorIconUrl?: string;
+  isCreator?: boolean; // true if current user is the puzzle creator
   // Stats
   totalCompletions: number;
   averageTimeMs: number; // average time in milliseconds

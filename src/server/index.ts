@@ -10,6 +10,8 @@ import leaderboardRoutes from './handlers/leaderboard';
 import customRoutes from './handlers/custom';
 import contextRoutes from './handlers/context';
 import splashRoutes from './handlers/splash';
+import triggerRoutes from './handlers/triggers';
+import accountRoutes from './handlers/account';
 
 // Environment detection
 // LOCAL_MODE=true: Use Express server + stubbed Reddit API for local development
@@ -59,6 +61,8 @@ app.use(leaderboardRoutes);
 app.use(customRoutes);
 app.use(contextRoutes);
 app.use(splashRoutes);
+app.use(triggerRoutes);
+app.use(accountRoutes);
 // Health check endpoint for development modes
 if (isLocal || isRedditDev) {
   app.get('/health', (_req, res) => {

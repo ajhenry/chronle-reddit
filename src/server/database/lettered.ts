@@ -1,6 +1,6 @@
 import { GridCell, GridPosition, LetterPiece } from '../../shared/types/api';
 import { getRedisClient } from '../lib/redis-provider';
-import { RedisKeys, serialize, deserialize } from '../../shared/types/redis';
+import { RedisKeys, RedisTTL, serialize, deserialize } from '../../shared/types/redis';
 import { getOrCreateTodaysLetteredGame } from '../lib/lettered-game-helpers';
 
 export interface LetteredGame {
@@ -689,6 +689,10 @@ export const addToGameLeaderboard = async (
     // Store metadata for this user's entry
     const storageEntry = convertGameLeaderboardEntryToStorage(entry);
     await redis.hSet(metadataKey, { [entry.userId]: serialize(storageEntry) });
+
+    // Set 30-day TTL on per-game leaderboard keys for data retention compliance
+    await redis.expire(leaderboardKey, RedisTTL.PER_GAME_LEADERBOARD);
+    await redis.expire(metadataKey, RedisTTL.PER_GAME_LEADERBOARD);
 
     console.log('Added to game leaderboard:', {
       gameId,
