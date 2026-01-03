@@ -1,10 +1,11 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { requestExpandedMode, navigateTo } from '@devvit/web/client';
-import { Flame, Trophy } from 'lucide-react';
+import { Flame } from 'lucide-react';
 import { apiFetch } from '../lib/utils';
 import type { SplashStatsResponse, UserStatsResponse } from '../../shared/types/api';
 import { Dialog, DialogContent, DialogClose } from '../components/ui/dialog';
 import { GameLeaderboard, LeaderboardEntry } from '../components/GameLeaderboard';
+import { toast } from 'sonner';
 
 interface LeaderboardResponse {
   entries: LeaderboardEntry[];
@@ -95,6 +96,11 @@ export function Splash() {
   const [leaderboardData, setLeaderboardData] = useState<LeaderboardResponse | null>(null);
   const [leaderboardLoading, setLeaderboardLoading] = useState(false);
 
+  // Anonymous username state
+  const [isCurrentUserAnonymous, setIsCurrentUserAnonymous] = useState(false);
+  const [isTogglingAnonymous, setIsTogglingAnonymous] = useState(false);
+  const [hasUserCompleted, setHasUserCompleted] = useState(false);
+
   // Fetch context to get gameId
   useEffect(() => {
     const fetchContext = async () => {
@@ -174,6 +180,22 @@ export function Splash() {
       if (response.ok) {
         const data: LeaderboardResponse = await response.json();
         setLeaderboardData(data);
+
+        // Check if user has completed the game (has a rank means they completed)
+        if (data.userRank !== undefined) {
+          setHasUserCompleted(true);
+
+          // Update anonymous state from user entry (outside top 5) or from entries (in top 5)
+          if (data.userEntry?.isAnonymous !== undefined) {
+            setIsCurrentUserAnonymous(data.userEntry.isAnonymous);
+          } else if (data.userRank <= 5 && data.entries[data.userRank - 1]) {
+            // User is in top 5, check their entry in the entries array
+            const userEntryInTop5 = data.entries[data.userRank - 1];
+            if (userEntryInTop5?.isAnonymous !== undefined) {
+              setIsCurrentUserAnonymous(userEntryInTop5.isAnonymous);
+            }
+          }
+        }
       }
     } catch (err) {
       console.error('Error fetching leaderboard:', err);
@@ -181,6 +203,42 @@ export function Splash() {
       setLeaderboardLoading(false);
     }
   }, [gameId]);
+
+  // Handler to toggle anonymous username on leaderboard
+  const handleToggleAnonymous = useCallback(
+    async (isAnonymous: boolean) => {
+      if (!gameId) return;
+
+      setIsTogglingAnonymous(true);
+      try {
+        const response = await apiFetch(`/api/lettered/${gameId}/leaderboard/anonymize`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({ isAnonymous }),
+        });
+
+        if (response.ok) {
+          const data = await response.json();
+          setIsCurrentUserAnonymous(data.isAnonymous);
+
+          // Refresh leaderboard to show updated username
+          void fetchLeaderboard();
+
+          toast.success(isAnonymous ? 'Username hidden' : 'Username visible');
+        } else {
+          toast.error('Failed to update username visibility');
+        }
+      } catch (error) {
+        console.error('Error toggling anonymous:', error);
+        toast.error('Failed to update username visibility');
+      } finally {
+        setIsTogglingAnonymous(false);
+      }
+    },
+    [gameId, fetchLeaderboard]
+  );
 
   // Open leaderboard modal
   const handleOpenLeaderboard = () => {
@@ -365,6 +423,11 @@ export function Splash() {
               playerRank={leaderboardData?.userRank}
               totalPlayers={leaderboardData?.totalPlayers}
               userEntry={leaderboardData?.userEntry}
+              gameId={gameId ?? undefined}
+              isCurrentUserAnonymous={isCurrentUserAnonymous}
+              onToggleAnonymous={handleToggleAnonymous}
+              isTogglingAnonymous={isTogglingAnonymous}
+              showAnonymousToggle={hasUserCompleted}
             />
 
             {/* Close Button */}

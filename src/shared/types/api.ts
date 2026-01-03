@@ -213,6 +213,8 @@ export interface GameLeaderboardEntryResponse {
   moves: number;
   score: number; // time in seconds + moves (lower is better)
   rank?: number;
+  isAnonymous?: boolean; // Whether the user has chosen to hide their username
+  displayName?: string; // Anonymous display name (e.g., "Swift Falcon") when isAnonymous is true
 }
 
 export type LetteredPostGameResponse = {

@@ -26,7 +26,10 @@ import {
   getGameLeaderboardTotalPlayers,
   calculateLeaderboardScore,
   hasUserCompletedGame,
+  getUserGameLeaderboardEntry,
+  updateGameLeaderboardEntry,
 } from '../database/lettered';
+import { generateAnonymousName } from '../lib/anonymous-names';
 import { getRedisClient } from '../lib/redis-provider';
 import { RedisKeys, deserialize, serialize } from '../../shared/types/redis';
 import { RANDOM_LETTERED_PHRASES } from '../lib/phrase-lists';
@@ -749,26 +752,35 @@ router.get('/api/lettered/:gameId/postgame', async (req, res): Promise<void> => 
     const totalPlayers = await getGameLeaderboardTotalPlayers(gameId);
 
     // Format leaderboard entries for response
+    // Use displayName instead of username when user is anonymous
     const leaderboard = leaderboardEntries.map((entry, index) => ({
-      username: entry.username,
+      username: entry.isAnonymous && entry.displayName ? entry.displayName : entry.username,
       timeElapsed: entry.timeElapsed,
       moves: entry.moves,
       score: entry.score,
       rank: index + 1,
+      isAnonymous: entry.isAnonymous,
+      displayName: entry.displayName,
     }));
+
+    // Get user's leaderboard entry to check their anonymous state
+    const userLeaderboardEntry = await getUserGameLeaderboardEntry(gameId, userId);
 
     // If user is outside the top entries (top 5), include their entry separately
     let userEntry: (typeof leaderboard)[0] | undefined = undefined;
     if (playerRank && playerRank > 5) {
-      const redis = await getRedisClient();
       const userDataRaw = await redis.hGet('users', userId);
       const userData = userDataRaw ? deserialize<{ handle: string }>(userDataRaw) : null;
+      const isAnonymous = userLeaderboardEntry?.isAnonymous ?? false;
+      const displayName = userLeaderboardEntry?.displayName;
       userEntry = {
-        username: userData?.handle || 'Anonymous',
+        username: isAnonymous && displayName ? displayName : (userData?.handle || 'Anonymous'),
         timeElapsed: session.timeElapsed,
         moves: session.moves,
         score: calculateLeaderboardScore(session.timeElapsed, session.moves),
         rank: playerRank,
+        isAnonymous,
+        displayName,
       };
     }
 
@@ -819,12 +831,15 @@ router.get('/api/lettered/:gameId/leaderboard', async (req, res): Promise<void> 
     const totalPlayers = await getGameLeaderboardTotalPlayers(gameId);
 
     // Format leaderboard entries for response
+    // Use displayName instead of username when user is anonymous
     const entries = leaderboardEntries.map((entry, index) => ({
-      username: entry.username,
+      username: entry.isAnonymous && entry.displayName ? entry.displayName : entry.username,
       timeElapsed: entry.timeElapsed,
       moves: entry.moves,
       score: entry.score,
       rank: index + 1,
+      isAnonymous: entry.isAnonymous,
+      displayName: entry.displayName,
     }));
 
     // Check if user is authenticated and get their rank if they've completed the game
@@ -844,6 +859,7 @@ router.get('/api/lettered/:gameId/leaderboard', async (req, res): Promise<void> 
         if (userRank && userRank > DISPLAYED_ENTRIES) {
           // Get user's session data to build their entry
           const session = await getOrCreateLetteredSession(userId, gameId);
+          const userLeaderboardEntry = await getUserGameLeaderboardEntry(gameId, userId);
           if (session.isCompleted) {
             userEntry = {
               username: 'You',
@@ -851,6 +867,8 @@ router.get('/api/lettered/:gameId/leaderboard', async (req, res): Promise<void> 
               moves: session.moves,
               score: calculateLeaderboardScore(session.timeElapsed, session.moves),
               rank: userRank,
+              isAnonymous: userLeaderboardEntry?.isAnonymous,
+              displayName: userLeaderboardEntry?.displayName,
             };
           }
         }
@@ -876,6 +894,89 @@ router.get('/api/lettered/:gameId/leaderboard', async (req, res): Promise<void> 
     res.status(500).json({
       status: 'error',
       message: 'Failed to get game leaderboard',
+    });
+  }
+});
+
+// POST /api/lettered/:gameId/leaderboard/anonymize - Toggle anonymous mode for user's leaderboard entry
+router.post('/api/lettered/:gameId/leaderboard/anonymize', async (req, res): Promise<void> => {
+  console.log('POST /api/lettered/:gameId/leaderboard/anonymize', {
+    gameId: req.params.gameId,
+    body: req.body,
+  });
+
+  try {
+    const { gameId } = req.params;
+    const { isAnonymous } = req.body as { isAnonymous: boolean };
+
+    // Require authentication
+    const userId = await ensureUserExistsAndGetId();
+    if (!userId) {
+      res.status(401).json({
+        status: 'error',
+        message: 'User not authenticated',
+      });
+      return;
+    }
+
+    // Check if user has completed the game
+    const hasCompleted = await hasUserCompletedGame(gameId, userId);
+    if (!hasCompleted) {
+      res.status(400).json({
+        status: 'error',
+        message: 'User has not completed this game',
+      });
+      return;
+    }
+
+    // Get current entry to check existing state
+    const currentEntry = await getUserGameLeaderboardEntry(gameId, userId);
+    if (!currentEntry) {
+      res.status(404).json({
+        status: 'error',
+        message: 'Leaderboard entry not found',
+      });
+      return;
+    }
+
+    // Generate or reuse display name
+    let displayName = currentEntry.displayName;
+    if (isAnonymous && !displayName) {
+      // Generate a new anonymous name if enabling anonymous mode and none exists
+      displayName = generateAnonymousName();
+    }
+
+    // Update the entry
+    const updatedEntry = await updateGameLeaderboardEntry(gameId, userId, {
+      isAnonymous,
+      displayName,
+    });
+
+    if (!updatedEntry) {
+      res.status(500).json({
+        status: 'error',
+        message: 'Failed to update leaderboard entry',
+      });
+      return;
+    }
+
+    console.log('Updated leaderboard anonymity:', {
+      gameId,
+      userId,
+      isAnonymous: updatedEntry.isAnonymous,
+      displayName: updatedEntry.displayName,
+    });
+
+    res.json({
+      status: 'success',
+      isAnonymous: updatedEntry.isAnonymous ?? false,
+      displayName: updatedEntry.displayName,
+    });
+  } catch (error) {
+    console.error('Error toggling leaderboard anonymity:', { error });
+    res.status(500).json({
+      status: 'error',
+      message: 'Failed to toggle anonymity',
     });
   }
 });

@@ -32,6 +32,13 @@ export interface PostGameModalProps {
   userEntry?: LeaderboardEntry; // User's entry if outside top 5
   currentUsername?: string; // Current user's username for highlighting
 
+  // Anonymous toggle props
+  gameId?: string;
+  isCurrentUserAnonymous?: boolean;
+  onToggleAnonymous?: (isAnonymous: boolean) => void;
+  isTogglingAnonymous?: boolean;
+  showAnonymousToggle?: boolean;
+
   // Actions
   onClose: () => void;
 
@@ -71,6 +78,11 @@ export const PostGameModal: React.FC<PostGameModalProps> = ({
   totalPlayers,
   userEntry,
   currentUsername,
+  gameId,
+  isCurrentUserAnonymous,
+  onToggleAnonymous,
+  isTogglingAnonymous,
+  showAnonymousToggle,
   onClose,
   children,
   isComplete = true,
@@ -164,6 +176,11 @@ export const PostGameModal: React.FC<PostGameModalProps> = ({
             totalPlayers={totalPlayers}
             userEntry={userEntry}
             currentUsername={currentUsername}
+            gameId={gameId}
+            isCurrentUserAnonymous={isCurrentUserAnonymous}
+            onToggleAnonymous={onToggleAnonymous}
+            isTogglingAnonymous={isTogglingAnonymous}
+            showAnonymousToggle={showAnonymousToggle}
           />
 
           {/* Daily Streak */}

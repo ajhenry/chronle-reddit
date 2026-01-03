@@ -254,6 +254,10 @@ export const LetteredPage = ({
   const [leaderboardData, setLeaderboardData] = useState<LeaderboardResponse | null>(null);
   const [leaderboardLoading, setLeaderboardLoading] = useState(false);
 
+  // Anonymous username state
+  const [isCurrentUserAnonymous, setIsCurrentUserAnonymous] = useState(false);
+  const [isTogglingAnonymous, setIsTogglingAnonymous] = useState(false);
+
   // Session ID for debug display
   const [sessionId, setSessionId] = useState<string | null>(null);
 
@@ -635,6 +639,43 @@ export const LetteredPage = ({
     }
   }, [gameId]);
 
+  // Handler to toggle anonymous username on leaderboard
+  const handleToggleAnonymous = useCallback(
+    async (isAnonymous: boolean) => {
+      if (!gameId) return;
+
+      setIsTogglingAnonymous(true);
+      try {
+        const response = await apiFetch(`/api/lettered/${gameId}/leaderboard/anonymize`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({ isAnonymous }),
+        });
+
+        if (response.ok) {
+          const data = await response.json();
+          setIsCurrentUserAnonymous(data.isAnonymous);
+
+          // Refresh leaderboard to show updated username
+          void loadLeaderboard();
+          void loadPostGameStats();
+
+          toast.success(isAnonymous ? 'Username hidden' : 'Username visible');
+        } else {
+          toast.error('Failed to update username visibility');
+        }
+      } catch (error) {
+        console.error('Error toggling anonymous:', error);
+        toast.error('Failed to update username visibility');
+      } finally {
+        setIsTogglingAnonymous(false);
+      }
+    },
+    [gameId, loadLeaderboard, loadPostGameStats]
+  );
+
   // Fetch postgame stats when game is complete (for restored completed games)
   useEffect(() => {
     // Fetch stats for completed games - this handles both restored and fresh completions
@@ -688,6 +729,33 @@ export const LetteredPage = ({
     loadPostGameStats,
     loadUserStats,
     loadLeaderboard,
+  ]);
+
+  // Update anonymous state from leaderboard/postgame data
+  useEffect(() => {
+    // Check userEntry first (for users outside top 5)
+    const userEntry = leaderboardData?.userEntry ?? postGameStats?.userEntry;
+    if (userEntry?.isAnonymous !== undefined) {
+      setIsCurrentUserAnonymous(userEntry.isAnonymous);
+      return;
+    }
+
+    // If user is in top 5, check entries array
+    const userRank = leaderboardData?.userRank ?? postGameStats?.rank;
+    const entries = leaderboardData?.entries ?? postGameStats?.leaderboard;
+    if (userRank !== undefined && userRank <= 5 && entries && entries[userRank - 1]) {
+      const userEntryInTop5 = entries[userRank - 1];
+      if (userEntryInTop5?.isAnonymous !== undefined) {
+        setIsCurrentUserAnonymous(userEntryInTop5.isAnonymous);
+      }
+    }
+  }, [
+    leaderboardData?.userEntry,
+    leaderboardData?.userRank,
+    leaderboardData?.entries,
+    postGameStats?.userEntry,
+    postGameStats?.rank,
+    postGameStats?.leaderboard,
   ]);
 
   // Generate a unique signature for a piece based on its letters and shape
@@ -1829,6 +1897,11 @@ export const LetteredPage = ({
         totalPlayers={leaderboardData?.totalPlayers ?? postGameStats?.totalPlayers}
         userEntry={leaderboardData?.userEntry ?? postGameStats?.userEntry}
         isComplete={gameComplete}
+        gameId={gameId}
+        isCurrentUserAnonymous={isCurrentUserAnonymous}
+        onToggleAnonymous={handleToggleAnonymous}
+        isTogglingAnonymous={isTogglingAnonymous}
+        showAnonymousToggle={gameComplete}
         onClose={() => {
           setUIState((prev) => ({
             ...prev,
