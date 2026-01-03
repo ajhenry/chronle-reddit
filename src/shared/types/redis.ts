@@ -6,6 +6,17 @@ export interface TimeBasedKey {
 }
 
 /**
+ * TTL constants for Redis keys (in seconds)
+ * Used for compliance with Reddit's data retention policies
+ */
+export const RedisTTL = {
+  /** 30 days - for per-game leaderboards */
+  PER_GAME_LEADERBOARD: 60 * 60 * 24 * 30, // 2592000 seconds
+  /** 7 days - for post-to-game mappings */
+  POST_MAPPING: 60 * 60 * 24 * 7, // 604800 seconds
+};
+
+/**
  * Get the current period key for a given time period
  * @param period - The time period type
  * @param date - Optional date (defaults to now)

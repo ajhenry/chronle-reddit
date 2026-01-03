@@ -1,4 +1,5 @@
 import React from 'react';
+import { Checkbox } from './ui/checkbox';
 
 export interface LeaderboardEntry {
   username: string;
@@ -6,6 +7,8 @@ export interface LeaderboardEntry {
   moves: number;
   score?: number;
   rank?: number;
+  isAnonymous?: boolean;
+  displayName?: string;
 }
 
 export interface GameLeaderboardProps {
@@ -16,6 +19,12 @@ export interface GameLeaderboardProps {
   userEntry?: LeaderboardEntry;
   currentUsername?: string;
   showTitle?: boolean;
+  // Props for anonymous toggle
+  gameId?: string;
+  isCurrentUserAnonymous?: boolean;
+  onToggleAnonymous?: (isAnonymous: boolean) => void;
+  isTogglingAnonymous?: boolean;
+  showAnonymousToggle?: boolean;
 }
 
 // Format milliseconds to MM:SS or HH:MM:SS
@@ -82,6 +91,11 @@ export const GameLeaderboard: React.FC<GameLeaderboardProps> = ({
   userEntry,
   currentUsername,
   showTitle = true,
+  gameId: _gameId,
+  isCurrentUserAnonymous = false,
+  onToggleAnonymous,
+  isTogglingAnonymous = false,
+  showAnonymousToggle = false,
 }) => {
   // Determine if user is in the displayed entries (top 5)
   const userInTop5 = playerRank !== undefined && playerRank <= 5;
@@ -96,6 +110,12 @@ export const GameLeaderboard: React.FC<GameLeaderboardProps> = ({
     return false;
   };
 
+  const handleAnonymousToggle = (checked: boolean | 'indeterminate') => {
+    if (onToggleAnonymous && !isTogglingAnonymous && typeof checked === 'boolean') {
+      onToggleAnonymous(checked);
+    }
+  };
+
   if (loading) {
     return <div className="py-8 text-center text-muted-foreground">Loading leaderboard...</div>;
   }
@@ -106,25 +126,36 @@ export const GameLeaderboard: React.FC<GameLeaderboardProps> = ({
     );
   }
 
+  // Helper to get display username with "(You)" suffix for anonymous current user
+  const getDisplayUsername = (entry: LeaderboardEntry, isUserEntry: boolean): string => {
+    if (isUserEntry && entry.isAnonymous) {
+      return `${entry.username} (You)`;
+    }
+    return entry.username;
+  };
+
   return (
     <div className="space-y-2">
       {/* Top 5 entries */}
-      {entries.slice(0, 5).map((entry, index) => (
-        <LeaderboardRow
-          key={`${entry.username}-${entry.timeElapsed}-${entry.moves}`}
-          rank={index + 1}
-          username={entry.username}
-          time={formatTime(entry.timeElapsed)}
-          moves={entry.moves}
-          isCurrentUser={isCurrentUser(entry, index)}
-        />
-      ))}
+      {entries.slice(0, 5).map((entry, index) => {
+        const isUser = isCurrentUser(entry, index);
+        return (
+          <LeaderboardRow
+            key={`${entry.username}-${entry.timeElapsed}-${entry.moves}`}
+            rank={index + 1}
+            username={getDisplayUsername(entry, isUser)}
+            time={formatTime(entry.timeElapsed)}
+            moves={entry.moves}
+            isCurrentUser={isUser}
+          />
+        );
+      })}
 
       {/* Separator and user entry if outside top 5 */}
       {showUserAtBottom && (
         <LeaderboardRow
           rank={playerRank}
-          username={userEntry.username}
+          username={getDisplayUsername(userEntry, true)}
           time={formatTime(userEntry.timeElapsed)}
           moves={userEntry.moves}
           isCurrentUser={true}
@@ -136,6 +167,28 @@ export const GameLeaderboard: React.FC<GameLeaderboardProps> = ({
       {totalPlayers && totalPlayers > 0 && (
         <div className="pt-2 text-sm font-medium text-center text-muted-foreground">
           {totalPlayers} player{totalPlayers === 1 ? '' : 's'} total
+        </div>
+      )}
+
+      {/* Hide my username toggle */}
+      {showAnonymousToggle && onToggleAnonymous && (
+        <div className="pt-3 border-t border-border">
+          <label className="flex gap-3 items-center cursor-pointer select-none">
+            <Checkbox
+              id="hide-username"
+              checked={isCurrentUserAnonymous}
+              onCheckedChange={handleAnonymousToggle}
+              disabled={isTogglingAnonymous}
+            />
+            <span className="text-sm font-medium leading-none text-foreground peer-disabled:cursor-not-allowed peer-disabled:opacity-70">
+              {isTogglingAnonymous ? 'Updating...' : 'Hide my username'}
+            </span>
+          </label>
+          {isCurrentUserAnonymous && userEntry?.displayName && (
+            <p className="mt-1 ml-8 text-xs text-muted-foreground">
+              Shown as: {userEntry.displayName}
+            </p>
+          )}
         </div>
       )}
     </div>

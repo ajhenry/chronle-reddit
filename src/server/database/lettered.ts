@@ -1,6 +1,6 @@
 import { GridCell, GridPosition, LetterPiece } from '../../shared/types/api';
 import { getRedisClient } from '../lib/redis-provider';
-import { RedisKeys, serialize, deserialize } from '../../shared/types/redis';
+import { RedisKeys, RedisTTL, serialize, deserialize } from '../../shared/types/redis';
 import { getOrCreateTodaysLetteredGame } from '../lib/lettered-game-helpers';
 
 export interface LetteredGame {
@@ -612,6 +612,8 @@ export interface GameLeaderboardEntry {
   moves: number;
   score: number; // time in seconds + moves (lower is better)
   completedAt: string; // ISO timestamp for tiebreaking
+  isAnonymous?: boolean; // Whether the user has chosen to hide their username
+  displayName?: string; // Anonymous display name when isAnonymous is true
 }
 
 interface GameLeaderboardEntryStorage {
@@ -621,6 +623,8 @@ interface GameLeaderboardEntryStorage {
   moves: number;
   score: number;
   completed_at: string;
+  is_anonymous?: boolean;
+  display_name?: string;
 }
 
 const convertGameLeaderboardEntry = (entry: GameLeaderboardEntryStorage): GameLeaderboardEntry => ({
@@ -630,6 +634,8 @@ const convertGameLeaderboardEntry = (entry: GameLeaderboardEntryStorage): GameLe
   moves: entry.moves,
   score: entry.score,
   completedAt: entry.completed_at,
+  isAnonymous: entry.is_anonymous,
+  displayName: entry.display_name,
 });
 
 const convertGameLeaderboardEntryToStorage = (
@@ -641,6 +647,8 @@ const convertGameLeaderboardEntryToStorage = (
   moves: entry.moves,
   score: entry.score,
   completed_at: entry.completedAt,
+  is_anonymous: entry.isAnonymous,
+  display_name: entry.displayName,
 });
 
 /**
@@ -681,6 +689,10 @@ export const addToGameLeaderboard = async (
     // Store metadata for this user's entry
     const storageEntry = convertGameLeaderboardEntryToStorage(entry);
     await redis.hSet(metadataKey, { [entry.userId]: serialize(storageEntry) });
+
+    // Set 30-day TTL on per-game leaderboard keys for data retention compliance
+    await redis.expire(leaderboardKey, RedisTTL.PER_GAME_LEADERBOARD);
+    await redis.expire(metadataKey, RedisTTL.PER_GAME_LEADERBOARD);
 
     console.log('Added to game leaderboard:', {
       gameId,
@@ -734,6 +746,85 @@ export const getGameLeaderboard = async (
   } catch (error) {
     console.error('Failed to get game leaderboard:', { error });
     throw new Error('Failed to get game leaderboard');
+  }
+};
+
+/**
+ * Get a user's leaderboard entry for a specific game.
+ * Returns null if the user hasn't completed the game.
+ */
+export const getUserGameLeaderboardEntry = async (
+  gameId: string,
+  userId: string
+): Promise<GameLeaderboardEntry | null> => {
+  try {
+    const redis = await getRedisClient();
+    const metadataKey = RedisKeys.letteredGameLeaderboardMeta(gameId);
+
+    const metadataStr = await redis.hGet(metadataKey, userId);
+    if (!metadataStr) {
+      return null;
+    }
+
+    const metadata = deserialize<GameLeaderboardEntryStorage>(metadataStr);
+    if (!metadata) {
+      return null;
+    }
+
+    return convertGameLeaderboardEntry(metadata);
+  } catch (error) {
+    console.error('Failed to get user game leaderboard entry:', { error });
+    return null;
+  }
+};
+
+/**
+ * Update a user's leaderboard entry for a specific game.
+ * Used primarily to toggle anonymous mode.
+ */
+export const updateGameLeaderboardEntry = async (
+  gameId: string,
+  userId: string,
+  updates: Partial<Pick<GameLeaderboardEntry, 'isAnonymous' | 'displayName'>>
+): Promise<GameLeaderboardEntry | null> => {
+  try {
+    const redis = await getRedisClient();
+    const metadataKey = RedisKeys.letteredGameLeaderboardMeta(gameId);
+
+    // Get existing entry
+    const metadataStr = await redis.hGet(metadataKey, userId);
+    if (!metadataStr) {
+      console.error('User entry not found in leaderboard:', { gameId, userId });
+      return null;
+    }
+
+    const existingMetadata = deserialize<GameLeaderboardEntryStorage>(metadataStr);
+    if (!existingMetadata) {
+      console.error('Failed to parse existing leaderboard entry:', { gameId, userId });
+      return null;
+    }
+
+    // Apply updates
+    const updatedMetadata: GameLeaderboardEntryStorage = {
+      ...existingMetadata,
+      is_anonymous: updates.isAnonymous ?? existingMetadata.is_anonymous,
+      display_name: updates.displayName ?? existingMetadata.display_name,
+    };
+
+    // Save updated entry
+    await redis.hSet(metadataKey, { [userId]: serialize(updatedMetadata) });
+
+    console.log('Updated game leaderboard entry:', {
+      gameId,
+      userId,
+      isAnonymous: updatedMetadata.is_anonymous,
+      displayName: updatedMetadata.display_name,
+    });
+
+    return convertGameLeaderboardEntry(updatedMetadata);
+  } catch (error) {
+    console.error('Failed to update game leaderboard entry:', { error });
+    throw new Error('Failed to update game leaderboard entry');
   }
 };
 
