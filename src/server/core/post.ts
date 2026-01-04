@@ -13,6 +13,15 @@ const splashConfig = {
   entryUri: 'index.html',
 };
 
+const WELCOME_COMMENT = `Welcome to Lettered, the phrase-fitting puzzle game!
+
+**How to Play:**
+1. Each puzzle contains a hidden phrase with empty spaces
+2. Drag and drop the scattered letter pieces into the correct positions
+3. Complete the phrase correctly to solve the puzzle
+
+Race against the clock to climb the leaderboard, show off your skills in the comments, and come back tomorrow for a fresh puzzle!`;
+
 export const createPost = async () => {
   const { subredditName } = context;
   if (!subredditName) {
@@ -39,6 +48,15 @@ export const createPost = async () => {
   // Store Redis mapping from post ID to game ID (same as custom games)
   await setPostToGameMapping(post.id, gameId);
   console.log('Stored post-to-game mapping for daily game:', { postId: post.id, gameId });
+
+  // Add stickied welcome comment to the post
+  try {
+    await reddit.submitComment(post.id, WELCOME_COMMENT, { sticky: true, distinguish: true });
+    console.log('Added welcome comment to post:', { postId: post.id });
+  } catch (error) {
+    // Log but don't fail post creation if comment fails
+    console.error('Failed to add welcome comment to post:', error);
+  }
 
   return post;
 };
