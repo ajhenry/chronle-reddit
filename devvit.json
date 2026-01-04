@@ -38,10 +38,6 @@
     "onCommentDelete": "/internal/triggers/comment-delete"
   },
   "permissions": {
-    "http": {
-      "enable": true,
-      "domains": []
-    },
     "reddit": {
       "enable": true,
       "scope": "user"
