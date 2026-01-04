@@ -46,6 +46,10 @@ All data is stored within Reddit's infrastructure and is scoped to the subreddit
 
 ## Changelog
 
+### v1.0.1
+
+- Clean up some permissions
+
 ### v1.0.0
 
 - Initial release of the Lettered game!
