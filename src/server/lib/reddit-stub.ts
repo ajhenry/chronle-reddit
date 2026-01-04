@@ -76,6 +76,11 @@ export interface RedditStub {
     splash?: Record<string, unknown>;
     webviewMetadata?: Record<string, unknown>;
   }): Promise<{ id: string; url: string }>;
+  submitComment(
+    postId: string,
+    text: string,
+    options?: { sticky?: boolean; distinguish?: boolean }
+  ): Promise<{ id: string }>;
 }
 
 /**
@@ -162,6 +167,33 @@ export const redditStub: RedditStub = {
     return {
       id: mockPostId,
       url: mockUrl,
+    };
+  },
+
+  /**
+   * Mock submitComment - returns a fake comment response
+   */
+  async submitComment(
+    postId: string,
+    text: string,
+    options?: { sticky?: boolean; distinguish?: boolean }
+  ): Promise<{ id: string }> {
+    // Generate a mock comment ID
+    const mockCommentId = `t1_mock_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+
+    console.log('[REDDIT STUB] Mock comment created:', {
+      id: mockCommentId,
+      postId: postId,
+      text: text.substring(0, 100) + (text.length > 100 ? '...' : ''),
+      sticky: options?.sticky ?? false,
+      distinguish: options?.distinguish ?? false,
+    });
+
+    // Simulate network delay
+    await new Promise((resolve) => setTimeout(resolve, 50));
+
+    return {
+      id: mockCommentId,
     };
   },
 };

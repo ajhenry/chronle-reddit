@@ -22,6 +22,22 @@ import { ensureUserExistsAndGetId } from '../lib/user-helpers';
 
 const router: Router = Router();
 
+/**
+ * Generate a welcome comment for custom puzzles
+ */
+const getCustomWelcomeComment = (creatorUsername: string): string => {
+  return `Welcome to Lettered, the phrase-fitting puzzle game!
+
+This is a custom puzzle created by u/${creatorUsername}.
+
+**How to Play:**
+1. Each puzzle contains a hidden phrase with empty spaces
+2. Drag and drop the scattered letter pieces into the correct positions
+3. Complete the phrase correctly to solve the puzzle
+
+Race against the clock to climb the leaderboard, show off your skills in the comments, and challenge your friends!`;
+};
+
 // Schema for custom lettered game creation
 const customLetteredSchema = z.object({
   phrase: z.string().min(1).max(70).trim(),
@@ -184,6 +200,18 @@ router.post('/api/custom/lettered', async (req, res): Promise<void> => {
 
       // Store mapping from post ID to game ID in Redis for context detection
       await setPostToGameMapping(post.id, gameId);
+
+      // Add stickied welcome comment to the post
+      try {
+        await reddit.submitComment(post.id, getCustomWelcomeComment(username), {
+          sticky: true,
+          distinguish: true,
+        });
+        console.log('Added welcome comment to custom post:', { postId: post.id });
+      } catch (commentError) {
+        // Log but don't fail post creation if comment fails
+        console.error('Failed to add welcome comment to custom post:', commentError);
+      }
 
       res.json({
         status: 'success',

@@ -46,6 +46,22 @@ import {
   type ScreenInfo,
 } from '../database/analytics';
 
+/**
+ * Generate a welcome comment for custom puzzles
+ */
+const getCustomWelcomeComment = (creatorUsername: string): string => {
+  return `Welcome to Lettered, the phrase-fitting puzzle game!
+
+This is a custom puzzle created by u/${creatorUsername}.
+
+**How to Play:**
+1. Each puzzle contains a hidden phrase with empty spaces
+2. Drag and drop the scattered letter pieces into the correct positions
+3. Complete the phrase correctly to solve the puzzle
+
+Race against the clock to climb the leaderboard, show off your skills in the comments, and challenge your friends!`;
+};
+
 // Zod schema for validating the payload
 const gridPositionSchema = z.object({
   row: z.number().int().min(0),
@@ -1097,6 +1113,30 @@ router.post('/api/lettered/:gameId/share', async (req, res): Promise<void> => {
 
     // Store mapping from post ID to game ID in Redis for context detection
     await setPostToGameMapping(post.id, gameId);
+
+    // Add stickied welcome comment to the post
+    // Use creatorUsername from gameData if available, otherwise get current user
+    let creatorUsername = 'Anonymous';
+    if ('creatorUsername' in gameData && typeof gameData.creatorUsername === 'string') {
+      creatorUsername = gameData.creatorUsername;
+    } else {
+      try {
+        creatorUsername = (await reddit.getCurrentUsername()) || 'Anonymous';
+      } catch {
+        // Fall back to Anonymous if we can't get username
+      }
+    }
+
+    try {
+      await reddit.submitComment(post.id, getCustomWelcomeComment(creatorUsername), {
+        sticky: true,
+        distinguish: true,
+      });
+      console.log('Added welcome comment to shared post:', { postId: post.id });
+    } catch (commentError) {
+      // Log but don't fail post creation if comment fails
+      console.error('Failed to add welcome comment to shared post:', commentError);
+    }
 
     const postPermalink = `https://reddit.com/r/${subredditName}/comments/${post.id}`;
 

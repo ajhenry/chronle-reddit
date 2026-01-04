@@ -127,6 +127,60 @@ export const reddit = {
       throw error;
     }
   },
+
+  /**
+   * Submit a comment to a post and optionally sticky/distinguish it
+   * @param postId - The post ID to comment on (with or without t3_ prefix)
+   * @param text - The comment text (supports markdown)
+   * @param options - Optional settings for sticky and distinguish
+   */
+  async submitComment(
+    postId: string,
+    text: string,
+    options?: { sticky?: boolean; distinguish?: boolean }
+  ): Promise<{ id: string }> {
+    const provider = await getCachedRedditProvider();
+
+    // Use stub if in local development
+    if (isLocalDevelopment()) {
+      return provider.submitComment(postId, text, options);
+    }
+
+    try {
+      const { reddit: realReddit } = await import('@devvit/web/server');
+
+      // Ensure postId has t3_ prefix
+      const fullPostId = postId.startsWith('t3_') ? postId : `t3_${postId}`;
+
+      // Submit the comment
+      const comment = await realReddit.submitComment({
+        id: fullPostId as `t3_${string}`,
+        text: text,
+      });
+
+      console.log('[REDDIT PROVIDER] Comment submitted:', comment.id);
+
+      // Distinguish and/or sticky the comment if requested
+      if (options?.sticky || options?.distinguish) {
+        try {
+          await comment.distinguish({ sticky: options.sticky ?? false });
+          console.log('[REDDIT PROVIDER] Comment distinguished/stickied:', {
+            id: comment.id,
+            sticky: options.sticky,
+            distinguish: options.distinguish,
+          });
+        } catch (distinguishError) {
+          console.error('[REDDIT PROVIDER] Failed to distinguish/sticky comment:', distinguishError);
+          // Don't throw - comment was still created successfully
+        }
+      }
+
+      return { id: comment.id };
+    } catch (error) {
+      console.error('[REDDIT PROVIDER] Failed to submit comment:', error);
+      throw error;
+    }
+  },
 };
 
 export default reddit;
