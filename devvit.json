@@ -25,7 +25,7 @@
     "items": [
       {
         "label": "Create a daily Lettered game",
-        "description": "Create's a post for today's current Lettered game. This value will be different across subreddits.",
+        "description": "Creates a post for today's current Lettered game. This value may be different across subreddits.",
         "location": "subreddit",
         "forUserType": "moderator",
         "endpoint": "/internal/menu/post-create"
