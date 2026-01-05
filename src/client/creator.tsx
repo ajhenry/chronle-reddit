@@ -1,5 +1,4 @@
 import './globals.css';
-import '@fontsource/inter/900.css'; // Inter Black
 
 import { StrictMode, useEffect } from 'react';
 import { createRoot } from 'react-dom/client';
@@ -9,12 +8,12 @@ import { App } from './App';
 import { ThemeProvider } from './components/theme-provider';
 import { TooltipProvider } from './components/ui/tooltip';
 
-// Wrapper that navigates to /custom on mount
+// Wrapper that navigates to /creator on mount
 export function CreatorApp() {
   const navigate = useNavigate();
 
   useEffect(() => {
-    void navigate('/custom', { replace: true });
+    void navigate('/creator', { replace: true });
   }, []);
 
   return <App />;

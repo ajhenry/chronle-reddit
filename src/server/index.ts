@@ -5,6 +5,7 @@ import userRoutes from './handlers/user';
 import postRoutes from './handlers/post';
 import gameRoutes from './handlers/game';
 import letteredRoutes from './handlers/lettered';
+import chronleRoutes from './handlers/chronle';
 import adminRoutes from './handlers/admin';
 import leaderboardRoutes from './handlers/leaderboard';
 import customRoutes from './handlers/custom';
@@ -12,6 +13,7 @@ import contextRoutes from './handlers/context';
 import splashRoutes from './handlers/splash';
 import triggerRoutes from './handlers/triggers';
 import accountRoutes from './handlers/account';
+import uploadImagesRoutes from './handlers/upload-images';
 
 // Environment detection
 // LOCAL_MODE=true: Use Express server + stubbed Reddit API for local development
@@ -56,6 +58,7 @@ app.use(userRoutes);
 app.use(postRoutes);
 app.use(gameRoutes);
 app.use(letteredRoutes);
+app.use(chronleRoutes);
 app.use(adminRoutes);
 app.use(leaderboardRoutes);
 app.use(customRoutes);
@@ -63,6 +66,7 @@ app.use(contextRoutes);
 app.use(splashRoutes);
 app.use(triggerRoutes);
 app.use(accountRoutes);
+app.use(uploadImagesRoutes);
 // Health check endpoint for development modes
 if (isLocal || isRedditDev) {
   app.get('/health', (_req, res) => {

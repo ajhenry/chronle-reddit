@@ -1,6 +1,6 @@
 {
   "$schema": "https://developers.reddit.com/schema/config-file.v1.json",
-  "name": "lettered-app",
+  "name": "chronle-app",
   "post": {
     "dir": "dist/client",
     "entrypoints": {
@@ -24,8 +24,8 @@
   "menu": {
     "items": [
       {
-        "label": "Create a daily Lettered game",
-        "description": "Creates a post for today's current Lettered game. This value may be different across subreddits.",
+        "label": "Create a daily Chronle puzzle",
+        "description": "Creates a post for today's daily Chronle puzzle. Players will order historical events chronologically.",
         "location": "subreddit",
         "forUserType": "moderator",
         "endpoint": "/internal/menu/post-create"
@@ -42,7 +42,8 @@
       "enable": true,
       "scope": "user"
     },
-    "redis": true
+    "redis": true,
+    "media": true
   },
   "scheduler": {
     "tasks": {
@@ -53,6 +54,6 @@
     }
   },
   "dev": {
-    "subreddit": "lettered_dev"
+    "subreddit": "chronle_dev"
   }
 }

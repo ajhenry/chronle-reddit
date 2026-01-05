@@ -1,12 +1,11 @@
 import { useState, useEffect } from 'react';
 import { Routes, Route, useNavigate } from 'react-router-dom';
-import { LetteredPage } from './pages/lettered';
+import { ChronlePage } from './pages/chronle';
+import { PuzzleCreatorPage } from './pages/puzzle-creator';
 import { TermsPage } from './pages/terms';
 import { PrivacyPage } from './pages/privacy';
 import { AdminPage } from './pages/admin';
-import { CustomGamePage } from './pages/custom';
 import { LeaderboardPage } from './pages/leaderboard';
-import { TutorialPage } from './pages/tutorial';
 import { SettingsPage } from './pages/settings';
 import { ScrollToTop } from './components/ScrollToTop';
 import { AdminBanner } from './components/AdminBanner';
@@ -35,17 +34,13 @@ export const App = () => {
     const fetchGameStatus = async () => {
       try {
         console.log('Checking game status...');
-        const response = await apiFetch('/api/status');
+        // Try to ensure daily game exists
+        const response = await apiFetch('/api/chronle/daily');
         if (response.ok) {
           const data = await response.json();
-          console.log('Game status:', data);
-
-          // Show a toast if games were created
-          if (data.gamesCreated) {
-            console.log('Games were created for today');
-          }
+          console.log('Daily game status:', data);
         } else {
-          console.error('Failed to fetch game status:', response.statusText);
+          console.error('Failed to fetch daily game:', response.statusText);
         }
       } catch (error) {
         console.error('Error fetching game status:', error);
@@ -85,25 +80,14 @@ export const App = () => {
     void navigate('/');
   };
 
-  const handleBackFromDev = () => {
-    void navigate('/');
-  };
-
-  const handleTutorialComplete = () => {
-    console.log('[TutorialComplete] Called, navigating to /');
-    void navigate('/');
-    // Also refetch in background to sync any other changes
-    void fetchUserInfo();
-  };
-
   return (
     <>
       {showAdminUI && <AdminBanner user={userInfo} />}
       <ScrollToTop />
 
       <Routes>
-        <Route path="/tutorial" element={<TutorialPage onComplete={handleTutorialComplete} />} />
-        <Route path="/custom" element={<CustomGamePage />} />
+        <Route path="/create" element={<PuzzleCreatorPage />} />
+        <Route path="/creator" element={<PuzzleCreatorPage />} />
         <Route
           path="/leaderboard"
           element={<LeaderboardPage onBack={handleBackFromLeaderboard} />}
@@ -112,26 +96,8 @@ export const App = () => {
         <Route path="/privacy" element={<PrivacyPage />} />
         <Route path="/settings" element={<SettingsPage />} />
         <Route path="/admin" element={<AdminPage />} />
-        <Route
-          path="/game/:gameId"
-          element={
-            <LetteredPage
-              onBack={handleBackToMenu}
-              isAdmin={showAdminUI && (userInfo?.admin ?? false)}
-              onToggleAdmin={() => setShowAdminUI(false)}
-            />
-          }
-        />
-        <Route
-          path="*"
-          element={
-            <LetteredPage
-              onBack={handleBackToMenu}
-              isAdmin={showAdminUI && (userInfo?.admin ?? false)}
-              onToggleAdmin={() => setShowAdminUI(false)}
-            />
-          }
-        />
+        <Route path="/game/:gameId" element={<ChronlePage />} />
+        <Route path="*" element={<ChronlePage />} />
       </Routes>
     </>
   );
