@@ -26,7 +26,6 @@ import type {
   ChronlePostGameResponse,
 } from '../../shared/types/chronle';
 import { ChronlePostGameStats } from './ChronlePostGameStats';
-import { ChronleLogo } from './ChronleLogo';
 import { apiFetch } from '../lib/utils';
 
 interface TimelineGameProps {
@@ -178,8 +177,7 @@ export function TimelineGame({
   if (initialCompleted && !postGameStats) {
     return (
       <div className="flex min-h-[60vh] flex-col items-center justify-center p-4">
-        <ChronleLogo size="lg" />
-        <div className="mt-8 flex items-center gap-2">
+        <div className="flex items-center gap-2">
           <Loader2 className="h-6 w-6 animate-spin text-primary" />
           <span className="text-lg text-foreground">Loading puzzle...</span>
         </div>

@@ -1,24 +1,25 @@
 import { context } from '@devvit/web/server';
 import { reddit } from '../lib/reddit-provider';
-import { getOrCreateTodaysLetteredGame } from '../lib/lettered-game-helpers';
 import { setPostToGameMapping } from '../database/redis';
 import { getDailyGameTitle } from '../../shared/utils';
+import { saveGameData } from '../database/chronle';
+import { getPuzzleForDay, createTimelineFromSeed } from '../lib/puzzle-seeds';
 
 const splashConfig = {
-  appDisplayName: 'Lettered',
-  heading: 'Welcome to Lettered',
-  description: 'The phrase-fitting puzzle game',
-  appIconUri: 'lettered-logo.png',
+  appDisplayName: 'Chronle',
+  heading: 'Welcome to Chronle',
+  description: 'The timeline puzzle game',
+  appIconUri: 'chronle-logo.png',
   buttonLabel: 'Start Playing',
   entryUri: 'index.html',
 };
 
-const WELCOME_COMMENT = `Welcome to Lettered, the phrase-fitting puzzle game!
+const WELCOME_COMMENT = `Welcome to Chronle, the timeline puzzle game!
 
 **How to Play:**
-1. Each puzzle contains a hidden phrase with empty spaces
-2. Drag and drop the scattered letter pieces into the correct positions
-3. Complete the phrase correctly to solve the puzzle
+1. Each puzzle contains historical events to put in order
+2. Drag and drop the events from oldest to newest
+3. Submit your answer to see how you did
 
 Race against the clock to climb the leaderboard, show off your skills in the comments, and come back tomorrow for a fresh puzzle!`;
 
@@ -28,9 +29,39 @@ export const createPost = async () => {
     throw new Error('subredditName is required');
   }
 
-  // Get today's lettered game to store its ID in the post metadata
-  const letteredGame = await getOrCreateTodaysLetteredGame();
-  const gameId = letteredGame.id; // This will be the ISO date string (e.g., '2025-12-02')
+  // Get today's date for the daily game
+  const today = new Date().toISOString().split('T')[0]!;
+  const gameId = `daily-${today}`;
+
+  // Create today's game from seed
+  const seed = getPuzzleForDay(today);
+  const { timeline, shuffledEventIds } = createTimelineFromSeed(seed);
+
+  const now = new Date().toISOString();
+
+  const gameData = {
+    id: gameId,
+    postType: 'daily' as const,
+    title: seed.title,
+    description: seed.description,
+    events: seed.events.map((event) => ({
+      id: event.id,
+      title: event.title,
+      description: event.description,
+      subject: event.subject,
+      imageUrl: event.imageUrl,
+      imageCreditName: event.imageCreditName,
+      imageCreditUrl: event.imageCreditUrl,
+      date: event.date,
+    })),
+    solution: timeline.solution,
+    shuffledOrder: shuffledEventIds,
+    createdAt: now,
+    updatedAt: now,
+    day: today,
+  };
+
+  await saveGameData(gameId, gameData);
 
   console.log('Creating post for daily game:', { gameId });
 
@@ -40,12 +71,12 @@ export const createPost = async () => {
     title: getDailyGameTitle(),
     webviewMetadata: {
       gameId: gameId,
-      gameType: 'lettered',
+      gameType: 'chronle',
       postType: 'daily',
     },
   });
 
-  // Store Redis mapping from post ID to game ID (same as custom games)
+  // Store Redis mapping from post ID to game ID
   await setPostToGameMapping(post.id, gameId);
   console.log('Stored post-to-game mapping for daily game:', { postId: post.id, gameId });
 

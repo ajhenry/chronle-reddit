@@ -62,7 +62,7 @@ export async function updateLetteredLeaderboards(
   timeElapsed: number // in seconds
 ): Promise<void> {
   try {
-    // For lettered games, winning means they completed the puzzle
+    // Winning means they completed the puzzle
     const won = movesUsed > 0;
 
     // Get existing user stats
@@ -80,7 +80,7 @@ export async function updateLetteredLeaderboards(
     );
     const bestStreak = Math.max(existingStats?.bestDailyStreak || 0, currentStreak);
 
-    // For now, lettered streak uses the same date tracking (same field)
+    // Streak uses the same date tracking field
     // If separate tracking is needed later, add lastLetteredGameCompletedDate
     const currentLetteredStreak = calculateNewStreak(
       existingStats?.currentDailyLetteredStreak || 0,

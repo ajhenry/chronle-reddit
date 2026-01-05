@@ -32,7 +32,7 @@ router.post('/internal/triggers/post-delete', async (req, res): Promise<void> =>
     const deletedKeys: string[] = [];
 
     // Get the game ID from the post mapping
-    const postToGameKey = `custom-lettered:post:${postId}`;
+    const postToGameKey = `chronle:post:${postId}`;
     const gameId = await redis.get(postToGameKey);
 
     // Delete post-to-game mapping
@@ -42,12 +42,12 @@ router.post('/internal/triggers/post-delete', async (req, res): Promise<void> =>
     // Also try with t3_ prefix variants
     if (postId.startsWith('t3_')) {
       const shortId = postId.replace('t3_', '');
-      const altKey = `custom-lettered:post:${shortId}`;
+      const altKey = `chronle:post:${shortId}`;
       await redis.del(altKey);
       deletedKeys.push(altKey);
     } else {
       const fullId = `t3_${postId}`;
-      const altKey = `custom-lettered:post:${fullId}`;
+      const altKey = `chronle:post:${fullId}`;
       await redis.del(altKey);
       deletedKeys.push(altKey);
     }
@@ -55,24 +55,19 @@ router.post('/internal/triggers/post-delete', async (req, res): Promise<void> =>
     // If we found a game ID, clean up game-related data
     if (gameId) {
       // Delete custom game data
-      const gameKey = RedisKeys.letteredGame.byId(gameId);
+      const gameKey = RedisKeys.chronleGame.byId(gameId);
       await redis.del(gameKey);
       deletedKeys.push(gameKey);
 
       // Delete per-game leaderboard
-      const leaderboardKey = RedisKeys.letteredGameLeaderboard(gameId);
+      const leaderboardKey = RedisKeys.chronleGameLeaderboard(gameId);
       await redis.del(leaderboardKey);
       deletedKeys.push(leaderboardKey);
 
       // Delete per-game leaderboard metadata
-      const metadataKey = RedisKeys.letteredGameLeaderboardMeta(gameId);
+      const metadataKey = RedisKeys.chronleGameLeaderboardMeta(gameId);
       await redis.del(metadataKey);
       deletedKeys.push(metadataKey);
-
-      // Delete custom game leaderboard (legacy format)
-      const customLeaderboardKey = `custom-lettered:leaderboard:${gameId}`;
-      await redis.del(customLeaderboardKey);
-      deletedKeys.push(customLeaderboardKey);
 
       logRouteInfo('/internal/triggers/post-delete', {
         result: 'game_data_deleted',
@@ -140,4 +135,3 @@ router.post('/internal/triggers/comment-delete', async (req, res): Promise<void>
 });
 
 export default router;
-

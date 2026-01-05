@@ -80,13 +80,9 @@ function getISOWeek(date: Date): number {
 /**
  * Format a Redis key for leaderboards
  */
-export function formatLeaderboardKey(
-  type: 'overall' | 'lettered',
-  period: TimePeriod,
-  date?: Date
-): string {
+export function formatLeaderboardKey(period: TimePeriod, date?: Date): string {
   const periodKey = getCurrentPeriod(period, date);
-  const prefix = type === 'overall' ? 'leaderboard' : 'leaderboard:lettered';
+  const prefix = 'leaderboard';
 
   if (period === 'alltime') {
     return `${prefix}:${periodKey}`;
@@ -124,19 +120,17 @@ export const RedisKeys = {
     byHandle: (handle: string) => `users:handle:${handle}`,
     preferences: (userId: string) => `users:preferences:${userId}`,
   },
-  letteredGame: {
-    byId: (gameId: string) => `lettered_games:id:${gameId}`,
-    all: () => 'lettered_games:all',
+  chronleGame: {
+    byId: (gameId: string) => `chronle_games:id:${gameId}`,
+    all: () => 'chronle_games:all',
   },
-  letteredSession: (userId: string, gameId: string) => `lettered_sessions:${userId}:${gameId}`,
-  letteredSubmissions: (sessionId: string) => `lettered_submissions:${sessionId}`,
-  letteredGameLeaderboard: (gameId: string) => `lettered:leaderboard:${gameId}`,
-  letteredGameLeaderboardMeta: (gameId: string) => `lettered:leaderboard:${gameId}:meta`,
+  chronleSession: (userId: string, gameId: string) => `chronle_sessions:${userId}:${gameId}`,
+  chronleGameLeaderboard: (gameId: string) => `chronle:leaderboard:${gameId}`,
+  chronleGameLeaderboardMeta: (gameId: string) => `chronle:leaderboard:${gameId}:meta`,
   userStats: (userId: string) => `user_stats:${userId}`,
   // Separate key for current streak with TTL - expires if user doesn't play
   userCurrentStreak: (userId: string) => `user_streak:current:${userId}`,
-  leaderboard: (type: 'overall' | 'lettered', period: TimePeriod, date?: Date) =>
-    formatLeaderboardKey(type, period, date),
+  leaderboard: (period: TimePeriod, date?: Date) => formatLeaderboardKey(period, date),
   // Analytics keys
   analytics: {
     uniqueUsers: () => 'analytics:unique_users',

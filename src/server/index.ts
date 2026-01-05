@@ -4,13 +4,9 @@ import { apiLoggingMiddleware } from './lib/logging';
 import userRoutes from './handlers/user';
 import postRoutes from './handlers/post';
 import gameRoutes from './handlers/game';
-import letteredRoutes from './handlers/lettered';
 import chronleRoutes from './handlers/chronle';
-import adminRoutes from './handlers/admin';
 import leaderboardRoutes from './handlers/leaderboard';
-import customRoutes from './handlers/custom';
 import contextRoutes from './handlers/context';
-import splashRoutes from './handlers/splash';
 import triggerRoutes from './handlers/triggers';
 import accountRoutes from './handlers/account';
 import uploadImagesRoutes from './handlers/upload-images';
@@ -57,13 +53,9 @@ if (isLocal || isRedditDev) {
 app.use(userRoutes);
 app.use(postRoutes);
 app.use(gameRoutes);
-app.use(letteredRoutes);
 app.use(chronleRoutes);
-app.use(adminRoutes);
 app.use(leaderboardRoutes);
-app.use(customRoutes);
 app.use(contextRoutes);
-app.use(splashRoutes);
 app.use(triggerRoutes);
 app.use(accountRoutes);
 app.use(uploadImagesRoutes);
@@ -81,7 +73,7 @@ if (isLocal || isRedditDev) {
 
 app.post('/internal/cron/daily-post', async (_req, res) => {
   try {
-    console.log('Daily Lettered post scheduler triggered');
+    console.log('Daily Chronle post scheduler triggered');
 
     // Skip post creation in local development mode
     if (isLocal) {
@@ -98,11 +90,8 @@ app.post('/internal/cron/daily-post', async (_req, res) => {
 
     const post = await createPost();
 
-    console.log('Daily Lettered post created successfully:', post.id);
-    console.log(
-      'Post URL:',
-      `https://reddit.com/r/${context.subredditName}/comments/${post.id}`
-    );
+    console.log('Daily Chronle post created successfully:', post.id);
+    console.log('Post URL:', `https://reddit.com/r/${context.subredditName}/comments/${post.id}`);
 
     res.status(200).json({
       status: 'ok',
@@ -111,11 +100,11 @@ app.post('/internal/cron/daily-post', async (_req, res) => {
       timestamp: new Date().toISOString(),
     });
   } catch (error) {
-    console.error('Error in daily Lettered post scheduler:', error);
+    console.error('Error in daily Chronle post scheduler:', error);
     console.error('Error details:', (error as Error).stack);
     res.status(500).json({
       status: 'error',
-      message: 'Failed to create daily Lettered post',
+      message: 'Failed to create daily Chronle post',
       error: (error as Error).message,
       timestamp: new Date().toISOString(),
     });

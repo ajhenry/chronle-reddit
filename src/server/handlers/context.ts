@@ -8,7 +8,6 @@ const router = Router();
 
 /**
  * Get today's game ID in ISO format (YYYY-MM-DD)
- * This matches the format used by getOrCreateTodaysLetteredGame
  */
 function getTodaysGameId(): string {
   const today = new Date();
@@ -37,11 +36,6 @@ router.get('/api/context', async (_req, res): Promise<void> => {
     // Access the post context to get metadata
     const postContext = context;
 
-    // console.log('=== CONTEXT DEBUG START ===');
-    // console.log('Full post context:', JSON.stringify(postContext, null, 2));
-    // console.log('Context keys:', Object.keys(postContext || {}));
-    // console.log('=== CONTEXT DEBUG END ===');
-
     // Get the post ID
     const postId = postContext.postId;
 
@@ -51,14 +45,14 @@ router.get('/api/context', async (_req, res): Promise<void> => {
       console.log('Found post ID:', postId);
       // Look up game ID from post ID (works for both daily and custom games)
       const redis = await getRedisClient();
-      const postToGameKey = `custom-lettered:post:${postId}`;
+      const postToGameKey = `chronle:post:${postId}`;
       gameIdFromRedis = await redis.get(postToGameKey);
       console.log('Found game ID for post from Redis:', gameIdFromRedis);
 
       // Also try without the t3_ prefix if it exists
       if (!gameIdFromRedis && postId.startsWith('t3_')) {
         const shortPostId = postId.replace('t3_', '');
-        const altKey = `custom-lettered:post:${shortPostId}`;
+        const altKey = `chronle:post:${shortPostId}`;
         gameIdFromRedis = await redis.get(altKey);
         console.log('Tried alternate key:', altKey, 'result:', gameIdFromRedis);
       }
@@ -101,8 +95,8 @@ router.get('/api/context', async (_req, res): Promise<void> => {
           subredditName: postContext.subredditName, // Subreddit name for sharing
           gameId: gameId, // Unified game ID (from Redis or metadata)
           customGameId: metadata.customGameId, // Keep for backwards compatibility
-          gameType: gameId ? 'lettered' : metadata.gameType,
-          postType: metadata.postType || (gameId ? 'lettered' : 'daily'),
+          gameType: gameId ? 'chronle' : metadata.gameType,
+          postType: metadata.postType || (gameId ? 'chronle' : 'daily'),
         },
         debug: {
           postId: postId,

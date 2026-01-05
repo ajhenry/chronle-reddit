@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback } from 'react';
 
 export type DragMode = 'tap-to-drag' | 'hold-to-drag';
 
-const DRAG_MODE_STORAGE_KEY = 'lettered-drag-mode';
+const DRAG_MODE_STORAGE_KEY = 'chronle-drag-mode';
 const MD_BREAKPOINT = 768;
 
 /**

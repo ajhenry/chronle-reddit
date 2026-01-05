@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import { reddit } from '../lib/reddit-provider';
 import { getRedisClient } from '../lib/redis-provider';
-import { RedisKeys, TimePeriod, serialize, deserialize } from '../../shared/types/redis';
+import { RedisKeys, TimePeriod, deserialize } from '../../shared/types/redis';
 import { logRouteInfo, logError } from '../lib/logging';
 import { getOrCreateUser } from '../database/user';
 
@@ -74,49 +74,31 @@ router.post('/api/account/delete', async (_req, res): Promise<void> => {
       console.error('Error deleting user preferences:', error);
     }
 
-    // 4. Remove from time-period leaderboards (overall and lettered)
+    // 4. Remove from time-period leaderboards
     const periods: TimePeriod[] = ['daily', 'weekly', 'monthly', 'alltime'];
-    const leaderboardTypes: ('overall' | 'lettered')[] = ['overall', 'lettered'];
 
-    for (const type of leaderboardTypes) {
-      for (const period of periods) {
-        try {
-          const leaderboardKey = RedisKeys.leaderboard(type, period);
-          await redis.zRem(leaderboardKey, [userId]);
+    for (const period of periods) {
+      try {
+        const leaderboardKey = RedisKeys.leaderboard(period);
+        await redis.zRem(leaderboardKey, [userId]);
 
-          // Delete metadata
-          const metadataKey = `${leaderboardKey}:meta:${userId}`;
-          await redis.del(metadataKey);
-          deletedKeys.push(metadataKey);
-        } catch (error) {
-          errors.push(`Failed to remove from ${type} ${period} leaderboard`);
-          console.error(`Error removing from ${type} ${period} leaderboard:`, error);
-        }
+        // Delete metadata
+        const metadataKey = `${leaderboardKey}:meta:${userId}`;
+        await redis.del(metadataKey);
+        deletedKeys.push(metadataKey);
+      } catch (error) {
+        errors.push(`Failed to remove from ${period} leaderboard`);
+        console.error(`Error removing from ${period} leaderboard:`, error);
       }
     }
 
     // 5. Find and delete game sessions
-    // Sessions are stored with key pattern: lettered_sessions:{userId}:{gameId}
-    // We need to scan for all sessions belonging to this user
+    // Sessions are stored with key pattern: chronle_sessions:{userId}:{gameId}
     try {
-      const sessionPattern = `lettered_sessions:${userId}:*`;
+      const sessionPattern = `chronle_sessions:${userId}:*`;
       const sessionKeys = await scanKeys(redis, sessionPattern);
 
       for (const sessionKey of sessionKeys) {
-        // Get session to find submission keys
-        const sessionData = await redis.get(sessionKey);
-        if (sessionData) {
-          const session = deserialize<{ id: string }>(sessionData);
-          if (session?.id) {
-            // Delete submissions for this session
-            const submissionsKey = RedisKeys.letteredSubmissions(session.id);
-            await redis.del(submissionsKey);
-            deletedKeys.push(submissionsKey);
-
-            // Remove from global lookup
-            await redis.hDel('lettered_session_global_lookup', [session.id]);
-          }
-        }
         await redis.del(sessionKey);
         deletedKeys.push(sessionKey);
       }
@@ -126,17 +108,8 @@ router.post('/api/account/delete', async (_req, res): Promise<void> => {
     }
 
     // 6. Remove from per-game leaderboards
-    // We need to scan for all game leaderboard metadata hashes and remove this user
     try {
-      const gameLeaderboardPattern = 'lettered:leaderboard:*:meta';
-      const metaKeys = await scanKeys(redis, gameLeaderboardPattern);
-
-      for (const metaKey of metaKeys) {
-        await redis.hDel(metaKey, [userId]);
-      }
-
-      // Also remove from the sorted sets
-      const leaderboardPattern = 'lettered:leaderboard:*';
+      const leaderboardPattern = 'chronle:leaderboard:*';
       const leaderboardKeys = await scanKeys(redis, leaderboardPattern);
 
       for (const lbKey of leaderboardKeys) {
@@ -148,16 +121,6 @@ router.post('/api/account/delete', async (_req, res): Promise<void> => {
     } catch (error) {
       errors.push('Failed to remove from per-game leaderboards');
       console.error('Error removing from per-game leaderboards:', error);
-    }
-
-    // 7. Delete player history for custom games
-    try {
-      const playerHistoryKey = `custom-lettered:player:${userHandle}`;
-      await redis.del(playerHistoryKey);
-      deletedKeys.push(playerHistoryKey);
-    } catch (error) {
-      errors.push('Failed to delete player history');
-      console.error('Error deleting player history:', error);
     }
 
     logRouteInfo('/api/account/delete', {
@@ -202,7 +165,6 @@ async function scanKeys(
 
   do {
     // Note: Devvit Redis might not support SCAN, fall back to a simpler approach
-    // For now, we'll use a simplified approach that works with the available Redis commands
     try {
       // Try to use scan if available
       const result = await (redis as any).scan(cursor, { match: pattern, count: 100 });
@@ -217,7 +179,6 @@ async function scanKeys(
       }
     } catch {
       // Scan not available, just break and return empty array
-      // The caller should handle this gracefully
       break;
     }
   } while (cursor !== 0);

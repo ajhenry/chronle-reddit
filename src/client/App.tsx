@@ -4,7 +4,6 @@ import { ChronlePage } from './pages/chronle';
 import { PuzzleCreatorPage } from './pages/puzzle-creator';
 import { TermsPage } from './pages/terms';
 import { PrivacyPage } from './pages/privacy';
-import { AdminPage } from './pages/admin';
 import { LeaderboardPage } from './pages/leaderboard';
 import { SettingsPage } from './pages/settings';
 import { ScrollToTop } from './components/ScrollToTop';
@@ -95,7 +94,6 @@ export const App = () => {
         <Route path="/terms" element={<TermsPage />} />
         <Route path="/privacy" element={<PrivacyPage />} />
         <Route path="/settings" element={<SettingsPage />} />
-        <Route path="/admin" element={<AdminPage />} />
         <Route path="/game/:gameId" element={<ChronlePage />} />
         <Route path="*" element={<ChronlePage />} />
       </Routes>

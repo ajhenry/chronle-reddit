@@ -1,14 +1,7 @@
 import { Router } from 'express';
 import { ensureUserExistsAndGetId } from '../lib/user-helpers';
 import { logRouteInfo, logError } from '../lib/logging';
-import {
-  getLeaderboard,
-  getUserRank,
-  getLetteredLeaderboard,
-  getUserLetteredRank,
-  getUserStats,
-  getUserLeaderboardData,
-} from '../database/leaderboard';
+import { getRedisClient } from '../lib/redis-provider';
 import { TimePeriod, getCurrentPeriod } from '../../shared/types/redis';
 
 const router = Router();
@@ -29,22 +22,47 @@ router.get('/api/leaderboard', async (req, res): Promise<void> => {
       period: periodValue,
     });
 
-    // Get overall leaderboard rankings for the specified period
-    const { entries, totalPlayers } = await getLeaderboard(periodValue, limitNum, offsetNum);
+    // Get leaderboard from Redis
+    const redis = await getRedisClient();
+    const leaderboardKey = `leaderboard:${periodValue}`;
+    
+    const entries = await redis.zRange(leaderboardKey, offsetNum, offsetNum + limitNum - 1, {
+      reverse: true,
+      by: 'score',
+    });
+
+    const totalCount = await redis.zCard(leaderboardKey);
 
     // Get current user's position if authenticated
     let userRank: number | null = null;
     const userId = await ensureUserExistsAndGetId();
     if (userId) {
-      userRank = await getUserRank(periodValue, userId);
+      const rank = await redis.zRank(leaderboardKey, userId);
+      userRank = rank !== null ? totalCount - rank : null;
     }
+
+    // Format entries
+    const formattedEntries = await Promise.all(
+      entries.map(async (entry, index) => {
+        const userData = await redis.get(`user:${entry.member}`);
+        const user = userData ? JSON.parse(userData) : null;
+        return {
+          rank: offsetNum + index + 1,
+          userId: entry.member,
+          redditHandle: user?.handle || 'Anonymous',
+          totalPoints: entry.score,
+          gamesPlayed: 0,
+          averageScore: null,
+        };
+      })
+    );
 
     const response = {
       type: 'leaderboard',
       period: periodValue,
       periodKey: getCurrentPeriod(periodValue),
-      entries,
-      totalPlayers,
+      entries: formattedEntries,
+      totalPlayers: totalCount,
       userRank,
       limit: limitNum,
       offset: offsetNum,
@@ -67,64 +85,6 @@ router.get('/api/leaderboard', async (req, res): Promise<void> => {
   }
 });
 
-// GET /api/leaderboard/lettered - Returns Lettered game leaderboard rankings
-router.get('/api/leaderboard/lettered', async (req, res): Promise<void> => {
-  try {
-    const { limit = 10, offset = 0, period = 'alltime' } = req.query;
-
-    const limitNum = Math.min(Math.max(1, parseInt(limit as string) || 10), 50);
-    const offsetNum = Math.max(0, parseInt(offset as string) || 0);
-    const periodValue = (period as TimePeriod) || 'alltime';
-
-    logRouteInfo('/api/leaderboard/lettered', {
-      action: 'fetch_lettered_leaderboard',
-      limit: limitNum,
-      offset: offsetNum,
-      period: periodValue,
-    });
-
-    // Get Lettered leaderboard rankings for the specified period
-    const { entries, totalPlayers } = await getLetteredLeaderboard(
-      periodValue,
-      limitNum,
-      offsetNum
-    );
-
-    // Get current user's position if authenticated
-    let userRank: number | null = null;
-    const userId = await ensureUserExistsAndGetId();
-    if (userId) {
-      userRank = await getUserLetteredRank(periodValue, userId);
-    }
-
-    const response = {
-      type: 'lettered_leaderboard',
-      period: periodValue,
-      periodKey: getCurrentPeriod(periodValue),
-      entries,
-      totalPlayers,
-      userRank,
-      limit: limitNum,
-      offset: offsetNum,
-    };
-
-    logRouteInfo('/api/leaderboard/lettered', {
-      result: 'success',
-      entriesCount: response.entries.length,
-      totalPlayers: response.totalPlayers,
-      userRank,
-    });
-
-    res.json(response);
-  } catch (error) {
-    logError('/api/leaderboard/lettered', error);
-    res.status(500).json({
-      status: 'error',
-      message: 'Failed to fetch Lettered leaderboard',
-    });
-  }
-});
-
 // GET /api/stats/user - Returns current user's total statistics
 router.get('/api/stats/user', async (_req, res): Promise<void> => {
   try {
@@ -141,8 +101,10 @@ router.get('/api/stats/user', async (_req, res): Promise<void> => {
       return;
     }
 
-    // Get user's overall stats
-    const userStats = await getUserStats(userId);
+    // Get user's stats from Redis
+    const redis = await getRedisClient();
+    const statsData = await redis.get(`user_stats:${userId}`);
+    const userStats = statsData ? JSON.parse(statsData) : null;
 
     const response = {
       type: 'user_stats',
@@ -150,17 +112,9 @@ router.get('/api/stats/user', async (_req, res): Promise<void> => {
       stats: userStats || {
         currentDailyStreak: 0,
         bestDailyStreak: 0,
-        currentDailyLetteredStreak: 0,
-        bestDailyLetteredStreak: 0,
         lastGameCompletedDate: null,
         totalPoints: 0,
         totalGamesPlayed: 0,
-        totalLetteredGamesPlayed: 0,
-        totalLetteredPoints: 0,
-        totalLetteredWins: 0,
-        totalLetteredLosses: 0,
-        totalLetteredWinRate: null,
-        totalLetteredAverageScore: null,
       },
     };
 
@@ -203,28 +157,32 @@ router.get('/api/leaderboard/user', async (req, res): Promise<void> => {
       return;
     }
 
-    // Get user's leaderboard data for the specified period
-    const userLeaderboardData = await getUserLeaderboardData(periodValue, userId);
-
-    if (!userLeaderboardData) {
-      logRouteInfo('/api/leaderboard/user', { result: 'no_data' });
-      res.status(404).json({
-        status: 'error',
-        message: 'User leaderboard data not found',
-      });
-      return;
-    }
+    // Get user data
+    const redis = await getRedisClient();
+    const userData = await redis.get(`user:${userId}`);
+    const user = userData ? JSON.parse(userData) : null;
+    
+    const leaderboardKey = `leaderboard:${periodValue}`;
+    const totalCount = await redis.zCard(leaderboardKey);
+    const rankResult = await redis.zRank(leaderboardKey, userId);
+    const rank = rankResult !== null ? totalCount - rankResult : null;
+    const score = await redis.zScore(leaderboardKey, userId);
 
     const response = {
       type: 'user_leaderboard_position',
-      ...userLeaderboardData,
+      userId,
+      username: user?.handle || 'Anonymous',
+      imageUrl: user?.imageUrl || null,
+      rank,
+      totalPoints: score || 0,
+      totalGamesPlayed: 0,
     };
 
     logRouteInfo('/api/leaderboard/user', {
       result: 'success',
       userId,
-      rank: userLeaderboardData.rank,
-      totalPoints: userLeaderboardData.totalPoints,
+      rank: response.rank,
+      totalPoints: response.totalPoints,
     });
 
     res.json(response);

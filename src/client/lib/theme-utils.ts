@@ -1,6 +1,6 @@
-// Theme utility functions for Lettered app
+// Theme utility functions for Chronle app
 
-export type GameTheme = 'lettered' | 'game2' | 'game3' | 'default';
+export type GameTheme = 'chronle' | 'default';
 
 export interface GameThemeConfig {
   id: GameTheme;
@@ -24,7 +24,7 @@ export function getGameThemeClass(theme: GameTheme): string {
  */
 export function applyGameTheme(theme: GameTheme): void {
   // Remove any existing game theme classes
-  document.documentElement.classList.remove('game-lettered', 'game-game2', 'game-game3');
+  document.documentElement.classList.remove('game-chronle');
 
   // Apply the new theme class
   if (theme !== 'default') {
@@ -36,7 +36,7 @@ export function applyGameTheme(theme: GameTheme): void {
  * Remove all game themes and reset to default
  */
 export function resetGameTheme(): void {
-  document.documentElement.classList.remove('game-lettered', 'game-game2', 'game-game3');
+  document.documentElement.classList.remove('game-chronle');
 }
 
 /**
@@ -70,31 +70,13 @@ export function setDarkMode(enabled: boolean): void {
 export function getGameThemes(): GameThemeConfig[] {
   return [
     {
-      id: 'lettered',
-      name: 'Lettered',
-      description: 'Solve letter puzzles',
-      primaryColor: 'hsl(var(--game-lettered-primary))',
-      secondaryColor: 'hsl(var(--game-lettered-secondary))',
-      backgroundColor: 'hsl(var(--game-lettered-background))',
+      id: 'chronle',
+      name: 'Chronle',
+      description: 'Timeline puzzle game',
+      primaryColor: 'hsl(var(--primary))',
+      secondaryColor: 'hsl(var(--secondary))',
+      backgroundColor: 'hsl(var(--background))',
       available: true,
-    },
-    {
-      id: 'game2',
-      name: 'GAME 2',
-      description: 'Epic new game mode coming soon!',
-      primaryColor: 'hsl(var(--game-game2-primary))',
-      secondaryColor: 'hsl(var(--game-game2-secondary))',
-      backgroundColor: 'hsl(var(--game-game2-background))',
-      available: false,
-    },
-    {
-      id: 'game3',
-      name: 'GAME 3',
-      description: 'Another awesome game mode coming soon!',
-      primaryColor: 'hsl(var(--game-game3-primary))',
-      secondaryColor: 'hsl(var(--game-game3-secondary))',
-      backgroundColor: 'hsl(var(--game-game3-background))',
-      available: false,
     },
   ];
 }

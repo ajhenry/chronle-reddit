@@ -270,7 +270,7 @@ const UserStatsTab = ({ stats, loading, error }: UserStatsTabProps) => {
         <Card>
           <CardHeader>
             <CardTitle className="flex gap-2 items-center">
-              <img src="/lettered-logo.svg" alt="Lettered" className="w-5 h-5" />
+              <img src="/chronle-logo.png" alt="Chronle" className="w-5 h-5" />
               Lettered Stats
             </CardTitle>
           </CardHeader>
