@@ -30,10 +30,10 @@ export function EventDetailModal({
   });
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="flex h-full max-h-none w-full max-w-none flex-col rounded-none border-0 p-4 sm:h-auto sm:max-h-[90vh] sm:w-[90vw] sm:max-w-md sm:rounded-lg sm:border sm:p-6">
-        {/* Event Image - fixed aspect ratio */}
-        <div className="relative aspect-video w-full shrink-0 overflow-hidden rounded-lg">
+    <Dialog open={open} onOpenChange={onOpenChange} modal={false}>
+      <DialogContent className="flex h-full max-h-none w-full max-w-none flex-col overflow-hidden rounded-none border-0 p-4 sm:rounded-none">
+        {/* Event Image - larger on mobile */}
+        <div className="relative w-full shrink-0 overflow-hidden rounded-lg" style={{ aspectRatio: '16/9' }}>
           <img
             src={event.imageUrl}
             alt={event.title}
@@ -41,26 +41,23 @@ export function EventDetailModal({
           />
         </div>
 
-        {/* Title and date - fixed */}
-        <DialogHeader className="shrink-0 pt-2">
-          <DialogTitle className="text-xl">{event.title}</DialogTitle>
-          {showDate && (
-            <p className="text-sm font-medium text-primary">{formattedDate}</p>
-          )}
-        </DialogHeader>
+        {/* Content area - fills remaining space */}
+        <div className="flex flex-1 flex-col justify-center py-2">
+          <DialogHeader>
+            <DialogTitle className="text-xl">{event.title}</DialogTitle>
+            {showDate && (
+              <p className="text-sm font-medium text-primary">{formattedDate}</p>
+            )}
+          </DialogHeader>
 
-        {/* Description - fills remaining space and scrolls */}
-        <div className="min-h-0 flex-1 overflow-y-auto">
-          <DialogDescription className="text-base leading-relaxed">
+          {/* Description - clamps to available space */}
+          <DialogDescription className="mt-2 line-clamp-6 text-base leading-relaxed">
             {event.description}
           </DialogDescription>
-        </div>
 
-        {/* Footer - fixed at bottom */}
-        <div className="shrink-0 space-y-2 pt-2">
           {/* Image credit */}
           {event.imageCreditName && (
-            <p className="text-xs text-muted-foreground">
+            <p className="mt-2 text-xs text-muted-foreground">
               Image:{' '}
               {event.imageCreditUrl ? (
                 <a
@@ -76,7 +73,10 @@ export function EventDetailModal({
               )}
             </p>
           )}
+        </div>
 
+        {/* Close button at bottom */}
+        <div className="shrink-0">
           <Button onClick={() => onOpenChange(false)} className="w-full">
             Close
           </Button>

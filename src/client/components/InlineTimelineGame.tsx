@@ -245,7 +245,9 @@ export function InlineTimelineGame({
               : gameData.description}
           </h3>
           <p className="text-xs text-muted-foreground">
-            {isFinished && showPostGame ? 'Correct order shown' : 'Drag to reorder (oldest first)'}
+            {isFinished && showPostGame
+              ? 'Correct order shown'
+              : 'Drag the right to reorder (oldest first)'}
           </p>
         </div>
         {/* Confetti anchor */}
