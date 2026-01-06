@@ -6,7 +6,8 @@
     "entrypoints": {
       "default": {
         "inline": true,
-        "entry": "splash.html"
+        "height": "tall",
+        "entry": "index.html"
       },
       "game": {
         "entry": "index.html"
