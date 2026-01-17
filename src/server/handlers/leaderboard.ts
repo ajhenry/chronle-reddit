@@ -104,17 +104,23 @@ router.get('/api/stats/user', async (_req, res): Promise<void> => {
     // Get user's stats from Redis
     const redis = await getRedisClient();
     const statsData = await redis.get(`user_stats:${userId}`);
-    const userStats = statsData ? JSON.parse(statsData) : null;
+    const rawStats = statsData ? JSON.parse(statsData) : null;
 
+    // Map Redis fields to API response fields
     const response = {
       type: 'user_stats',
       userId,
-      stats: userStats || {
-        currentDailyStreak: 0,
-        bestDailyStreak: 0,
-        lastGameCompletedDate: null,
-        totalPoints: 0,
-        totalGamesPlayed: 0,
+      stats: {
+        currentDailyStreak: rawStats?.currentDailyStreak ?? 0,
+        bestDailyStreak: rawStats?.bestDailyStreak ?? 0,
+        lastGameCompletedDate: rawStats?.lastGameCompletedDate ?? null,
+        totalPoints: rawStats?.totalPoints ?? 0,
+        totalGamesPlayed: rawStats?.totalGamesPlayed ?? 0,
+        // Chronle-specific stats (stored as "Lettered" in Redis)
+        totalChronleGamesPlayed: rawStats?.totalLetteredGamesPlayed ?? 0,
+        totalChronleWins: rawStats?.totalLetteredWins ?? 0,
+        totalChronleLosses: rawStats?.totalLetteredLosses ?? 0,
+        chronleWinRate: rawStats?.totalLetteredWinRate ?? 0,
       },
     };
 

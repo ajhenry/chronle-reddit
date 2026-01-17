@@ -45,6 +45,11 @@ export type UserStats = {
   lastGameCompletedDate: string | null;
   totalPoints: number;
   totalGamesPlayed: number;
+  // Chronle-specific stats
+  totalChronleGamesPlayed: number;
+  totalChronleWins: number;
+  totalChronleLosses: number;
+  chronleWinRate: number;
 };
 
 export type UserStatsResponse = {

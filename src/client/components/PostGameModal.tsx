@@ -127,9 +127,9 @@ export function PostGameModal({
 
   const maxPercentage = Math.max(...distribution.map((d) => d.percentage), 1);
 
-  // Calculate percentile
+  // Calculate percentile - what % of OTHER players did worse than the user
   const percentile = useMemo(() => {
-    if (!postGameStats?.allPlayerStats || postGameStats.totalPlayers === 0) return 0;
+    if (!postGameStats?.allPlayerStats || postGameStats.totalPlayers <= 1) return 0;
 
     let betterThan = 0;
     for (const [attempts, count] of Object.entries(postGameStats.allPlayerStats)) {
@@ -138,7 +138,9 @@ export function PostGameModal({
       }
     }
 
-    return Math.round((betterThan / postGameStats.totalPlayers) * 100);
+    // Divide by (totalPlayers - 1) since we're comparing to OTHER players, not including self
+    const otherPlayers = postGameStats.totalPlayers - 1;
+    return Math.round((betterThan / otherPlayers) * 100);
   }, [postGameStats, attemptCount]);
 
   return (
@@ -235,37 +237,73 @@ export function PostGameModal({
                 <h4 className="text-center text-lg font-semibold text-foreground">Your Stats</h4>
 
                 {userStats ? (
-                  <div className="grid grid-cols-2 gap-3">
-                    {/* Current Streak */}
-                    <div className="rounded-lg bg-muted p-3 text-center">
-                      <p className="text-2xl font-bold text-primary">
-                        {userStats.currentDailyStreak}
-                      </p>
-                      <p className="text-xs text-muted-foreground">Current Streak</p>
+                  <>
+                    {/* Streak Stats */}
+                    <div className="grid grid-cols-2 gap-2">
+                      <div className="rounded-lg bg-muted p-3 text-center">
+                        <p className="text-2xl font-bold text-primary">
+                          {userStats.currentDailyStreak}
+                        </p>
+                        <p className="text-xs text-muted-foreground">Current Streak</p>
+                      </div>
+                      <div className="rounded-lg bg-muted p-3 text-center">
+                        <p className="text-2xl font-bold text-foreground">
+                          {userStats.bestDailyStreak}
+                        </p>
+                        <p className="text-xs text-muted-foreground">Best Streak</p>
+                      </div>
                     </div>
 
-                    {/* Best Streak */}
-                    <div className="rounded-lg bg-muted p-3 text-center">
-                      <p className="text-2xl font-bold text-foreground">
-                        {userStats.bestDailyStreak}
-                      </p>
-                      <p className="text-xs text-muted-foreground">Best Streak</p>
+                    {/* Game Stats */}
+                    <div className="grid grid-cols-3 gap-2">
+                      <div className="rounded-lg bg-muted p-2 text-center">
+                        <p className="text-xl font-bold text-foreground">
+                          {userStats.totalChronleGamesPlayed}
+                        </p>
+                        <p className="text-xs text-muted-foreground">Played</p>
+                      </div>
+                      <div className="rounded-lg bg-muted p-2 text-center">
+                        <p className="text-xl font-bold text-success">
+                          {userStats.totalChronleWins}
+                        </p>
+                        <p className="text-xs text-muted-foreground">Won</p>
+                      </div>
+                      <div className="rounded-lg bg-muted p-2 text-center">
+                        <p className="text-xl font-bold text-foreground">
+                          {Math.round(userStats.chronleWinRate ?? 0)}%
+                        </p>
+                        <p className="text-xs text-muted-foreground">Win Rate</p>
+                      </div>
                     </div>
 
-                    {/* Games Played */}
-                    <div className="rounded-lg bg-muted p-3 text-center">
-                      <p className="text-2xl font-bold text-foreground">
-                        {userStats.totalGamesPlayed}
-                      </p>
-                      <p className="text-xs text-muted-foreground">Games Played</p>
-                    </div>
-
-                    {/* Total Points */}
-                    <div className="rounded-lg bg-muted p-3 text-center">
-                      <p className="text-2xl font-bold text-foreground">{userStats.totalPoints}</p>
-                      <p className="text-xs text-muted-foreground">Total Points</p>
-                    </div>
-                  </div>
+                    {/* Win Rate Bar */}
+                    {userStats.totalChronleGamesPlayed > 0 && (
+                      <div className="space-y-1">
+                        <div className="flex justify-between text-xs text-muted-foreground">
+                          <span>Wins</span>
+                          <span>Losses</span>
+                        </div>
+                        <div className="flex h-3 overflow-hidden rounded-full bg-muted">
+                          <div
+                            className="bg-success transition-all"
+                            style={{
+                              width: `${userStats.chronleWinRate ?? 0}%`,
+                            }}
+                          />
+                          <div
+                            className="bg-destructive/60 transition-all"
+                            style={{
+                              width: `${100 - (userStats.chronleWinRate ?? 0)}%`,
+                            }}
+                          />
+                        </div>
+                        <div className="flex justify-between text-xs font-medium">
+                          <span className="text-success">{userStats.totalChronleWins}</span>
+                          <span className="text-muted-foreground">{userStats.totalChronleLosses}</span>
+                        </div>
+                      </div>
+                    )}
+                  </>
                 ) : (
                   <div className="py-8 text-center text-muted-foreground">Loading stats...</div>
                 )}
